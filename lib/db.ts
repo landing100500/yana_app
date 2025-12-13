@@ -6,7 +6,8 @@ let sequelizeInstance: Sequelize | null = null;
 
 function getSequelize(): Sequelize {
   if (!sequelizeInstance) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // @ts-ignore
     const mysql2 = require('mysql2');
     
     sequelizeInstance = new Sequelize(
