@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
@@ -37,41 +37,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  useEffect(() => {
-    if (isAuthChecked) {
-      loadTopics();
-      loadUserProfile();
-    }
-  }, [isAuthChecked]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
-        setIsMobileMenuOpen(false);
-      }
-    };
-
-    if (isMenuOpen || isMobileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isMenuOpen, isMobileMenuOpen]);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/check', {
         credentials: 'include',
@@ -112,7 +78,41 @@ export default function ChatPage() {
       console.error('Auth check error:', err);
       router.push('/');
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (isAuthChecked) {
+      loadTopics();
+      loadUserProfile();
+    }
+  }, [isAuthChecked]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen || isMobileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen, isMobileMenuOpen]);
 
   const loadUserProfile = async () => {
     try {

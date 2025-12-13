@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ['mysql2'],
+  experimental: {
+    serverComponentsExternalPackages: ['mysql2'],
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Игнорируем предупреждения о динамических require в sequelize
