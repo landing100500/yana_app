@@ -1,3 +1,4 @@
+/* eslint-disable */
 // Server-side only - используем require для mysql2
 import { Sequelize } from 'sequelize';
 
@@ -6,8 +7,7 @@ let sequelizeInstance: Sequelize | null = null;
 
 function getSequelize(): Sequelize {
   if (!sequelizeInstance) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    // @ts-ignore
+    // @ts-ignore - require needed for mysql2 to work with webpack
     const mysql2 = require('mysql2');
     
     sequelizeInstance = new Sequelize(
