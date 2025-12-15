@@ -3,10 +3,11 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import ChatTopic from '@/models/ChatTopic';
+import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
+const N8N_WEBHOOK_URL = 'https://n8n.konstantinluksha.ru/webhook/26e44a79-465d-4644-a367-3db29217edf6';
 
 async function getUserId(request: NextRequest) {
   const cookieStore = await cookies();
@@ -59,22 +60,126 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Получаем телефон пользователя
+    const user = await User.findByPk(userId);
+    const userPhone = user?.phone || '';
+
     let response = 'Извините, сервис временно недоступен.';
 
-    if (N8N_WEBHOOK_URL) {
+    try {
+      const payload = {
+        message,
+        userId,
+        topicId: topic.id,
+        phone: userPhone,
+      };
+
+      console.log('Sending to webhook:', N8N_WEBHOOK_URL);
+      console.log('Payload:', JSON.stringify(payload, null, 2));
+
+      // Пробуем POST запрос
+      let webhookResponse;
       try {
-        const webhookResponse = await axios.post(N8N_WEBHOOK_URL, {
-          message,
-          userId,
-          topicId: topic.id,
-        }, {
-          timeout: 30000,
+        webhookResponse = await axios.post(
+          N8N_WEBHOOK_URL,
+          payload,
+          {
+            timeout: 60000,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            validateStatus: (status) => status < 500, // Принимаем все статусы кроме 5xx
+          }
+        );
+      } catch (postError: any) {
+        // Если POST вернул 404, пробуем GET с query параметрами
+        if (postError.response?.status === 404) {
+          console.log('POST failed with 404, trying GET with query params');
+          const queryParams = new URLSearchParams({
+            message: payload.message,
+            userId: payload.userId.toString(),
+            topicId: payload.topicId.toString(),
+            phone: payload.phone,
+          });
+          
+          webhookResponse = await axios.get(
+            `${N8N_WEBHOOK_URL}?${queryParams.toString()}`,
+            {
+              timeout: 60000,
+              headers: {
+                'Accept': 'application/json',
+              },
+              validateStatus: (status) => status < 500,
+            }
+          );
+        } else {
+          throw postError;
+        }
+      }
+
+      console.log('Webhook response status:', webhookResponse.status);
+      console.log('Webhook response data:', JSON.stringify(webhookResponse.data, null, 2));
+
+      // Обрабатываем различные форматы ответа от n8n
+      if (webhookResponse.data) {
+        // Если ответ - строка
+        if (typeof webhookResponse.data === 'string') {
+          response = webhookResponse.data;
+        }
+        // Если ответ - объект
+        else if (typeof webhookResponse.data === 'object') {
+          // Проверяем различные возможные поля ответа
+          response = 
+            webhookResponse.data.response || 
+            webhookResponse.data.message || 
+            webhookResponse.data.text ||
+            webhookResponse.data.output ||
+            webhookResponse.data.data?.response ||
+            webhookResponse.data.data?.message ||
+            (Array.isArray(webhookResponse.data) && webhookResponse.data[0]?.response) ||
+            (Array.isArray(webhookResponse.data) && webhookResponse.data[0]?.message) ||
+            JSON.stringify(webhookResponse.data);
+        }
+      }
+
+      // Если статус не 200, но есть данные, все равно используем их
+      if (webhookResponse.status !== 200 && !response) {
+        response = `Получен статус ${webhookResponse.status}, но ответ пустой`;
+      }
+    } catch (webhookError: any) {
+      console.error('N8N webhook error:', webhookError.message);
+      console.error('Error details:', {
+        code: webhookError.code,
+        response: webhookError.response?.data,
+        status: webhookError.response?.status,
+        statusText: webhookError.response?.statusText,
+        url: webhookError.config?.url,
+      });
+
+      if (webhookError.response) {
+        const status = webhookError.response.status;
+        const statusText = webhookError.response.statusText;
+        const errorData = webhookError.response.data;
+        
+        console.error('Webhook response error:', {
+          status,
+          statusText,
+          data: errorData,
         });
 
-        response = webhookResponse.data?.response || webhookResponse.data?.message || response;
-      } catch (webhookError: any) {
-        console.error('N8N webhook error:', webhookError.message);
-        response = 'Произошла ошибка при обработке запроса. Попробуйте позже.';
+        // Если получили 404, возможно webhook не настроен или URL неверный
+        if (status === 404) {
+          response = 'Webhook не найден. Проверьте настройки n8n.';
+        } else {
+          response = `Ошибка: ${status} - ${statusText}`;
+        }
+      } else if (webhookError.request) {
+        console.error('No response received:', webhookError.request);
+        response = 'Сервис не отвечает. Проверьте доступность webhook.';
+      } else {
+        console.error('Request setup error:', webhookError.message);
+        response = `Ошибка при отправке запроса: ${webhookError.message}`;
       }
     }
 

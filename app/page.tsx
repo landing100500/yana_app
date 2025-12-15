@@ -8,6 +8,7 @@ export default function Home() {
   const [phone, setPhone] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
 
@@ -45,6 +46,7 @@ export default function Home() {
       return;
     }
 
+    setIsLoading(true);
     try {
       const response = await fetch('/api/auth/phone', {
         method: 'POST',
@@ -61,9 +63,11 @@ export default function Home() {
         router.push('/verify');
       } else {
         setError(data.error || 'Произошла ошибка');
+        setIsLoading(false);
       }
     } catch (err) {
       setError('Произошла ошибка при отправке запроса');
+      setIsLoading(false);
     }
   };
 
@@ -99,7 +103,11 @@ export default function Home() {
 
       <div className={styles.logoContainer}>
         <div className={styles.logo}>
-          <span className={styles.logoText}>ЯСНА</span>
+          <span className={styles.logoText}>
+            <span>Я</span>
+            <span className={styles.logoLetterC}>С</span>
+            <span>НА</span>
+          </span>
           <div className={styles.logoSubtitle}>Астрология • Натальные карты</div>
         </div>
       </div>
@@ -133,8 +141,16 @@ export default function Home() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" className={styles.button}>
-            Продолжить
+          <button type="submit" className={styles.button} disabled={isLoading}>
+            {isLoading ? (
+              <span className={styles.buttonLoader}>
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            ) : (
+              'Продолжить'
+            )}
           </button>
         </form>
 

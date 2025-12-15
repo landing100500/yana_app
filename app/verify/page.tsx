@@ -7,6 +7,7 @@ import styles from './page.module.css';
 export default function VerifyPage() {
   const [code, setCode] = useState(['', '', '', '']);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -46,10 +47,12 @@ export default function VerifyPage() {
       return;
     }
 
+    setIsLoading(true);
     try {
       const storedPhone = localStorage.getItem('tempPhone');
       if (!storedPhone) {
         setError('Сессия истекла. Пожалуйста, начните заново.');
+        setIsLoading(false);
         router.push('/');
         return;
       }
@@ -76,9 +79,11 @@ export default function VerifyPage() {
         window.location.href = '/chat';
       } else {
         setError(data.error || 'Неверный код');
+        setIsLoading(false);
       }
     } catch (err) {
       setError('Произошла ошибка');
+      setIsLoading(false);
     }
   };
 
@@ -108,8 +113,16 @@ export default function VerifyPage() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" className={styles.button}>
-            Подтвердить
+          <button type="submit" className={styles.button} disabled={isLoading}>
+            {isLoading ? (
+              <span className={styles.buttonLoader}>
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            ) : (
+              'Подтвердить'
+            )}
           </button>
         </form>
 

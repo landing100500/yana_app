@@ -301,7 +301,11 @@ export default function ChatPage() {
                 <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <h1 className={styles.headerTitle}>ЯСНА</h1>
+            <h1 className={styles.headerTitle}>
+              <span>Я</span>
+              <span className={styles.logoLetterC}>С</span>
+              <span>НА</span>
+            </h1>
             <div className={styles.profileMenu} ref={menuRef}>
               <button
                 className={styles.profileButton}
@@ -355,7 +359,11 @@ export default function ChatPage() {
         <div className={styles.messages}>
           {messages.length === 0 ? (
             <div className={styles.welcome}>
-              <h1 className={styles.welcomeTitle}>ЯСНА</h1>
+              <h1 className={styles.welcomeTitle}>
+                <span>Я</span>
+                <span className={styles.logoLetterC}>С</span>
+                <span>НА</span>
+              </h1>
               <p className={styles.welcomeText}>
                 Задайте вопрос о натальной карте, астрологии или эзотерике
               </p>

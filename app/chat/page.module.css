@@ -198,12 +198,24 @@
 .headerTitle {
   font-size: 1.5rem;
   font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.headerTitle > span:not(.logoLetterC) {
   background: linear-gradient(135deg, var(--purple) 0%, var(--rose) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: 0.1em;
-  margin: 0;
+}
+
+.headerTitle .logoLetterC {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .profileMenu {
@@ -323,12 +335,24 @@
 .welcomeTitle {
   font-size: 3rem;
   font-weight: 700;
+  letter-spacing: 0.2em;
+  margin-bottom: 1rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.welcomeTitle > span:not(.logoLetterC) {
   background: linear-gradient(135deg, var(--purple) 0%, var(--rose) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: 0.2em;
-  margin-bottom: 1rem;
+}
+
+.welcomeTitle .logoLetterC {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .welcomeText {

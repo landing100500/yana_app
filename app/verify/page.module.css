@@ -88,9 +88,58 @@
   transition: all 0.3s ease;
 }
 
-.button:hover {
+.button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 5px 20px rgba(155, 143, 184, 0.4);
+}
+
+.button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.buttonLoader {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.buttonLoader span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--white);
+  animation: buttonLoaderBounce 1.4s ease-in-out infinite both;
+}
+
+.buttonLoader span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.buttonLoader span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.buttonLoader span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes buttonLoaderBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .resend {
