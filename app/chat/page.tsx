@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import styles from './page.module.css';
 
 interface Message {
@@ -32,6 +33,7 @@ export default function ChatPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -196,7 +198,8 @@ export default function ChatPage() {
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        if (data.topicId && !currentTopicId) {
+        // Обновляем currentTopicId если он был создан или изменен
+        if (data.topicId) {
           setCurrentTopicId(data.topicId);
           loadTopics();
         }
@@ -230,14 +233,55 @@ export default function ChatPage() {
   const handleTopicSelect = async (topicId: number) => {
     setCurrentTopicId(topicId);
     setIsMobileMenuOpen(false); // Закрываем мобильное меню при выборе темы
+    setIsLoading(true);
     try {
       const response = await fetch(`/api/chat/topics/${topicId}/messages`);
       if (response.ok) {
         const data = await response.json();
-        setMessages(data.messages || []);
+        const loadedMessages: Message[] = (data.messages || []).map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+        }));
+        setMessages(loadedMessages);
+      } else {
+        setMessages([]);
       }
     } catch (err) {
-      console.error('Failed to load topic messages');
+      console.error('Failed to load topic messages:', err);
+      setMessages([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTopic = async (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Предотвращаем выбор топика при клике на удаление
+    
+    if (!confirm('Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/chat/topics/${topicId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Если удаляемый топик был текущим, очищаем сообщения
+        if (currentTopicId === topicId) {
+          setMessages([]);
+          setCurrentTopicId(null);
+        }
+        // Обновляем список топиков
+        loadTopics();
+      } else {
+        alert('Ошибка при удалении чата');
+      }
+    } catch (err) {
+      console.error('Failed to delete topic:', err);
+      alert('Ошибка при удалении чата');
     }
   };
 
@@ -276,15 +320,49 @@ export default function ChatPage() {
         </button>
         <div className={styles.topicsList}>
           {topics.map((topic) => (
-            <button
+            <div
               key={topic.id}
-              className={`${styles.topicItem} ${currentTopicId === topic.id ? styles.active : ''}`}
-              onClick={() => handleTopicSelect(topic.id)}
+              className={`${styles.topicItemWrapper} ${currentTopicId === topic.id ? styles.active : ''}`}
             >
-              <span className={styles.topicTitle}>{topic.title}</span>
-            </button>
+              <button
+                className={styles.topicItem}
+                onClick={() => handleTopicSelect(topic.id)}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTooltip({
+                    text: topic.title,
+                    x: rect.left + rect.width / 2,
+                    y: rect.top,
+                  });
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <span className={styles.topicTitle}>{topic.title}</span>
+              </button>
+              <button
+                className={styles.deleteTopicButton}
+                onClick={(e) => handleDeleteTopic(topic.id, e)}
+                aria-label="Удалить чат"
+                title="Удалить чат"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 6H5H21M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
           ))}
         </div>
+        {tooltip && (
+          <div
+            className={styles.tooltip}
+            style={{
+              left: `${tooltip.x}px`,
+              top: `${tooltip.y}px`,
+            }}
+          >
+            {tooltip.text}
+          </div>
+        )}
       </aside>
 
       {isMobileMenuOpen && <div className={styles.overlay} onClick={() => setIsMobileMenuOpen(false)} />}
@@ -301,11 +379,14 @@ export default function ChatPage() {
                 <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <h1 className={styles.headerTitle}>
-              <span>Я</span>
-              <span className={styles.logoLetterC}>С</span>
-              <span>НА</span>
-            </h1>
+            <Image
+              src="/logo/logo_big.png"
+              alt="ЯСНА"
+              width={120}
+              height={48}
+              className={styles.headerLogo}
+              priority
+            />
             <div className={styles.profileMenu} ref={menuRef}>
               <button
                 className={styles.profileButton}
@@ -359,11 +440,14 @@ export default function ChatPage() {
         <div className={styles.messages}>
           {messages.length === 0 ? (
             <div className={styles.welcome}>
-              <h1 className={styles.welcomeTitle}>
-                <span>Я</span>
-                <span className={styles.logoLetterC}>С</span>
-                <span>НА</span>
-              </h1>
+              <Image
+                src="/logo/logo_big.png"
+                alt="ЯСНА"
+                width={240}
+                height={96}
+                className={styles.welcomeLogo}
+                priority
+              />
               <p className={styles.welcomeText}>
                 Задайте вопрос о натальной карте, астрологии или эзотерике
               </p>

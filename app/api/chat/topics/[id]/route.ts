@@ -20,7 +20,7 @@ async function getUserId(request: NextRequest) {
   }
 }
 
-export async function GET(
+export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -49,23 +49,21 @@ export async function GET(
       );
     }
 
-    const messages = await Message.findAll({
+    // Удаляем все сообщения топика (CASCADE должен удалить автоматически, но на всякий случай)
+    await Message.destroy({
       where: { topicId },
-      order: [['createdAt', 'ASC']],
     });
 
+    // Удаляем топик
+    await topic.destroy();
+
     return NextResponse.json({
-      messages: messages.map((msg) => ({
-        id: msg.id.toString(),
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.createdAt,
-      })),
+      success: true,
     });
   } catch (error: any) {
-    console.error('Get topic messages error:', error);
+    console.error('Delete topic error:', error);
     return NextResponse.json(
-      { error: 'Произошла ошибка' },
+      { error: 'Произошла ошибка при удалении темы' },
       { status: 500 }
     );
   }

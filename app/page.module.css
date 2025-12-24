@@ -66,29 +66,11 @@
   gap: 0.5rem;
 }
 
-.logoText {
-  font-size: 4rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  display: inline-flex;
-  align-items: center;
-}
-
-.logoText > span:not(.logoLetterC) {
-  background: linear-gradient(135deg, #d4a5a5 0%, #9b8fb8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 0 0 30px rgba(155, 143, 184, 0.5);
-}
-
-.logoLetterC {
-  background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 0 0 30px rgba(34, 197, 94, 0.5);
+.logoImage {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 30px rgba(155, 143, 184, 0.5));
 }
 
 .logoSubtitle {
@@ -115,6 +97,8 @@
 .title {
   font-size: 2rem;
   font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   color: rgba(255, 255, 255, 0.95);
   margin-bottom: 0.5rem;
   text-align: center;
@@ -122,10 +106,12 @@
 
 .subtitle {
   font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: -0.011em;
+  line-height: 1.5;
   color: rgba(255, 255, 255, 0.7);
   margin-bottom: 2rem;
   text-align: center;
-  font-weight: 300;
 }
 
 .form {
@@ -205,8 +191,7 @@
   border-radius: 12px;
   font-size: 1.1rem;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: -0.011em;
   transition: all 0.3s ease;
 }
 
@@ -255,6 +240,34 @@
 
 .buttonLoader span:nth-child(3) {
   animation-delay: 0s;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .authCard {
+    padding: 1.5rem;
+  }
+
+  .title {
+    font-size: 1.5rem;
+    word-break: break-word;
+    hyphens: auto;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+  }
+
+  .logoSubtitle {
+    font-size: 0.8rem;
+  }
+
+  .logoImage {
+    height: 60px;
+  }
 }
 
 @keyframes buttonLoaderBounce {

@@ -8,7 +8,19 @@ export default function VerifyPage() {
   const [code, setCode] = useState(['', '', '', '']);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
+
+  useEffect(() => {
+    const newStars = Array.from({ length: 150 }).map((_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      delay: Math.random() * 3,
+      duration: 9 + Math.random() * 12,
+    }));
+    setStars(newStars);
+  }, []);
 
   useEffect(() => {
     const storedPhone = localStorage.getItem('tempPhone');
@@ -89,6 +101,32 @@ export default function VerifyPage() {
 
   return (
     <div className={styles.container}>
+      <div className={styles.starsContainer}>
+        {stars.map((star) => {
+          const centerX = 50;
+          const centerY = 50;
+          const dx = centerX - star.x;
+          const dy = centerY - star.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const moveX = (dx / distance) * 100;
+          const moveY = (dy / distance) * 100;
+          
+          return (
+            <div
+              key={star.id}
+              className={styles.star}
+              style={{
+                left: `${star.x}%`,
+                top: `${star.y}%`,
+                '--move-x': `${moveX}vw`,
+                '--move-y': `${moveY}vh`,
+                animationDelay: `${star.delay}s`,
+                animationDuration: `${star.duration}s`,
+              } as React.CSSProperties}
+            />
+          );
+        })}
+      </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Подтверждение</h1>
         <p className={styles.subtitle}>Введите код из SMS</p>

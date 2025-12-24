@@ -4,32 +4,85 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: linear-gradient(135deg, var(--light-beige) 0%, var(--beige) 100%);
+  background: linear-gradient(135deg, #1a1625 0%, #2d1f3d 50%, #1a1625 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.starsContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.star {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: var(--white);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8), 0 0 12px rgba(155, 143, 184, 0.6);
+  animation: starFly linear infinite;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes starFly {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+      calc(-50% + var(--move-x, 0)),
+      calc(-50% + var(--move-y, 0))
+    ) scale(1.5);
+  }
 }
 
 .card {
-  background: var(--white);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 20px;
   padding: 3rem;
   width: 100%;
   max-width: 450px;
-  box-shadow: 0 10px 40px rgba(155, 143, 184, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  position: relative;
+  z-index: 1;
 }
 
 .title {
   font-size: 2rem;
   font-weight: 600;
-  color: var(--dark-purple);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.95);
   margin-bottom: 0.5rem;
   text-align: center;
 }
 
 .subtitle {
   font-size: 1rem;
-  color: var(--gray);
+  font-weight: 400;
+  letter-spacing: -0.011em;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.7);
   margin-bottom: 2rem;
   text-align: center;
-  font-weight: 300;
 }
 
 .form {
@@ -45,27 +98,36 @@
 .input {
   width: 100%;
   padding: 1rem 1.5rem;
-  border: 2px solid var(--beige);
+  border: 2px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   font-size: 1rem;
-  color: var(--dark-gray);
-  background: var(--light-beige);
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--purple);
-  background: var(--white);
+  border-color: rgba(155, 143, 184, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 20px rgba(155, 143, 184, 0.3);
 }
 
 .error {
-  background: rgba(212, 165, 165, 0.1);
-  color: var(--rose);
+  background: rgba(212, 165, 165, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffcccc;
   padding: 0.75rem 1rem;
   border-radius: 8px;
   font-size: 0.9rem;
-  border-left: 3px solid var(--rose);
+  border-left: 3px solid rgba(212, 165, 165, 0.6);
 }
 
 .button {
@@ -77,8 +139,7 @@
   border-radius: 12px;
   font-size: 1.1rem;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: -0.011em;
   transition: all 0.3s ease;
 }
 
@@ -91,7 +152,7 @@
   margin-top: 2rem;
   text-align: center;
   font-size: 0.9rem;
-  color: var(--gray);
+  color: rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -99,15 +160,37 @@
 }
 
 .link {
-  color: var(--purple);
+  color: rgba(155, 143, 184, 0.9);
   font-weight: 400;
+  transition: all 0.3s ease;
 }
 
 .link:hover {
-  color: var(--dark-purple);
+  color: rgba(155, 143, 184, 1);
+  text-shadow: 0 0 10px rgba(155, 143, 184, 0.5);
 }
 
 .separator {
-  color: var(--gray);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+
+  .title {
+    font-size: 1.5rem;
+    word-break: break-word;
+    hyphens: auto;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+  }
 }
 

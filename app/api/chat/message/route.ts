@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import ChatTopic from '@/models/ChatTopic';
 import User from '@/models/User';
+import Message from '@/models/Message';
 import { initDatabase } from '@/lib/initDb';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
@@ -59,6 +60,13 @@ export async function POST(request: NextRequest) {
         title,
       });
     }
+
+    // Сохраняем сообщение пользователя в БД
+    await Message.create({
+      topicId: topic.id,
+      role: 'user',
+      content: message,
+    });
 
     // Получаем телефон пользователя
     const user = await User.findByPk(userId);
@@ -182,6 +190,16 @@ export async function POST(request: NextRequest) {
         response = `Ошибка при отправке запроса: ${webhookError.message}`;
       }
     }
+
+    // Сохраняем ответ ассистента в БД
+    await Message.create({
+      topicId: topic.id,
+      role: 'assistant',
+      content: response,
+    });
+
+    // Обновляем время обновления топика
+    await topic.update({ updatedAt: new Date() });
 
     return NextResponse.json({
       response,

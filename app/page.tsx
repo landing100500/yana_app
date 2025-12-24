@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -103,11 +104,14 @@ export default function Home() {
 
       <div className={styles.logoContainer}>
         <div className={styles.logo}>
-          <span className={styles.logoText}>
-            <span>Я</span>
-            <span className={styles.logoLetterC}>С</span>
-            <span>НА</span>
-          </span>
+          <Image
+            src="/logo/logo_big.png"
+            alt="ЯСНА"
+            width={200}
+            height={80}
+            className={styles.logoImage}
+            priority
+          />
           <div className={styles.logoSubtitle}>Астрология • Натальные карты</div>
         </div>
       </div>

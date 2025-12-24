@@ -2,6 +2,7 @@ import sequelize from './db';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import ChatTopic from '@/models/ChatTopic';
+import Message from '@/models/Message';
 
 export async function initDatabase() {
   try {
