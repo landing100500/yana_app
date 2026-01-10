@@ -10,7 +10,7 @@ import { initDatabase } from '@/lib/initDb';
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
-const N8N_WEBHOOK_URL = 'https://n8n.konstantinluksha.ru/webhook/26e44a79-465d-4644-a367-3db29217edf6';
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://n8n.konstantinluksha.ru/webhook/26e44a79-465d-4644-a367-3db29217edf6';
 
 async function getUserId(request: NextRequest) {
   const cookieStore = await cookies();
