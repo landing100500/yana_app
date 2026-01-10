@@ -119,9 +119,14 @@ export default function AnketaPage() {
     const question = getCurrentQuestion();
     const value = anketaData[question.field];
 
-    if (!value || (typeof value === 'string' && value.trim() === '')) {
+    // Проверяем валидность значения с учетом boolean false
+    if (value === null || value === undefined) {
       return;
     }
+    if (typeof value === 'string' && value.trim() === '') {
+      return;
+    }
+    // boolean false - это валидное значение, не блокируем
 
     // Если это вопрос о времени рождения и выбрано "Не знаю"
     if (question.id === 'birthTime' && value === 'unknown') {
@@ -238,22 +243,29 @@ export default function AnketaPage() {
       case 'select':
         return (
           <div className={styles.optionsContainer}>
-            {question.options?.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={`${styles.optionButton} ${value === option ? styles.optionButtonActive : ''}`}
-                onClick={() => {
-                  if (question.field === 'hasMoved') {
-                    handleInputChange(option === 'Да');
-                  } else {
-                    handleInputChange(option);
-                  }
-                }}
-              >
-                {option}
-              </button>
-            ))}
+            {question.options?.map((option) => {
+              // Для hasMoved проверяем boolean значение, для остальных - строку
+              const isActive = question.field === 'hasMoved'
+                ? (option === 'Да' && value === true) || (option === 'Нет' && value === false)
+                : value === option;
+              
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`${styles.optionButton} ${isActive ? styles.optionButtonActive : ''}`}
+                  onClick={() => {
+                    if (question.field === 'hasMoved') {
+                      handleInputChange(option === 'Да');
+                    } else {
+                      handleInputChange(option);
+                    }
+                  }}
+                >
+                  {option}
+                </button>
+              );
+            })}
           </div>
         );
 
