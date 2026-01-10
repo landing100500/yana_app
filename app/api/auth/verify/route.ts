@@ -7,6 +7,8 @@ import UserAnketa from '@/models/UserAnketa';
 import { initDatabase } from '@/lib/initDb';
 import jwt from 'jsonwebtoken';
 
+export const dynamic = 'force-dynamic';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
 export async function POST(request: NextRequest) {

@@ -5,6 +5,8 @@ import ChatTopic from '@/models/ChatTopic';
 import Message from '@/models/Message';
 import { initDatabase } from '@/lib/initDb';
 
+export const dynamic = 'force-dynamic';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
 async function getUserId(request: NextRequest) {

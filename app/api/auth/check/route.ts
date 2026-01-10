@@ -5,6 +5,8 @@ import { Op } from 'sequelize';
 import Session from '@/models/Session';
 import { initDatabase } from '@/lib/initDb';
 
+export const dynamic = 'force-dynamic';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
 export async function GET(request: NextRequest) {
