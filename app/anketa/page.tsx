@@ -335,8 +335,12 @@ export default function AnketaPage() {
   const isLastStep = (anketaData.birthTime === 'unknown' && currentStep === steps.length + 1 + parentSteps.length - 1) ||
                      (anketaData.birthTime && anketaData.birthTime !== 'unknown' && question.id === 'name');
   
-  const canProceed = value !== null && value !== '' && (typeof value !== 'string' || value.trim() !== '') &&
-                     (typeof value !== 'boolean' || value !== null);
+  const canProceed = (() => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'boolean') return true; // boolean false тоже валидное значение
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+  })();
 
   return (
     <div className={styles.container}>
