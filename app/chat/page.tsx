@@ -64,7 +64,8 @@ export default function ChatPage() {
             });
             const retryData = await retryResponse.json();
             if (retryData.authenticated) {
-              setIsAuthChecked(true);
+              // Проверяем анкету после успешной авторизации
+              await checkAnketa();
               return;
             }
           } catch (e) {
@@ -75,10 +76,32 @@ export default function ChatPage() {
         return;
       }
       
-      setIsAuthChecked(true);
+      // Проверяем анкету после успешной авторизации
+      await checkAnketa();
     } catch (err) {
       console.error('Auth check error:', err);
       router.push('/');
+    }
+  }, [router]);
+
+  const checkAnketa = useCallback(async () => {
+    try {
+      const response = await fetch('/api/anketa/check', {
+        credentials: 'include',
+      });
+      const data = await response.json();
+      
+      if (!response.ok || !data.filled) {
+        // Анкета не заполнена - редирект на страницу опроса
+        router.push('/anketa');
+        return;
+      }
+      
+      setIsAuthChecked(true);
+    } catch (err) {
+      console.error('Anketa check error:', err);
+      // В случае ошибки тоже редиректим на анкету
+      router.push('/anketa');
     }
   }, [router]);
 

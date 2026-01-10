@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sequelize from '@/lib/db';
 import User from '@/models/User';
+import UserAnketa from '@/models/UserAnketa';
 import { initDatabase } from '@/lib/initDb';
 
 export async function POST(request: NextRequest) {
@@ -20,6 +21,20 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       user = await User.create({ phone });
+      
+      // Создаем пустую анкету для нового пользователя
+      await UserAnketa.create({
+        userId: user.id,
+        gender: null,
+        birthDate: null,
+        birthCity: null,
+        birthTime: null,
+        name: null,
+        motherJob: null,
+        fatherJob: null,
+        hasMoved: null,
+        lifeDifficulties: null,
+      });
     }
 
     return NextResponse.json({

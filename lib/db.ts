@@ -10,12 +10,17 @@ function getSequelize(): Sequelize {
     // @ts-ignore - require needed for mysql2 to work with webpack
     const mysql2 = require('mysql2');
     
+    const dbName = process.env.DB_NAME || 'optsetkh_main';
+    const dbUser = process.env.DB_USER || 'optsetkh_main';
+    const dbPassword = process.env.DB_PASSWORD || '100100Main';
+    const dbHost = process.env.DB_HOST || 'optsetkh.beget.tech';
+    
     sequelizeInstance = new Sequelize(
-      'optsetkh_main',
-      'optsetkh_main',
-      '100100Main',
+      dbName,
+      dbUser,
+      dbPassword,
       {
-        host: 'optsetkh.beget.tech',
+        host: dbHost,
         dialect: 'mysql',
         dialectModule: mysql2,
         logging: false,

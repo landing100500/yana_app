@@ -3,6 +3,7 @@ import User from '@/models/User';
 import Session from '@/models/Session';
 import ChatTopic from '@/models/ChatTopic';
 import Message from '@/models/Message';
+import UserAnketa from '@/models/UserAnketa';
 
 export async function initDatabase() {
   try {
