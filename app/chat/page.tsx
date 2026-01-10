@@ -65,7 +65,17 @@ export default function ChatPage() {
             const retryData = await retryResponse.json();
             if (retryData.authenticated) {
               // Проверяем анкету после успешной авторизации
-              await checkAnketa();
+              const anketaResponse = await fetch('/api/anketa/check', {
+                credentials: 'include',
+              });
+              const anketaData = await anketaResponse.json();
+              
+              if (!anketaResponse.ok || !anketaData.filled) {
+                router.push('/anketa');
+                return;
+              }
+              
+              setIsAuthChecked(true);
               return;
             }
           } catch (e) {
@@ -77,21 +87,12 @@ export default function ChatPage() {
       }
       
       // Проверяем анкету после успешной авторизации
-      await checkAnketa();
-    } catch (err) {
-      console.error('Auth check error:', err);
-      router.push('/');
-    }
-  }, [router]);
-
-  const checkAnketa = useCallback(async () => {
-    try {
-      const response = await fetch('/api/anketa/check', {
+      const anketaResponse = await fetch('/api/anketa/check', {
         credentials: 'include',
       });
-      const data = await response.json();
+      const anketaData = await anketaResponse.json();
       
-      if (!response.ok || !data.filled) {
+      if (!anketaResponse.ok || !anketaData.filled) {
         // Анкета не заполнена - редирект на страницу опроса
         router.push('/anketa');
         return;
@@ -99,9 +100,8 @@ export default function ChatPage() {
       
       setIsAuthChecked(true);
     } catch (err) {
-      console.error('Anketa check error:', err);
-      // В случае ошибки тоже редиректим на анкету
-      router.push('/anketa');
+      console.error('Auth check error:', err);
+      router.push('/');
     }
   }, [router]);
 

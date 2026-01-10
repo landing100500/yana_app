@@ -170,11 +170,10 @@ export default function AnketaPage() {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
-      // Преобразуем hasMoved из строки в boolean
+      // Преобразуем hasMoved - он уже boolean или null
       const submitData = {
         ...anketaData,
-        hasMoved: anketaData.hasMoved === true || anketaData.hasMoved === 'Да' ? true : 
-                  anketaData.hasMoved === false || anketaData.hasMoved === 'Нет' ? false : null,
+        hasMoved: anketaData.hasMoved,
       };
 
       const response = await fetch('/api/anketa/save', {

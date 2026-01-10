@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import UserAnketa from '@/models/UserAnketa';
 import { initDatabase } from '@/lib/initDb';
 
+export const dynamic = 'force-dynamic';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
 async function getUserId(request: NextRequest) {
