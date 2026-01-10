@@ -78,6 +78,8 @@
 .logo {
   height: auto;
   width: auto;
+  max-width: 240px;
+  max-height: 96px;
 }
 
 .questionContainer {
@@ -268,6 +270,21 @@
 
   .authCard {
     padding: 2rem 1.5rem;
+  }
+
+  .logoContainer {
+    margin-bottom: 1.5rem;
+  }
+
+  .logo {
+    max-width: 200px !important;
+    max-height: 60px !important;
+  }
+
+  .logo img {
+    width: 200px !important;
+    height: 60px !important;
+    object-fit: contain;
   }
 
   .question {

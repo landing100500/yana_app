@@ -125,7 +125,7 @@ export default function AnketaPage() {
 
     // Если это вопрос о времени рождения и выбрано "Не знаю"
     if (question.id === 'birthTime' && value === 'unknown') {
-      // Переходим к вопросам о родителях
+      // Переходим к вопросу об имени (имя спрашиваем всегда)
       setCurrentStep(currentStep + 1);
       return;
     }
@@ -137,14 +137,20 @@ export default function AnketaPage() {
       return;
     }
 
-    // Если это вопрос об имени (после указания времени)
-    if (question.id === 'name') {
+    // Если это вопрос об имени и время известно - завершаем
+    if (question.id === 'name' && anketaData.birthTime && anketaData.birthTime !== 'unknown') {
       handleSubmit();
       return;
     }
 
+    // Если это вопрос об имени и время неизвестно - переходим к вопросам о родителях
+    if (question.id === 'name' && anketaData.birthTime === 'unknown') {
+      setCurrentStep(currentStep + 1);
+      return;
+    }
+
     // Если это последний вопрос из родительских (когда время неизвестно)
-    if (anketaData.birthTime === 'unknown' && currentStep === steps.length + parentSteps.length - 1) {
+    if (anketaData.birthTime === 'unknown' && currentStep === steps.length + 1 + parentSteps.length - 1) {
       handleSubmit();
       return;
     }
@@ -202,22 +208,22 @@ export default function AnketaPage() {
       return steps[currentStep];
     }
     
-    // Если время рождения неизвестно - показываем вопросы о родителях
-    if (anketaData.birthTime === 'unknown') {
-      const parentStepIndex = currentStep - steps.length;
-      if (parentStepIndex < parentSteps.length) {
-        return parentSteps[parentStepIndex];
-      }
-    }
-    
-    // Если время рождения указано - показываем вопрос об имени
-    if (anketaData.birthTime && anketaData.birthTime !== 'unknown') {
+    // После основных вопросов всегда показываем вопрос об имени
+    if (currentStep === steps.length) {
       return {
         id: 'name',
         question: 'Как к вам обращаться?',
         type: 'text',
         field: 'name' as keyof AnketaData,
       };
+    }
+    
+    // Если время рождения неизвестно - показываем вопросы о родителях (после вопроса об имени)
+    if (anketaData.birthTime === 'unknown') {
+      const parentStepIndex = currentStep - steps.length - 1; // -1 для вопроса об имени
+      if (parentStepIndex >= 0 && parentStepIndex < parentSteps.length) {
+        return parentSteps[parentStepIndex];
+      }
     }
     
     // Fallback - возвращаем последний основной вопрос
@@ -321,11 +327,12 @@ export default function AnketaPage() {
   const value = anketaData[question.field];
   
   // Вычисляем общее количество шагов
+  // Имя спрашиваем всегда, поэтому +1 всегда
   const totalSteps = anketaData.birthTime === 'unknown' 
-    ? steps.length + parentSteps.length 
+    ? steps.length + 1 + parentSteps.length  // +1 для вопроса об имени
     : steps.length + 1; // +1 для вопроса об имени
   
-  const isLastStep = (anketaData.birthTime === 'unknown' && currentStep === steps.length + parentSteps.length - 1) ||
+  const isLastStep = (anketaData.birthTime === 'unknown' && currentStep === steps.length + 1 + parentSteps.length - 1) ||
                      (anketaData.birthTime && anketaData.birthTime !== 'unknown' && question.id === 'name');
   
   const canProceed = value !== null && value !== '' && (typeof value !== 'string' || value.trim() !== '') &&
