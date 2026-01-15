@@ -146,14 +146,16 @@ export async function POST(request: NextRequest) {
         sendProgress(controller, 'Транскрибация через Whisper API...', 30);
 
         // Создаем File для OpenAI API
+        // Преобразуем Buffer в Uint8Array для совместимости с File/Blob конструкторами
+        const bufferArray = new Uint8Array(finalBuffer);
         let whisperFile: File | Blob;
         
         try {
-          whisperFile = new File([finalBuffer], finalFileName, { type: finalMimeType });
+          whisperFile = new File([bufferArray], finalFileName, { type: finalMimeType });
           console.log('Using File for transcription');
         } catch (e) {
           // Если File не доступен, используем Blob
-          whisperFile = new Blob([finalBuffer], { type: finalMimeType });
+          whisperFile = new Blob([bufferArray], { type: finalMimeType });
           console.log('Fallback to Blob');
         }
 
