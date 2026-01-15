@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
         // Проверяем, является ли файл видео
         const isVideo = isVideoFile(mimeType, file.name);
-        let finalBuffer = buffer;
+        let finalBuffer: Buffer = buffer;
         let finalMimeType = mimeType;
         let finalFileName = file.name;
         let finalSizeMB = fileSizeMB;
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
           try {
             sendProgress(controller, 'Обработка видео файла...', 22);
             const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, file.name);
-            finalBuffer = audioBuffer;
+            finalBuffer = Buffer.from(audioBuffer);
             finalMimeType = 'audio/mpeg';
             finalFileName = file.name.replace(/\.[^/.]+$/, '.mp3');
             finalSizeMB = audioSizeMB;
