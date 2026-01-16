@@ -174,9 +174,17 @@
   font-weight: 500;
 }
 
+.sectionDescription {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+
 .sectionStats {
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.6);
+  margin-top: 0.25rem;
 }
 
 .deleteButton {

@@ -7,6 +7,7 @@ import styles from './page.module.css';
 interface Section {
   id: string;
   name: string;
+  description?: string | null;
   created_at: string;
   total_chunks?: number;
 }
@@ -19,6 +20,7 @@ export default function AdminPage() {
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>('');
   const [newSectionName, setNewSectionName] = useState('');
+  const [newSectionDescription, setNewSectionDescription] = useState('');
   const [showNewSection, setShowNewSection] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -97,7 +99,10 @@ export default function AdminPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: newSectionName.trim() }),
+        body: JSON.stringify({ 
+          name: newSectionName.trim(),
+          description: newSectionDescription.trim() || null
+        }),
       });
 
       const data = await response.json();
@@ -105,6 +110,7 @@ export default function AdminPage() {
       if (response.ok) {
         setSections([...sections, data.section]);
         setNewSectionName('');
+        setNewSectionDescription('');
         setShowNewSection(false);
         setSelectedSection(data.section.id);
         setError('');
@@ -318,6 +324,13 @@ export default function AdminPage() {
                 className={styles.input}
                 autoFocus
               />
+              <textarea
+                placeholder="Описание раздела (необязательно)"
+                value={newSectionDescription}
+                onChange={(e) => setNewSectionDescription(e.target.value)}
+                className={styles.input}
+                rows={3}
+              />
               <div className={styles.buttonGroup}>
                 <button type="submit" className={styles.button}>
                   Создать
@@ -327,6 +340,7 @@ export default function AdminPage() {
                   onClick={() => {
                     setShowNewSection(false);
                     setNewSectionName('');
+                    setNewSectionDescription('');
                   }}
                   className={styles.buttonSecondary}
                 >
@@ -349,6 +363,11 @@ export default function AdminPage() {
                 >
                   <div className={styles.sectionInfo}>
                     <div className={styles.sectionName}>{section.name}</div>
+                    {section.description && (
+                      <div className={styles.sectionDescription}>
+                        {section.description}
+                      </div>
+                    )}
                     {section.total_chunks !== undefined && (
                       <div className={styles.sectionStats}>
                         {section.total_chunks} чанков

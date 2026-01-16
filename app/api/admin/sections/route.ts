@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name } = await request.json();
+    const { name, description } = await request.json();
 
     if (!name || name.trim().length === 0) {
       return NextResponse.json(
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       .from('ai_sections')
       .insert({
         name: name.trim(),
+        description: description?.trim() || null,
         created_at: new Date().toISOString(),
       })
       .select()

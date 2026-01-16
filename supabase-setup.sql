@@ -8,6 +8,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS ai_sections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
+  description TEXT,
   total_chunks INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -142,5 +143,16 @@ EXCEPTION
     );
 END;
 $$;
+
+-- 9. Добавляем поле description к существующим таблицам (если его еще нет)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'ai_sections' AND column_name = 'description'
+  ) THEN
+    ALTER TABLE ai_sections ADD COLUMN description TEXT;
+  END IF;
+END $$;
 
 -- Готово! Теперь база данных настроена для работы с векторными данными
