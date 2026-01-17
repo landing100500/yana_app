@@ -55,3 +55,45 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    await initDatabase();
+
+    const userId = await getUserId(request);
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Не авторизован' },
+        { status: 401 }
+      );
+    }
+
+    const { title } = await request.json();
+
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Название темы обязательно' },
+        { status: 400 }
+      );
+    }
+
+    const topic = await ChatTopic.create({
+      userId,
+      title: title.trim(),
+    });
+
+    return NextResponse.json({
+      topic: {
+        id: topic.id,
+        title: topic.title,
+        createdAt: topic.createdAt,
+      },
+    });
+  } catch (error: any) {
+    console.error('Create topic error:', error);
+    return NextResponse.json(
+      { error: 'Произошла ошибка при создании темы' },
+      { status: 500 }
+    );
+  }
+}

@@ -663,12 +663,59 @@
   letter-spacing: -0.011em;
   line-height: 1.5;
   word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.messageContent p {
+  margin: 0;
+}
+
+.messageContent > div {
+  margin-bottom: 1.5rem;
+}
+
+.messageContent > div:last-child {
+  margin-bottom: 0;
+}
+
+.messageContent .questionParagraph {
+  font-weight: 400;
+  margin: 0 0 0.5rem 0;
+  color: var(--dark-gray);
+}
+
+.messageContent .questionParagraph strong {
+  font-weight: 600;
+  color: var(--dark-purple);
+}
+
+.messageContent .answerParagraph {
+  margin: 0;
+  padding-left: 0;
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--dark-gray);
+}
+
+.messageContent strong {
+  font-weight: 600;
+  color: var(--dark-purple);
+}
+
+.message.assistant .messageContent strong {
+  color: var(--dark-purple);
 }
 
 .message.user .messageContent {
   background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
   color: var(--white);
   border-bottom-right-radius: 4px;
+}
+
+.message.user .messageContent,
+.message.user .messageContent p,
+.message.user .messageContent div {
+  color: var(--white);
 }
 
 .message.assistant .messageContent {

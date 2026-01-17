@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import axios from 'axios';
 import ChatTopic from '@/models/ChatTopic';
 import User from '@/models/User';
 import Message from '@/models/Message';
 import { initDatabase } from '@/lib/initDb';
+import { openai } from '@/lib/openai';
+import { searchRelevantChunks } from '@/lib/rag-search';
 
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://n8n.konstantinluksha.ru/webhook/26e44a79-465d-4644-a367-3db29217edf6';
+const SYSTEM_PROMPT = 'Ты умный агент по астропсихологии';
 
 async function getUserId(request: NextRequest) {
   const cookieStore = await cookies();
@@ -70,126 +71,66 @@ export async function POST(request: NextRequest) {
       content: message,
     });
 
-    // Получаем телефон пользователя
-    const user = await User.findByPk(userId);
-    const userPhone = user?.phone || '';
+    // Получаем историю сообщений для контекста (последние 10 сообщений)
+    const recentMessages = await Message.findAll({
+      where: { topicId: topic.id },
+      order: [['createdAt', 'ASC']],
+      limit: 10,
+    });
 
-    let response = 'Извините, сервис временно недоступен.';
+    // Формируем историю для OpenAI
+    const messageHistory = recentMessages.map((msg) => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+    }));
 
+    // Ищем релевантные чанки в базе знаний через RAG
+    console.log('Searching relevant chunks for query:', message);
+    const relevantChunks = await searchRelevantChunks(message, 5);
+    console.log(`Found ${relevantChunks.length} relevant chunks`);
+
+    // Формируем контекст из найденных чанков
+    let contextText = '';
+    if (relevantChunks.length > 0) {
+      contextText = '\n\nРелевантная информация из базы знаний:\n';
+      relevantChunks.forEach((chunk, index) => {
+        contextText += `\n[Источник ${index + 1}${chunk.sectionName ? ` - ${chunk.sectionName}` : ''}]\n${chunk.text}\n`;
+      });
+    }
+
+    // Формируем системный промпт с контекстом
+    const systemMessage = {
+      role: 'system' as const,
+      content: SYSTEM_PROMPT + (contextText ? contextText : ''),
+    };
+
+    // Создаем массив сообщений для OpenAI
+    const messages = [
+      systemMessage,
+      ...messageHistory.slice(-8), // Берем последние 8 сообщений из истории (чтобы не превысить лимит токенов)
+      { role: 'user' as const, content: message },
+    ];
+
+    console.log('Sending to OpenAI with', messages.length, 'messages');
+
+    // Отправляем запрос в OpenAI
+    let response = '';
     try {
-      const payload = {
-        message,
-        userId,
-        topicId: topic.id,
-        phone: userPhone,
-      };
-
-      console.log('Sending to webhook:', N8N_WEBHOOK_URL);
-      console.log('Payload:', JSON.stringify(payload, null, 2));
-
-      // Пробуем POST запрос
-      let webhookResponse;
-      try {
-        webhookResponse = await axios.post(
-          N8N_WEBHOOK_URL,
-          payload,
-          {
-            timeout: 60000,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            validateStatus: (status) => status < 500, // Принимаем все статусы кроме 5xx
-          }
-        );
-      } catch (postError: any) {
-        // Если POST вернул 404, пробуем GET с query параметрами
-        if (postError.response?.status === 404) {
-          console.log('POST failed with 404, trying GET with query params');
-          const queryParams = new URLSearchParams({
-            message: payload.message,
-            userId: payload.userId.toString(),
-            topicId: payload.topicId.toString(),
-            phone: payload.phone,
-          });
-          
-          webhookResponse = await axios.get(
-            `${N8N_WEBHOOK_URL}?${queryParams.toString()}`,
-            {
-              timeout: 60000,
-              headers: {
-                'Accept': 'application/json',
-              },
-              validateStatus: (status) => status < 500,
-            }
-          );
-        } else {
-          throw postError;
-        }
-      }
-
-      console.log('Webhook response status:', webhookResponse.status);
-      console.log('Webhook response data:', JSON.stringify(webhookResponse.data, null, 2));
-
-      // Обрабатываем различные форматы ответа от n8n
-      if (webhookResponse.data) {
-        // Если ответ - строка
-        if (typeof webhookResponse.data === 'string') {
-          response = webhookResponse.data;
-        }
-        // Если ответ - объект
-        else if (typeof webhookResponse.data === 'object') {
-          // Проверяем различные возможные поля ответа
-          response = 
-            webhookResponse.data.response || 
-            webhookResponse.data.message || 
-            webhookResponse.data.text ||
-            webhookResponse.data.output ||
-            webhookResponse.data.data?.response ||
-            webhookResponse.data.data?.message ||
-            (Array.isArray(webhookResponse.data) && webhookResponse.data[0]?.response) ||
-            (Array.isArray(webhookResponse.data) && webhookResponse.data[0]?.message) ||
-            JSON.stringify(webhookResponse.data);
-        }
-      }
-
-      // Если статус не 200, но есть данные, все равно используем их
-      if (webhookResponse.status !== 200 && !response) {
-        response = `Получен статус ${webhookResponse.status}, но ответ пустой`;
-      }
-    } catch (webhookError: any) {
-      console.error('N8N webhook error:', webhookError.message);
-      console.error('Error details:', {
-        code: webhookError.code,
-        response: webhookError.response?.data,
-        status: webhookError.response?.status,
-        statusText: webhookError.response?.statusText,
-        url: webhookError.config?.url,
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini', // Используем более дешевую модель
+        messages: messages as any,
+        temperature: 0.7,
+        max_tokens: 1000,
       });
 
-      if (webhookError.response) {
-        const status = webhookError.response.status;
-        const statusText = webhookError.response.statusText;
-        const errorData = webhookError.response.data;
-        
-        console.error('Webhook response error:', {
-          status,
-          statusText,
-          data: errorData,
-        });
-
-        // Если получили 404, возможно webhook не настроен или URL неверный
-        if (status === 404) {
-          response = 'Webhook не найден. Проверьте настройки n8n.';
-        } else {
-          response = `Ошибка: ${status} - ${statusText}`;
-        }
-      } else if (webhookError.request) {
-        console.error('No response received:', webhookError.request);
-        response = 'Сервис не отвечает. Проверьте доступность webhook.';
-      } else {
-        console.error('Request setup error:', webhookError.message);
-        response = `Ошибка при отправке запроса: ${webhookError.message}`;
+      response = completion.choices[0]?.message?.content || 'Извините, не удалось получить ответ.';
+      console.log('OpenAI response received');
+    } catch (openaiError: any) {
+      console.error('OpenAI API error:', openaiError);
+      response = 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
+      
+      if (openaiError.message) {
+        console.error('Error details:', openaiError.message);
       }
     }
 

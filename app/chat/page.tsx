@@ -279,6 +279,134 @@ export default function ChatPage() {
     }
   };
 
+  const handleSelfKnowledge = async () => {
+    setIsLoading(true);
+
+    try {
+      // Сначала создаем топик
+      let newTopicId: number | null = null;
+      try {
+        const topicResponse = await fetch('/api/chat/topics', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'Базовое самопознание',
+          }),
+        });
+
+        if (topicResponse.ok) {
+          const topicData = await topicResponse.json();
+          newTopicId = topicData.topic?.id || null;
+
+          if (newTopicId) {
+            setCurrentTopicId(newTopicId);
+            // Обновляем список тем после создания
+            loadTopics();
+          }
+        } else {
+          const errorData = await topicResponse.json().catch(() => ({}));
+          console.error('Failed to create topic:', errorData);
+        }
+      } catch (topicErr) {
+        console.error('Error creating topic:', topicErr);
+      }
+
+      // Добавляем сообщение пользователя
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: 'Базовое самопознание',
+        timestamp: new Date(),
+      };
+      setMessages([userMessage]);
+
+      // Создаем сообщение ассистента для стриминга
+      const assistantMessageId = (Date.now() + 1).toString();
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Запрашиваем стриминг ответ
+      const response = await fetch('/api/self-knowledge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Ошибка при получении ответа' }));
+        throw new Error(errorData.error || 'Ошибка при получении ответа');
+      }
+
+      // Обрабатываем стрим
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          fullResponse += chunk;
+
+          // Обновляем сообщение ассистента
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: fullResponse }
+                : msg
+            )
+          );
+        }
+      }
+
+      // Сохраняем сообщения в БД
+      if (newTopicId && fullResponse) {
+        try {
+          await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              topicId: newTopicId,
+              userMessage: 'Базовое самопознание',
+              assistantMessage: fullResponse,
+            }),
+          });
+        } catch (msgErr) {
+          console.error('Error saving message:', msgErr);
+        }
+      }
+    } catch (err: any) {
+      console.error('Self-knowledge error:', err);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: err.message || 'Произошла ошибка при обработке запроса. Попробуйте позже.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+          return [...prev.slice(0, -1), errorMessage];
+        }
+        return [...prev, errorMessage];
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDeleteTopic = async (topicId: number, e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем выбор топика при клике на удаление
     
@@ -525,9 +653,7 @@ export default function ChatPage() {
                 </div>
                 <div 
                   className={styles.natalCardBadge}
-                  onClick={() => {
-                    // TODO: добавить функционал для базового самопознания
-                  }}
+                  onClick={handleSelfKnowledge}
                 >
                   <svg
                     width="20"
@@ -567,7 +693,33 @@ export default function ChatPage() {
                 key={message.id}
                 className={`${styles.message} ${styles[message.role]}`}
               >
-                <div className={styles.messageContent}>{message.content}</div>
+                <div className={styles.messageContent}>
+                  {message.content.split(/\n\n+/).map((paragraph, idx) => {
+                    const trimmed = paragraph.trim();
+                    if (!trimmed) return null;
+                    
+                    // Проверяем, является ли параграф вопросом (начинается с **число.)
+                    const isQuestion = /^\*\*\d+\./.test(trimmed);
+                    if (isQuestion) {
+                      // Форматируем вопрос - только текст внутри ** становится жирным
+                      const formatted = trimmed
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\n/g, '<br>');
+                      return (
+                        <div key={idx}>
+                          <p className={styles.questionParagraph} dangerouslySetInnerHTML={{ __html: formatted }} />
+                        </div>
+                      );
+                    } else {
+                      // Обычный параграф (ответ) - обычный текст, без жирного
+                      return (
+                        <div key={idx}>
+                          <p className={styles.answerParagraph} dangerouslySetInnerHTML={{ __html: trimmed.replace(/\n/g, '<br>') }} />
+                        </div>
+                      );
+                    }
+                  })}
+                </div>
               </div>
             ))
           )}
