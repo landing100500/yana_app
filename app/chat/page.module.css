@@ -432,19 +432,43 @@
 .profileInfo {
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--beige);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .profilePhone {
   font-size: 1rem;
   font-weight: 500;
   color: var(--dark-purple);
-  margin-bottom: 0.25rem;
+  margin: 0;
+  padding: 0;
 }
 
 .profileName {
   font-size: 0.9rem;
   color: var(--gray);
   font-weight: 300;
+}
+
+.menuItem {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--beige);
+  color: var(--dark-purple);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.menuItem:hover {
+  background: var(--light-beige);
 }
 
 .logoutButton {
@@ -499,6 +523,41 @@
   object-fit: contain;
   margin-bottom: 1rem;
   filter: drop-shadow(0 0 20px rgba(155, 143, 184, 0.3));
+}
+
+.natalCardBadge {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(155, 143, 184, 0.15);
+  color: var(--dark-purple);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(155, 143, 184, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.natalCardBadge:hover {
+  background: rgba(155, 143, 184, 0.25);
+  border-color: rgba(155, 143, 184, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(155, 143, 184, 0.2);
+}
+
+.badgeIcon {
+  color: var(--purple);
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+.natalCardBadge:hover .badgeIcon {
+  transform: scale(1.1);
 }
 
 .welcomeText {

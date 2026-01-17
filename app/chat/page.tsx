@@ -450,6 +450,15 @@ export default function ChatPage() {
                     )}
                   </div>
                   <button
+                    className={styles.menuItem}
+                    onClick={() => {
+                      router.push('/natal-chart');
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    Мои карты
+                  </button>
+                  <button
                     className={styles.logoutButton}
                     onClick={handleLogout}
                   >
@@ -474,6 +483,42 @@ export default function ChatPage() {
               <p className={styles.welcomeText}>
                 Задайте вопрос о натальной карте, астрологии или эзотерике
               </p>
+              <div 
+                className={styles.natalCardBadge}
+                onClick={() => router.push('/natal-chart')}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={styles.badgeIcon}
+                >
+                  <path
+                    d="M12 2L2 7L12 12L22 7L12 2Z"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M2 17L12 22L22 17"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M2 12L12 17L22 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Натальные карты</span>
+              </div>
             </div>
           ) : (
             messages.map((message) => (

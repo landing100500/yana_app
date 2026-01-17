@@ -7,7 +7,11 @@
     "build": "NODE_OPTIONS='--max-old-space-size=6144' next build",
     "start": "next start",
     "lint": "next lint",
-    "create-anketa": "tsx scripts/create-anketa-for-existing-users.ts"
+    "create-anketa": "tsx scripts/create-anketa-for-existing-users.ts",
+    "migrate-natal-chart": "tsx scripts/run-natal-chart-migration.ts",
+    "update-natal-charts": "tsx scripts/update-natal-charts-migration.ts",
+    "fix-natal-charts": "tsx scripts/fix-natal-charts-columns.ts",
+    "remove-userid-unique": "tsx scripts/remove-userid-unique.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -23,7 +27,8 @@
     "openai": "^6.16.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "sequelize": "^6.35.2"
+    "sequelize": "^6.35.2",
+    "swisseph": "^0.5.17"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
