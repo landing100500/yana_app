@@ -483,41 +483,82 @@ export default function ChatPage() {
               <p className={styles.welcomeText}>
                 Задайте вопрос о натальной карте, астрологии или эзотерике
               </p>
-              <div 
-                className={styles.natalCardBadge}
-                onClick={() => router.push('/natal-chart')}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className={styles.badgeIcon}
+              <div className={styles.badgesContainer}>
+                <div 
+                  className={styles.natalCardBadge}
+                  onClick={() => router.push('/natal-chart')}
                 >
-                  <path
-                    d="M12 2L2 7L12 12L22 7L12 2Z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M2 17L12 22L22 17"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M2 12L12 17L22 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>Натальные карты</span>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={styles.badgeIcon}
+                  >
+                    <path
+                      d="M12 2L2 7L12 12L22 7L12 2Z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M2 17L12 22L22 17"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M2 12L12 17L22 12"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <div className={styles.badgeContent}>
+                    <span className={styles.badgeTitle}>Натальные карты</span>
+                    <span className={styles.badgeDescription}>Рассчитать свою карту</span>
+                  </div>
+                </div>
+                <div 
+                  className={styles.natalCardBadge}
+                  onClick={() => {
+                    // TODO: добавить функционал для базового самопознания
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={styles.badgeIcon}
+                  >
+                    <path
+                      d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="7"
+                      r="4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <div className={styles.badgeContent}>
+                    <span className={styles.badgeTitle}>Базовое самопознание</span>
+                    <span className={styles.badgeDescription}>Кто я и зачем здесь</span>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (

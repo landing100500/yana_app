@@ -525,9 +525,16 @@
   filter: drop-shadow(0 0 20px rgba(155, 143, 184, 0.3));
 }
 
-.natalCardBadge {
+.badgesContainer {
   margin-top: 1.5rem;
-  padding: 0.75rem 1.25rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.natalCardBadge {
+  padding: 1rem 1.25rem;
   background: rgba(155, 143, 184, 0.15);
   color: var(--dark-purple);
   border-radius: 4px;
@@ -538,6 +545,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -558,6 +566,52 @@
 
 .natalCardBadge:hover .badgeIcon {
   transform: scale(1.1);
+}
+
+.badgeContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+  text-align: center;
+}
+
+.badgeTitle {
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.badgeDescription {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: rgba(45, 31, 61, 0.7);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.badgeContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+  text-align: center;
+}
+
+.badgeTitle {
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.badgeDescription {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: rgba(45, 31, 61, 0.7);
+  letter-spacing: 0.01em;
+  text-align: center;
 }
 
 .welcomeText {
