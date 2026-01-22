@@ -23,7 +23,7 @@ export interface BirthData {
 
 export interface PlanetPosition {
   longitude: number;
-  sign: number; // 0-11 (Овен, Телец, и т.д.)
+  sign: number; // 0-11 (Меша, Вришабха, и т.д.)
   signName: string;
   degree: number; // Градус в знаке (0-29.99)
   degreeMinutes?: number; // Минуты
@@ -32,12 +32,35 @@ export interface PlanetPosition {
   isRetrograde?: boolean; // Ретроградность
   house?: number; // Дом (1-12)
   dignity?: string; // Достоинство планеты (exaltation, fall, rulership, etc.)
+  nakshatra?: number; // Индекс накшатры (0-26)
+  nakshatraName?: string; // Название накшатры
+  pada?: number; // Пада накшатры (1-4)
+}
+
+export interface NavamshaData {
+  sun: PlanetPosition;
+  moon: PlanetPosition;
+  mercury: PlanetPosition;
+  venus: PlanetPosition;
+  mars: PlanetPosition;
+  jupiter: PlanetPosition;
+  saturn: PlanetPosition;
+  ascendant: PlanetPosition;
+}
+
+export interface DashaPeriod {
+  planet: string;
+  startDate: string;
+  endDate: string;
+  duration: string;
 }
 
 export interface NatalChartData {
   julianDay: number;
   siderealTime: number;
   houseSystem: string;
+  ayanamsa: number; // Значение аянамши
+  ayanamsaName: string; // Название аянамши (Лахири)
   planets: {
     sun: PlanetPosition;
     moon: PlanetPosition;
@@ -49,12 +72,12 @@ export interface NatalChartData {
     uranus: PlanetPosition;
     neptune: PlanetPosition;
     pluto: PlanetPosition;
-    northNode: PlanetPosition;
-    southNode: PlanetPosition;
+    northNode: PlanetPosition; // Раху
+    southNode: PlanetPosition; // Кету
   };
   houses: {
-    ascendant: PlanetPosition;
-    midheaven: PlanetPosition;
+    ascendant: PlanetPosition; // Лагна
+    midheaven: PlanetPosition; // MC
     house1: PlanetPosition;
     house2: PlanetPosition;
     house3: PlanetPosition;
@@ -68,12 +91,33 @@ export interface NatalChartData {
     house11: PlanetPosition;
     house12: PlanetPosition;
   };
+  navamsha?: NavamshaData; // D9 - навамша
+  dashas?: DashaPeriod[]; // Вимшоттари даши
 }
 
+// Названия знаков в ведической астрологии (сидерический зодиак)
 const SIGN_NAMES = [
-  'Овен', 'Телец', 'Близнецы', 'Рак',
-  'Лев', 'Дева', 'Весы', 'Скорпион',
-  'Стрелец', 'Козерог', 'Водолей', 'Рыбы'
+  'Меша',      // Овен (Aries)
+  'Вришабха',  // Телец (Taurus)
+  'Митхуна',   // Близнецы (Gemini)
+  'Карка',     // Рак (Cancer)
+  'Симха',     // Лев (Leo)
+  'Канья',     // Дева (Virgo)
+  'Тула',      // Весы (Libra)
+  'Вришчика',  // Скорпион (Scorpio)
+  'Дхану',     // Стрелец (Sagittarius)
+  'Макара',    // Козерог (Capricorn)
+  'Кумбха',    // Водолей (Aquarius)
+  'Мина'       // Рыбы (Pisces)
+];
+
+// Названия накшатр (27 лунных стоянок)
+const NAKSHATRA_NAMES = [
+  'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
+  'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
+  'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
+  'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
+  'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
 ];
 
 function longitudeToSign(longitude: number): { sign: number; degree: number; signName: string } {
@@ -88,6 +132,23 @@ function longitudeToSign(longitude: number): { sign: number; degree: number; sig
     sign: sign % 12,
     degree,
     signName: SIGN_NAMES[sign % 12]
+  };
+}
+
+// Функция для определения накшатры
+function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string } {
+  let normalized = longitude % 360;
+  if (normalized < 0) normalized += 360;
+  
+  // Каждая накшатра занимает 13.333... градуса (360/27)
+  const nakshatraIndex = Math.floor(normalized / (360 / 27));
+  const degreeInNakshatra = normalized % (360 / 27);
+  const pada = Math.floor(degreeInNakshatra / (360 / 27 / 4)) + 1; // Пада от 1 до 4
+  
+  return {
+    nakshatra: nakshatraIndex % 27,
+    pada: pada > 4 ? 4 : pada,
+    name: NAKSHATRA_NAMES[nakshatraIndex % 27]
   };
 }
 
@@ -117,8 +178,14 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       swisseph.SE_GREG_CAL
     );
     
-    // Флаги для расчета
-    const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED;
+    // Флаги для расчета в ведической астрологии (сидерический зодиак)
+    // SEFLG_SIDEREAL - используем сидерический зодиак
+    // SE_SIDM_LAHIRI - аянамша Лахири
+    const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
+    
+    // Устанавливаем аянамшу Лахири
+    const ayanamsa = swisseph.SE_SIDM_LAHIRI;
+    swisseph.swe_set_sid_mode(ayanamsa, 0, 0);
     
     // Вспомогательные функции для расчета планет
     // Определяем дом для планеты
@@ -255,6 +322,9 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
         // Определяем дом
         const house = houses ? getPlanetHouse(longitude, houses) : 0;
         
+        // Определяем накшатру
+        const nakshatraData = longitudeToNakshatra(longitude);
+        
         return {
           longitude,
           sign: signData.sign,
@@ -265,7 +335,10 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
           speed,
           isRetrograde,
           house,
-          dignity
+          dignity,
+          nakshatra: nakshatraData.nakshatra,
+          nakshatraName: nakshatraData.name,
+          pada: nakshatraData.pada
         };
       } catch (error: any) {
         console.error(`Ошибка при расчете планеты ${planetId}:`, error);
@@ -292,15 +365,18 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       houseSystem: 'P'
     });
     
-    // Рассчитываем дома (Placidus)
-    // Пробуем разные системы домов, если Placidus не работает
+    // Рассчитываем дома в ведической астрологии
+    // Используем систему Шрипати (S) для ведической астрологии
+    // Также пробуем другие системы если Шрипати не работает
     let housesResult: any = null;
-    let houseSystemUsed = 'P';
-    const houseSystems = ['P', 'K', 'E', 'R']; // Placidus, Koch, Equal, Regiomontanus
+    let houseSystemUsed = 'S'; // Шрипати для ведической астрологии
+    const houseSystems = ['S', 'P', 'K', 'E', 'R']; // Шрипати, Placidus, Koch, Equal, Regiomontanus
     
     for (const system of houseSystems) {
       try {
         console.log(`Пробуем систему домов: ${system}`);
+        // Для ведической астрологии используем сидерический расчет домов
+        // swe_houses с флагом сидерического зодиака
         housesResult = swisseph.swe_houses(
           julianDay,
           latitude,
@@ -308,10 +384,13 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
           system
         );
         
-        if (housesResult && !housesResult.error && housesResult.ascmc) {
-          houseSystemUsed = system;
-          console.log(`Успешно использована система домов: ${system}`);
-          break;
+        if (housesResult && !housesResult.error) {
+          // Проверяем наличие ascmc или отдельных полей
+          if (housesResult.ascmc || (housesResult.ascendant !== undefined && housesResult.mc !== undefined)) {
+            houseSystemUsed = system;
+            console.log(`Успешно использована система домов: ${system}`);
+            break;
+          }
         } else if (housesResult && housesResult.error) {
           console.warn(`Система ${system} вернула ошибку:`, housesResult.error);
           housesResult = null;
@@ -456,10 +535,137 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // Сидерическое время (ARMC - Ascendant Right Ascension)
     const siderealTime = (ascmc[2] !== undefined && !isNaN(ascmc[2])) ? ascmc[2] : 0;
 
+    // Получаем значение аянамши
+    const ayanamsaValue = swisseph.swe_get_ayanamsa(julianDay);
+    const ayanamsaName = 'Лахири';
+
+    // Рассчитываем навамшу (D9) - девятая варга
+    // Навамша делит каждый знак на 9 частей по 3°20' (3.333... градуса)
+    // Правило: 
+    // - Movable знаки (0,3,6,9 - Овен, Рак, Весы, Козерог): начинаем с того же знака
+    // - Fixed знаки (1,4,7,10 - Телец, Лев, Скорпион, Водолей): начинаем с 9-го знака от исходного
+    // - Dual знаки (2,5,8,11 - Близнецы, Дева, Стрелец, Рыбы): начинаем с 5-го знака от исходного
+    const calculateNavamsha = (planetLongitude: number): PlanetPosition => {
+      let normalized = planetLongitude % 360;
+      if (normalized < 0) normalized += 360;
+      
+      const sign = Math.floor(normalized / 30) % 12;
+      const degreeInSign = normalized % 30;
+      
+      // Определяем номер навамши (1-9)
+      const navamshaSize = 30 / 9; // 3.333...
+      const navamshaNumber = Math.floor(degreeInSign / navamshaSize) + 1;
+      const navamshaNum = navamshaNumber > 9 ? 9 : navamshaNumber;
+      
+      // Определяем начальный знак для навамши в зависимости от типа знака
+      let startSign: number;
+      if ([0, 3, 6, 9].includes(sign)) {
+        // Movable (Овен, Рак, Весы, Козерог) - начинаем с того же знака
+        startSign = sign;
+      } else if ([1, 4, 7, 10].includes(sign)) {
+        // Fixed (Телец, Лев, Скорпион, Водолей) - начинаем с 9-го знака
+        startSign = (sign + 9) % 12;
+      } else {
+        // Dual (Близнецы, Дева, Стрелец, Рыбы) - начинаем с 5-го знака
+        startSign = (sign + 5) % 12;
+      }
+      
+      // Знак навамши = начальный знак + (номер навамши - 1)
+      const navamshaSign = (startSign + navamshaNum - 1) % 12;
+      
+      // Градус в навамше = остаток от деления градуса в знаке на размер навамши, умноженный на 9
+      const navamshaDegree = (degreeInSign % navamshaSize) * 9;
+      const navamshaLongitude = navamshaSign * 30 + navamshaDegree;
+      
+      const signData = longitudeToSign(navamshaLongitude);
+      return {
+        longitude: navamshaLongitude,
+        sign: signData.sign,
+        signName: signData.signName,
+        degree: signData.degree,
+      };
+    };
+
+    const navamsha: NavamshaData = {
+      sun: calculateNavamsha(sunFull.longitude),
+      moon: calculateNavamsha(moonFull.longitude),
+      mercury: calculateNavamsha(mercuryFull.longitude),
+      venus: calculateNavamsha(venusFull.longitude),
+      mars: calculateNavamsha(marsFull.longitude),
+      jupiter: calculateNavamsha(jupiterFull.longitude),
+      saturn: calculateNavamsha(saturnFull.longitude),
+      ascendant: calculateNavamsha(ascendant.longitude),
+    };
+
+    // Рассчитываем Вимшоттари даши
+    // Начало даши рассчитывается от положения Луны в накшатре
+    const moonLongitude = moonFull.longitude;
+    const moonNormalized = moonLongitude % 360;
+    const nakshatraIndex = Math.floor(moonNormalized / 13.333333);
+    const nakshatraDegree = moonNormalized % 13.333333;
+    
+    // Периоды Вимшоттари даши (в годах) в порядке: Кету, Венера, Солнце, Луна, Марс, Раху, Юпитер, Сатурн, Меркурий
+    const dashaPeriods = [7, 20, 6, 10, 7, 18, 16, 19, 17];
+    const dashaLords = ['Кету', 'Венера', 'Солнце', 'Луна', 'Марс', 'Раху', 'Юпитер', 'Сатурн', 'Меркурий'];
+    
+    // Определяем управителя накшатры и начальную дашу
+    // 27 накшатр, каждая управляется одной из 9 планет в цикле
+    // Порядок планет: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
+    const nakshatraRulers = [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
+      0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
+      0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26) - повторение цикла
+    ];
+    
+    const initialDashaIndex = nakshatraRulers[nakshatraIndex % 27];
+    const remainingInNakshatra = (13.333333 - nakshatraDegree) / 13.333333;
+    const initialDashaYears = dashaPeriods[initialDashaIndex] * remainingInNakshatra;
+    
+    // Рассчитываем даты даш от даты рождения
+    const dashas: DashaPeriod[] = [];
+    let currentDate = new Date(birthData.year, birthData.month - 1, birthData.day);
+    let dashaIndex = initialDashaIndex;
+    let remainingYears = initialDashaYears;
+    
+    // Первая даша (текущая)
+    const firstPlanet = dashaLords[dashaIndex];
+    const firstEndDate = new Date(currentDate);
+    firstEndDate.setFullYear(firstEndDate.getFullYear() + remainingYears);
+    
+    dashas.push({
+      planet: firstPlanet,
+      startDate: currentDate.toISOString().split('T')[0],
+      endDate: firstEndDate.toISOString().split('T')[0],
+      duration: `${remainingYears.toFixed(2)} лет`,
+    });
+    
+    // Следующие 8 даш
+    currentDate = firstEndDate;
+    dashaIndex = (dashaIndex + 1) % 9;
+    
+    for (let i = 0; i < 8; i++) {
+      const planet = dashaLords[dashaIndex];
+      const startDate = new Date(currentDate);
+      const endDate = new Date(currentDate);
+      endDate.setFullYear(endDate.getFullYear() + dashaPeriods[dashaIndex]);
+      
+      dashas.push({
+        planet,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        duration: `${dashaPeriods[dashaIndex]} лет`,
+      });
+      
+      currentDate = endDate;
+      dashaIndex = (dashaIndex + 1) % 9;
+    }
+
     return {
       julianDay,
       siderealTime,
       houseSystem: houseSystemUsed,
+      ayanamsa: ayanamsaValue,
+      ayanamsaName,
       planets: {
         sun: sunFull,
         moon: moonFull,
@@ -489,7 +695,9 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
         house10,
         house11,
         house12
-      }
+      },
+      navamsha,
+      dashas
     };
   } catch (error: any) {
     console.error('Natal chart calculation error:', error);

@@ -5,6 +5,24 @@ import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
 
+interface NavamshaData {
+  sun?: { longitude: number; sign: number; signName: string; degree: number };
+  moon?: { longitude: number; sign: number; signName: string; degree: number };
+  mercury?: { longitude: number; sign: number; signName: string; degree: number };
+  venus?: { longitude: number; sign: number; signName: string; degree: number };
+  mars?: { longitude: number; sign: number; signName: string; degree: number };
+  jupiter?: { longitude: number; sign: number; signName: string; degree: number };
+  saturn?: { longitude: number; sign: number; signName: string; degree: number };
+  ascendant?: { longitude: number; sign: number; signName: string; degree: number };
+}
+
+interface DashaData {
+  planet?: string;
+  startDate?: string;
+  endDate?: string;
+  duration?: string;
+}
+
 interface ChartData {
   id: number;
   name: string;
@@ -38,6 +56,8 @@ interface ChartData {
   house11: number;
   house12: number;
   createdAt: string;
+  navamsha?: NavamshaData;
+  dashas?: DashaData[];
 }
 
 export default function NatalChartPage() {
@@ -62,7 +82,7 @@ export default function NatalChartPage() {
       if (response.ok && data.charts) {
         setCharts(data.charts);
         // Выбираем последнюю созданную карту
-        if (data.charts.length > 0) {
+        if (data.charts.length > 0 && !selectedChart) {
           setSelectedChart(data.charts[0]);
         }
       } else if (data.error) {
@@ -98,8 +118,30 @@ export default function NatalChartPage() {
 
       if (data.chart) {
         setCalculationProgress('Сохранение результатов...');
-        // Обновляем список карт и выбираем новую
+        // Обновляем список карт
         await loadCharts();
+        
+        // Если есть полные данные с навамшей и дашами, добавляем их к карте
+        const chartWithData = {
+          ...data.chart,
+          navamsha: data.chartData?.navamsha,
+          dashas: data.chartData?.dashas,
+        };
+        
+        // Обновляем список карт с новыми данными
+        setCharts(prev => {
+          const updated = prev.map(ch => 
+            ch.id === chartWithData.id ? chartWithData : ch
+          );
+          // Если карты еще нет в списке, добавляем
+          if (!updated.find(ch => ch.id === chartWithData.id)) {
+            return [chartWithData, ...updated];
+          }
+          return updated;
+        });
+        
+        // Выбираем новую карту
+        setSelectedChart(chartWithData);
         setCalculationProgress('');
       } else {
         setError(data.error || 'Ошибка при расчете натальной карты');

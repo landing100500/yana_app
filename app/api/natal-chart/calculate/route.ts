@@ -148,7 +148,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       chart: natalChart,
-      chartData // Полные данные для отображения
+      chartData: {
+        ...chartData,
+        navamsha: chartData.navamsha,
+        dashas: chartData.dashas,
+      } // Полные данные для отображения включая навамшу и даши
     });
   } catch (error: any) {
     console.error('Calculate natal chart error:', error);

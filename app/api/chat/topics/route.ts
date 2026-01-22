@@ -75,9 +75,7 @@ export async function POST(request: NextRequest) {
         { error: 'Название темы обязательно' },
         { status: 400 }
       );
-    }
-
-    const topic = await ChatTopic.create({
+    }    const topic = await ChatTopic.create({
       userId,
       title: title.trim(),
     });

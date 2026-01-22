@@ -110,6 +110,11 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.planetNakshatra {
+  color: rgba(155, 143, 184, 0.8);
+  font-size: 0.75rem;
+}
+
 .planetHouse {
   color: rgba(155, 143, 184, 0.7);
 }
@@ -132,6 +137,7 @@
   border-radius: 12px;
   padding: 1.5rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden; /* Скрываем переполнение контейнера */
 }
 
 .legend {
@@ -145,6 +151,32 @@
   width: 100%;
   border-collapse: collapse;
   margin-top: 1rem;
+  min-width: 600px; /* Минимальная ширина для таблицы */
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch; /* Плавный скролл на iOS */
+  margin-top: 1rem;
+}
+
+.tableWrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tableWrapper::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb {
+  background: rgba(155, 143, 184, 0.5);
+  border-radius: 4px;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(155, 143, 184, 0.7);
 }
 
 .table th,
@@ -166,6 +198,277 @@
 
 .table tr:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+.navamshaSection,
+.dashaSection {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.navamshaTitle,
+.dashaTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 1rem;
+}
+
+/* Переключатель вариантов визуализации */
+.visualizationSwitcher {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
+}
+
+.switchButton {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.switchButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.switchButtonActive {
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  border-color: rgba(155, 143, 184, 0.5);
+  color: var(--white);
+}
+
+/* Квадратная визуализация (North Indian style) */
+.squareChartWrapper {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 20px;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 600px;
+}
+
+.squareChart {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  border: 2px solid rgba(155, 143, 184, 0.3);
+}
+
+.squareHouse {
+  position: absolute;
+  width: 16.66%;
+  height: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  transform: translate(-50%, -50%);
+  transition: background 0.3s ease;
+}
+
+.squareHouse:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.squareHouseNumber {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--purple);
+  margin-bottom: 0.25rem;
+}
+
+.squareHouseSign {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.5rem;
+}
+
+.squarePlanets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+.squarePlanet {
+  font-size: 0.7rem;
+  color: rgba(155, 143, 184, 0.9);
+  padding: 0.2rem 0.4rem;
+  background: rgba(155, 143, 184, 0.1);
+  border-radius: 4px;
+}
+
+/* Ромбовидная визуализация (South Indian style) */
+.diamondChartWrapper {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 20px;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 600px;
+}
+
+.diamondChart {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  border: 2px solid rgba(155, 143, 184, 0.3);
+}
+
+.diamondHouse {
+  position: absolute;
+  min-width: 120px;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  transform: translate(-50%, -50%);
+  transition: background 0.3s ease;
+}
+
+.diamondHouse:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.diamondHouseNumber {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--purple);
+  margin-bottom: 0.25rem;
+}
+
+.diamondHouseSign {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.5rem;
+}
+
+.diamondPlanets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.diamondPlanet {
+  font-size: 0.75rem;
+  color: rgba(155, 143, 184, 0.9);
+  padding: 0.2rem 0.4rem;
+  background: rgba(155, 143, 184, 0.1);
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* Список визуализация */
+.listChartWrapper {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 20px;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.listChart {
+  width: 100%;
+}
+
+.listTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.listHouses {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.listHouse {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: background 0.3s ease;
+}
+
+.listHouse:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.listHouseHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.listHouseNumber {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--purple);
+}
+
+.listHouseSign {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.listPlanets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.listPlanet {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.listPlanetName {
+  font-size: 0.85rem;
+  color: rgba(155, 143, 184, 0.9);
+  font-weight: 500;
+}
+
+.listPlanetPosition {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.listEmpty {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+  text-align: center;
+  padding: 0.5rem;
 }
 
 @media (max-width: 768px) {
