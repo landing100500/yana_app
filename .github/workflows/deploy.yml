@@ -87,7 +87,12 @@ jobs:
             
             # Перезапуск приложения через PM2 (Beget использует пользователя nodejs)
             echo "🔄 Restarting application..."
-            sudo -u nodejs pm2 restart yana_app || sudo -u nodejs pm2 start ecosystem.config.js
+            # Пытаемся перезапустить, если не найдено - запускаем впервые
+            if sudo -u nodejs pm2 list | grep -q "yana_app"; then
+              sudo -u nodejs pm2 restart yana_app
+            else
+              sudo -u nodejs pm2 start ecosystem.config.js
+            fi
             
             # Сохранение конфигурации PM2
             sudo -u nodejs pm2 save

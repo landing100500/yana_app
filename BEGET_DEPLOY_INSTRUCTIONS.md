@@ -80,21 +80,33 @@ sudo chown -R nodejs:nodejs /var/www/yana_app
 ## Шаг 7: Запуск приложения через PM2
 
 ```bash
+# Проверьте текущий статус PM2
+sudo -u nodejs pm2 status
+
 # Запустите приложение от имени пользователя nodejs
+# Если приложение еще не запускалось, используйте start:
 sudo -u nodejs pm2 start /var/www/yana_app/ecosystem.config.js
+
+# Если приложение уже запущено, используйте restart:
+# sudo -u nodejs pm2 restart yana_app
 
 # Или если ecosystem.config.js не работает, можно запустить напрямую:
 # sudo -u nodejs pm2 start /var/www/yana_app/node_modules/next/dist/bin/next --name yana_app -- start
 
-# Проверьте статус
+# Проверьте статус (должен быть "online")
 sudo -u nodejs pm2 status
 
-# Сохраните конфигурацию
+# Сохраните конфигурацию для автозапуска
 sudo -u nodejs pm2 save
 
-# Удалите тестовое приложение
+# Удалите тестовое приложение (если еще не удалено)
 sudo -u nodejs pm2 delete hello-world
+sudo -u nodejs pm2 save
 ```
+
+**Если получили ошибку "Process or Namespace yana_app not found":**
+- Это нормально при первом запуске
+- Используйте `pm2 start ecosystem.config.js` вместо `pm2 restart yana_app`
 
 ---
 
@@ -278,19 +290,64 @@ sudo systemctl status nginx
 
 ---
 
-## Обновление приложения (после настройки GitHub Actions)
+## Обновление приложения
 
-После настройки автоматического деплоя, обновления будут происходить автоматически при push в `main`.
-
-Для ручного обновления:
+### Ручное обновление (если автоматический деплой не настроен)
 
 ```bash
+# Перейдите в директорию проекта
 cd /var/www/yana_app
+
+# Скачайте последние изменения с GitHub
 git pull origin main
+
+# Если есть конфликты, можно принудительно обновить:
+# git fetch origin
+# git reset --hard origin/main
+
+# Установите зависимости (если изменились package.json)
 npm ci --production=false
+
+# Соберите проект
 npm run build
+
+# Перезапустите приложение
 sudo -u nodejs pm2 restart yana_app
 ```
+
+### Автоматический деплой (через GitHub Actions)
+
+**Статус:** Workflow настроен, но требует настройки GitHub Secrets.
+
+**Как проверить настроен ли автоматический деплой:**
+1. Перейдите в GitHub репозиторий → вкладка **Actions**
+2. Если видите успешные запуски при push в `main` — деплой работает
+3. Если видите ошибки или нет запусков — нужно настроить Secrets
+
+**Как настроить автоматический деплой:**
+
+1. Перейдите в GitHub репозиторий → **Settings** → **Secrets and variables** → **Actions**
+
+2. Добавьте следующие секреты:
+
+   - **VPS_HOST** — IP или домен вашего VPS (например: `yasna.chat` или IP адрес)
+   - **VPS_USER** — пользователь для SSH (обычно `root` для Beget)
+   - **VPS_SSH_KEY** — приватный SSH ключ для подключения к серверу
+   - **VPS_DEPLOY_PATH** — путь к проекту (можно не указывать, по умолчанию `/var/www/yana_app`)
+   - **VPS_SSH_PORT** — порт SSH (можно не указывать, по умолчанию `22`)
+
+   **Или используйте пароль вместо SSH ключа:**
+   - **VPS_PASSWORD** — пароль для SSH (менее безопасно)
+
+3. После добавления секретов, при каждом `git push origin main` будет автоматически:
+   - Запускаться проверки (lint, build)
+   - Деплоиться на сервер
+   - Перезапускаться PM2
+
+**Проверка работы:**
+- Сделайте тестовый коммит и push
+- Перейдите в **Actions** и посмотрите статус деплоя
+- Если всё зелёное ✅ — автоматический деплой работает!
 
 ---
 
