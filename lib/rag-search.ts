@@ -93,7 +93,8 @@ export async function searchRelevantChunks(
     }
 
     // Получаем названия разделов для найденных чанков
-    const sectionIds = [...new Set((data || []).map((item: any) => item.section_id))];
+    const sectionIdsSet = new Set((data || []).map((item: any) => item.section_id));
+    const sectionIds = Array.from(sectionIdsSet);
     const sectionMap: Record<string, string> = {};
 
     if (sectionIds.length > 0) {
