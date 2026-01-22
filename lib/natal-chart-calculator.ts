@@ -188,41 +188,32 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     swisseph.swe_set_sid_mode(ayanamsa, 0, 0);
     
     // Вспомогательные функции для расчета планет
-    // Определяем дом для планеты
+    // Определяем дом для планеты в системе Whole Sign Houses
+    // В Whole Sign системе планета находится в доме, соответствующем знаку, в котором она находится
     const getPlanetHouse = (planetLongitude: number, houses: { house1: PlanetPosition; house2: PlanetPosition; house3: PlanetPosition; house4: PlanetPosition; house5: PlanetPosition; house6: PlanetPosition; house7: PlanetPosition; house8: PlanetPosition; house9: PlanetPosition; house10: PlanetPosition; house11: PlanetPosition; house12: PlanetPosition }): number => {
+      // Нормализуем долготу планеты
       let planetNorm = planetLongitude % 360;
       if (planetNorm < 0) planetNorm += 360;
       
-      const houseCusps = [
-        houses.house1.longitude,
-        houses.house2.longitude,
-        houses.house3.longitude,
-        houses.house4.longitude,
-        houses.house5.longitude,
-        houses.house6.longitude,
-        houses.house7.longitude,
-        houses.house8.longitude,
-        houses.house9.longitude,
-        houses.house10.longitude,
-        houses.house11.longitude,
-        houses.house12.longitude,
-      ];
+      // Определяем знак планеты
+      const planetSign = Math.floor(planetNorm / 30) % 12;
       
-      for (let i = 0; i < 12; i++) {
-        const cusp1 = houseCusps[i] % 360;
-        const cusp2 = houseCusps[(i + 1) % 12] % 360;
+      // В Whole Sign системе каждый дом занимает целый знак
+      // Дом 1 = знак Лагны, Дом 2 = следующий знак, и т.д.
+      // Находим, какой дом соответствует знаку планеты
+      for (let i = 1; i <= 12; i++) {
+        const house = houses[`house${i}` as keyof typeof houses] as PlanetPosition;
+        if (!house) continue;
         
-        if (cusp2 < cusp1) {
-          if (planetNorm >= cusp1 || planetNorm < cusp2) {
-            return i + 1;
-          }
-        } else {
-          if (planetNorm >= cusp1 && planetNorm < cusp2) {
-            return i + 1;
-          }
+        // В Whole Sign системе куспид дома = начало знака (0° знака)
+        const houseSign = Math.floor(house.longitude / 30) % 12;
+        
+        if (houseSign === planetSign) {
+          return i;
         }
       }
       
+      // Если не нашли, возвращаем дом 1 по умолчанию
       return 1;
     };
     
@@ -366,142 +357,121 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     });
     
     // Рассчитываем дома в ведической астрологии
-    // Используем систему Шрипати (S) для ведической астрологии
-    // Также пробуем другие системы если Шрипати не работает
-    let housesResult: any = null;
-    let houseSystemUsed = 'S'; // Шрипати для ведической астрологии
-    const houseSystems = ['S', 'P', 'K', 'E', 'R']; // Шрипати, Placidus, Koch, Equal, Regiomontanus
+    // Для ведической астрологии используем Whole Sign Houses (целые знаки)
+    // Это наиболее распространенная система в Джйотиш
     
-    for (const system of houseSystems) {
+    // Сначала получаем асцендент (Лагну) через swe_houses
+    let housesResult: any = null;
+    let houseSystemUsed = 'W'; // Whole Sign Houses для ведической астрологии
+    
+    // Получаем асцендент через swe_houses (любая система даст нам асцендент)
+    const systemsToTry = ['P', 'S', 'K', 'E', 'R'];
+    for (const system of systemsToTry) {
       try {
-        console.log(`Пробуем систему домов: ${system}`);
-        // Для ведической астрологии используем сидерический расчет домов
-        // swe_houses с флагом сидерического зодиака
         housesResult = swisseph.swe_houses(
           julianDay,
           latitude,
           birthData.longitude,
           system
         );
-        
-        if (housesResult && !housesResult.error) {
-          // Проверяем наличие ascmc или отдельных полей
-          if (housesResult.ascmc || (housesResult.ascendant !== undefined && housesResult.mc !== undefined)) {
-            houseSystemUsed = system;
-            console.log(`Успешно использована система домов: ${system}`);
-            break;
-          }
-        } else if (housesResult && housesResult.error) {
-          console.warn(`Система ${system} вернула ошибку:`, housesResult.error);
-          housesResult = null;
-        }
+        if (housesResult && !housesResult.error) break;
       } catch (err: any) {
-        console.warn(`Ошибка при использовании системы ${system}:`, err.message);
-        housesResult = null;
+        console.warn(`Ошибка при использовании системы ${system} для получения асцендента:`, err.message);
       }
     }
     
     if (!housesResult || housesResult.error) {
-      console.error('Не удалось рассчитать дома ни одной системой. Результат:', housesResult);
-      throw new Error(`Не удалось рассчитать дома. ${housesResult?.error || 'Все системы домов вернули ошибку'}. Возможно, проблема с координатами или датой.`);
+      throw new Error(`Не удалось получить асцендент. ${housesResult?.error || 'Все системы домов вернули ошибку'}.`);
     }
     
-    console.log('Результат swe_houses:', JSON.stringify(housesResult, null, 2));
-    
-    // swisseph может возвращать результат в разных форматах
-    let ascmc: number[];
-    let cusps: number[];
-    
-    // Формат 1: объект с ascmc и cusps
-    if (housesResult.ascmc && Array.isArray(housesResult.ascmc)) {
-      ascmc = housesResult.ascmc;
-    } 
-    // Формат 2: отдельные поля ascendant, mc, armc, vertex
-    else if (housesResult.ascendant !== undefined && housesResult.mc !== undefined) {
-      ascmc = [
-        housesResult.ascendant,
-        housesResult.mc,
-        housesResult.armc || 0,
-        housesResult.vertex || 0
-      ];
-      console.log('Используем формат с отдельными полями для ascmc');
+    // Получаем асцендент из результата
+    let ascendantLongitude: number;
+    if (housesResult.ascmc && Array.isArray(housesResult.ascmc) && housesResult.ascmc.length > 0) {
+      ascendantLongitude = housesResult.ascmc[0];
+    } else if (housesResult.ascendant !== undefined) {
+      ascendantLongitude = housesResult.ascendant;
     } else {
-      console.error('Не найден ascmc в результате:', housesResult);
-      throw new Error('Ошибка при расчете домов. Не найден ascmc в результате.');
+      throw new Error('Не удалось получить асцендент из результата swe_houses.');
     }
     
-    // Формат 1: массив cusps (индексы 1-12)
-    if (housesResult.cusps && Array.isArray(housesResult.cusps)) {
-      cusps = housesResult.cusps;
-    } 
-    // Формат 2: массив house (индексы 0-11 для домов 1-12)
-    else if (housesResult.house && Array.isArray(housesResult.house) && housesResult.house.length >= 12) {
-      // Добавляем элемент в начало для соответствия индексации cusps[1-12]
-      // house[0] = дом 1, house[11] = дом 12
-      cusps = [0, ...housesResult.house];
-      console.log('Используем формат house, преобразован в cusps. Длина house:', housesResult.house.length);
+    // Получаем MC
+    let mcLongitude: number;
+    if (housesResult.ascmc && Array.isArray(housesResult.ascmc) && housesResult.ascmc.length > 1) {
+      mcLongitude = housesResult.ascmc[1];
+    } else if (housesResult.mc !== undefined) {
+      mcLongitude = housesResult.mc;
     } else {
-      console.error('Не найден cusps/house в результате:', housesResult);
-      throw new Error('Ошибка при расчете домов. Не найден cusps/house в результате.');
+      // Если MC не получен, используем приблизительный расчет
+      const ascSign = Math.floor((ascendantLongitude % 360) / 30);
+      mcLongitude = ((ascSign + 9) % 12) * 30;
     }
     
-    const calculateHouse = (longitude: number): PlanetPosition => {
-      if (longitude === undefined || isNaN(longitude)) {
-        throw new Error(`Неверная долгота для дома: ${longitude}`);
-      }
-      const signData = longitudeToSign(longitude);
+    // Нормализуем долготу асцендента
+    let ascNormalized = ascendantLongitude % 360;
+    if (ascNormalized < 0) ascNormalized += 360;
+    
+    // Определяем знак Лагны (восходящий знак)
+    const lagnaSign = Math.floor(ascNormalized / 30) % 12;
+    
+    console.log(`Лагна: ${ascNormalized.toFixed(2)}° (${SIGN_NAMES[lagnaSign]})`);
+    console.log('Используем систему Whole Sign Houses (целые знаки)');
+    
+    // Функция для расчета дома в Whole Sign системе
+    // В Whole Sign Houses каждый дом занимает целый знак (30°)
+    // Дом 1 = знак Лагны, Дом 2 = следующий знак, и т.д.
+    const calculateWholeSignHouse = (houseNum: number): PlanetPosition => {
+      // Дом 1 начинается со знака Лагны
+      // Дом 2 - следующий знак, и так далее
+      const houseSign = (lagnaSign + houseNum - 1) % 12;
+      // Куспид дома - начало знака (0° знака)
+      const houseLongitude = houseSign * 30;
+      
       return {
-        longitude,
-        sign: signData.sign,
-        signName: signData.signName,
-        degree: signData.degree
+        longitude: houseLongitude,
+        sign: houseSign,
+        signName: SIGN_NAMES[houseSign],
+        degree: 0
       };
     };
     
-    // ascmc: [ascendant, midheaven, armc, vertex]
-    if (!Array.isArray(ascmc) || ascmc.length < 2) {
-      throw new Error(`Неверный формат ascmc: ${JSON.stringify(ascmc)}`);
-    }
-    
-    const ascendant = calculateHouse(ascmc[0]);
-    const midheaven = calculateHouse(ascmc[1]);
-    
-    // cusps: индексы 1-12 соответствуют домам 1-12
-    // В swisseph cusps может быть массивом из 13 элементов (0-12), где индекс 0 не используется
-    // Или массивом из 12 элементов (0-11), где индекс 0 = дом 1
-    if (!Array.isArray(cusps) || cusps.length < 12) {
-      throw new Error(`Неверный формат cusps: длина ${cusps.length}, ожидалось >= 12`);
-    }
-    
-    console.log('Длина cusps:', cusps.length, 'формат:', cusps.length === 13 ? 'стандартный (0-12)' : 'альтернативный (0-11)');
-    
-    // Получаем куспиды домов
-    // Если cusps имеет 13 элементов (индексы 0-12), используем индексы 1-12
-    // Если cusps имеет 12 элементов (индексы 0-11), используем индексы 0-11 для домов 1-12
-    const getHouseCusp = (houseNum: number): number => {
-      if (cusps.length >= 13) {
-        // Формат с индексом 0 неиспользуемым, дома в индексах 1-12
-        return cusps[houseNum];
-      } else if (cusps.length >= 12) {
-        // Формат где индекс 0 = дом 1, индекс 11 = дом 12
-        return cusps[houseNum - 1];
-      } else {
-        throw new Error(`Не удалось получить куспид дома ${houseNum}. Длина массива: ${cusps.length}`);
-      }
+    // Рассчитываем асцендент
+    const ascendant = {
+      longitude: ascendantLongitude,
+      sign: lagnaSign,
+      signName: SIGN_NAMES[lagnaSign],
+      degree: ascNormalized % 30
     };
     
-    const house1 = calculateHouse(getHouseCusp(1));
-    const house2 = calculateHouse(getHouseCusp(2));
-    const house3 = calculateHouse(getHouseCusp(3));
-    const house4 = calculateHouse(getHouseCusp(4));
-    const house5 = calculateHouse(getHouseCusp(5));
-    const house6 = calculateHouse(getHouseCusp(6));
-    const house7 = calculateHouse(getHouseCusp(7));
-    const house8 = calculateHouse(getHouseCusp(8));
-    const house9 = calculateHouse(getHouseCusp(9));
-    const house10 = calculateHouse(getHouseCusp(10));
-    const house11 = calculateHouse(getHouseCusp(11));
-    const house12 = calculateHouse(getHouseCusp(12));
+    // Рассчитываем MC
+    const mcSignData = longitudeToSign(mcLongitude);
+    const midheaven = {
+      longitude: mcLongitude,
+      sign: mcSignData.sign,
+      signName: mcSignData.signName,
+      degree: mcSignData.degree
+    };
+    
+    // Рассчитываем куспиды всех 12 домов по Whole Sign системе
+    const house1 = calculateWholeSignHouse(1);
+    const house2 = calculateWholeSignHouse(2);
+    const house3 = calculateWholeSignHouse(3);
+    const house4 = calculateWholeSignHouse(4);
+    const house5 = calculateWholeSignHouse(5);
+    const house6 = calculateWholeSignHouse(6);
+    const house7 = calculateWholeSignHouse(7);
+    const house8 = calculateWholeSignHouse(8);
+    const house9 = calculateWholeSignHouse(9);
+    const house10 = calculateWholeSignHouse(10);
+    const house11 = calculateWholeSignHouse(11);
+    const house12 = calculateWholeSignHouse(12);
+    
+    // Для совместимости с существующим кодом, создаем ascmc массив
+    const ascmc = [
+      ascendantLongitude,
+      mcLongitude,
+      housesResult.ascmc?.[2] || 0,
+      housesResult.ascmc?.[3] || 0
+    ];
     
     // Создаем объект домов для определения позиций планет
     const housesObj = {
