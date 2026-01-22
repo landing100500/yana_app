@@ -71,6 +71,7 @@ export default function NatalChartPage() {
 
   useEffect(() => {
     loadCharts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadCharts = async () => {

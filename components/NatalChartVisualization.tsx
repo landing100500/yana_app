@@ -526,7 +526,7 @@ export default function NatalChartVisualization({ chart }: Props) {
                   </div>
                   <div className={styles.planetDetails}>
                     <span className={styles.planetDegrees}>
-                      {degrees}°{String(minutes).padStart(2, '0')}'{String(seconds).padStart(2, '0')}"
+                      {degrees}°{String(minutes).padStart(2, '0')}&apos;{String(seconds).padStart(2, '0')}&quot;
                     </span>
                     <span className={styles.planetNakshatra}>
                       {nakshatraName} ({pada > 4 ? 4 : pada})
@@ -586,7 +586,7 @@ export default function NatalChartVisualization({ chart }: Props) {
                 return (
                   <tr key={planet.name}>
                     <td>{PLANET_NAMES[planet.name]}</td>
-                    <td>{degrees}°{String(minutes).padStart(2, '0')}'{String(seconds).padStart(2, '0')}"</td>
+                    <td>{degrees}°{String(minutes).padStart(2, '0')}&apos;{String(seconds).padStart(2, '0')}&quot;</td>
                     <td>{signData.signName}</td>
                     <td>{nakshatraName}</td>
                     <td>{pada > 4 ? 4 : pada}</td>

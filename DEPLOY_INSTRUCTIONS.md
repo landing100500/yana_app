@@ -71,12 +71,34 @@ sudo chown -R $USER:$USER /var/www/yana_app
 
 ### 2.3 Клонируйте репозиторий
 
+**Вариант A: Если папка yana_app уже создана (пустая)**
+
+```bash
+cd /var/www
+rmdir yana_app 2>/dev/null || true  # Удалить пустую папку
+git clone https://github.com/your-username/your-repo.git yana_app
+cd yana_app
+```
+
+**Вариант B: Клонировать прямо в существующую папку**
+
 ```bash
 cd /var/www/yana_app
 git clone https://github.com/your-username/your-repo.git .
 # Или если используете SSH:
 # git clone git@github.com:your-username/your-repo.git .
 ```
+
+**Вариант C: Через SSH (если настроен SSH ключ для GitHub)**
+
+```bash
+cd /var/www
+rmdir yana_app 2>/dev/null || true
+git clone git@github.com:your-username/your-repo.git yana_app
+cd yana_app
+```
+
+📝 **Подробная инструкция**: См. файл `CLONE_REPO_INSTRUCTIONS.md`
 
 ### 2.4 Установите зависимости и соберите проект
 
