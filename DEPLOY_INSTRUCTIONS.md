@@ -1,5 +1,7 @@
 # Инструкция по настройке деплоя на VPS
 
+> **Для Beget VPS**: См. специальную инструкцию `BEGET_DEPLOY_INSTRUCTIONS.md`
+
 ## Шаг 1: Подготовка GitHub Secrets
 
 Перейдите в настройки репозитория GitHub: `Settings → Secrets and variables → Actions`

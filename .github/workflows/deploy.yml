@@ -85,17 +85,17 @@ jobs:
             export NODE_ENV=production
             npm run build
             
-            # Перезапуск приложения через PM2
+            # Перезапуск приложения через PM2 (Beget использует пользователя nodejs)
             echo "🔄 Restarting application..."
-            pm2 restart yana_app || pm2 start ecosystem.config.js
+            sudo -u nodejs pm2 restart yana_app || sudo -u nodejs pm2 start ecosystem.config.js
             
             # Сохранение конфигурации PM2
-            pm2 save
+            sudo -u nodejs pm2 save
             
             echo "✅ Deployment completed successfully!"
             
             # Показываем статус
-            pm2 status
+            sudo -u nodejs pm2 status
 
       - name: Deployment notification
         if: success()
