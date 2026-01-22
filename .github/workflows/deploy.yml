@@ -1,0 +1,109 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # Позволяет запускать вручную
+
+jobs:
+  # Проверки перед деплоем
+  test:
+    name: Run tests and checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true # Не останавливать деплой при ошибках линтера
+
+      - name: Build project
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+  # Деплой на VPS
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          # Используйте либо key (SSH ключ), либо password (пароль)
+          # Раскомментируйте нужный вариант:
+          
+          # Вариант 1: SSH ключ (рекомендуется, более безопасно)
+          # См. инструкцию в SSH_KEY_SETUP.md
+          key: ${{ secrets.VPS_SSH_KEY }}
+          
+          # Вариант 2: Пароль (менее безопасно, но проще для начала)
+          # Если используете пароль, закомментируйте строку выше с key и раскомментируйте эту:
+          # password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            set -e  # Остановить при ошибке
+            
+            echo "🚀 Starting deployment..."
+            
+            # Переход в директорию проекта
+            cd ${{ secrets.VPS_DEPLOY_PATH || '/var/www/yana_app' }}
+            
+            # Сохранение текущей версии (для отката при необходимости)
+            echo "📦 Saving current version..."
+            git stash || true
+            
+            # Получение последних изменений
+            echo "📥 Pulling latest changes..."
+            git fetch origin
+            git reset --hard origin/main || git reset --hard origin/master
+            
+            # Установка зависимостей
+            echo "📚 Installing dependencies..."
+            npm ci --production=false
+            
+            # Сборка проекта
+            echo "🔨 Building project..."
+            export NODE_ENV=production
+            npm run build
+            
+            # Перезапуск приложения через PM2
+            echo "🔄 Restarting application..."
+            pm2 restart yana_app || pm2 start ecosystem.config.js
+            
+            # Сохранение конфигурации PM2
+            pm2 save
+            
+            echo "✅ Deployment completed successfully!"
+            
+            # Показываем статус
+            pm2 status
+
+      - name: Deployment notification
+        if: success()
+        run: |
+          echo "✅ Deployment to VPS completed successfully!"
+
+      - name: Deployment failure notification
+        if: failure()
+        run: |
+          echo "❌ Deployment to VPS failed!"
+          exit 1

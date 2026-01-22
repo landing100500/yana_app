@@ -25,9 +25,20 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.production
+.env.development
 
 # vercel
 .vercel
+
+# PM2 logs
+logs/
+*.log
+pm2-error.log
+pm2-out.log
+
+# VPS specific
+ecosystem.config.js.local
 
 # typescript
 *.tsbuildinfo
