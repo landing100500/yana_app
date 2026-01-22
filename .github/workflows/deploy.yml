@@ -32,6 +32,11 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          # Минимальные переменные для сборки (заглушки, если не используются на этапе сборки)
+          # Если сборка требует реальные значения, добавьте их в GitHub Secrets
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
+        continue-on-error: false
 
   # Деплой на VPS
   deploy:
