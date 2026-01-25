@@ -70,15 +70,26 @@ export async function POST(request: NextRequest) {
         console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
         console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
         
+        // Принудительно сбрасываем буфер логов
+        process.stdout.write('[TRANSCRIBE] About to read FormData...\n');
+        process.stderr.write('[TRANSCRIBE] About to read FormData (stderr)...\n');
+        
         let formData: FormData;
         try {
+          sendProgress(controller, 'Чтение файла с сервера...', 6);
+          process.stdout.write('[TRANSCRIBE] Starting request.formData()...\n');
+          
           // Добавляем таймаут для чтения FormData (10 минут)
           const formDataPromise = request.formData();
           const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('FormData read timeout after 10 minutes')), 10 * 60 * 1000);
+            setTimeout(() => {
+              process.stderr.write('[TRANSCRIBE] FormData read timeout!\n');
+              reject(new Error('FormData read timeout after 10 minutes'));
+            }, 10 * 60 * 1000);
           });
           
           formData = await Promise.race([formDataPromise, timeoutPromise]);
+          process.stdout.write('[TRANSCRIBE] FormData read successfully\n');
           console.log('[TRANSCRIBE] FormData read successfully');
         } catch (formDataError: any) {
           console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
