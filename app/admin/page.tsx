@@ -137,23 +137,44 @@ export default function AdminPage() {
     setError('');
 
     try {
+      console.log('[ADMIN] Starting file upload:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        sectionId: selectedSection
+      });
+
       const formData = new FormData();
       formData.append('file', file);
       formData.append('sectionId', selectedSection);
 
+      console.log('[ADMIN] FormData created, sending fetch request...');
+      
       const response = await fetch('/api/admin/transcribe', {
         method: 'POST',
         body: formData,
+        // Не устанавливаем Content-Type - браузер установит автоматически с boundary
+      });
+
+      console.log('[ADMIN] Fetch response received:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        hasBody: !!response.body
       });
 
       if (!response.ok && !response.body) {
+        console.error('[ADMIN] Response not OK and no body:', response.status, response.statusText);
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
       if (!response.body) {
+        console.error('[ADMIN] Response has no body');
         throw new Error('Нет тела ответа от сервера');
       }
+
+      console.log('[ADMIN] Starting to read response stream...');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
