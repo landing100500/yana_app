@@ -5,11 +5,9 @@ import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
 import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
 import { parseFormData } from '@mjackson/form-data-parser';
-import { readFile, unlink } from 'fs/promises';
-import { createWriteStream } from 'fs';
+import { readFile, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { Readable } from 'stream';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
@@ -118,21 +116,9 @@ export async function POST(request: NextRequest) {
                 const writeStream = createWriteStream(tempFile);
                 
                 try {
-                  // Потоково записываем файл на диск
-                  for await (const chunk of fileUpload.bytes) {
-                    const canContinue = writeStream.write(chunk);
-                    if (!canContinue) {
-                      // Если буфер полон, ждем drain
-                      await new Promise(resolve => writeStream.once('drain', resolve));
-                    }
-                  }
-                  writeStream.end();
-                  
-                  // Ждем завершения записи
-                  await new Promise((resolve, reject) => {
-                    writeStream.on('finish', resolve);
-                    writeStream.on('error', reject);
-                  });
+                  // fileUpload.bytes - это ReadableStream, записываем напрямую на диск
+                  // Библиотека обрабатывает потоково, не загружая весь файл в память
+                  await writeFile(tempFile, fileUpload.bytes);
                   
                   console.log('[TRANSCRIBE] File saved to disk:', tempFile);
                   
@@ -142,16 +128,25 @@ export async function POST(request: NextRequest) {
                     type: fileType
                   });
                 } catch (writeError) {
-                  writeStream.destroy();
                   throw writeError;
                 }
               } else if (fileUpload.fieldName === 'sectionId') {
                 // Читаем sectionId из текстового поля
+                // fileUpload.bytes - это ReadableStream, читаем как текст
+                const reader = fileUpload.bytes.getReader();
                 const textDecoder = new TextDecoder();
                 let sectionIdText = '';
-                for await (const chunk of fileUpload.bytes) {
-                  sectionIdText += textDecoder.decode(chunk, { stream: true });
+                
+                try {
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    sectionIdText += textDecoder.decode(value, { stream: true });
+                  }
+                } finally {
+                  reader.releaseLock();
                 }
+                
                 sectionIdValue = sectionIdText.trim();
                 console.log('[TRANSCRIBE] SectionId from stream:', sectionIdValue);
               }
