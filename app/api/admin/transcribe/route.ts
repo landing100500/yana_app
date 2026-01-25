@@ -112,9 +112,6 @@ export async function POST(request: NextRequest) {
                 fileType = fileUpload.type || 'application/octet-stream';
                 console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType, 'size:', fileUpload.size);
                 
-                // Сохраняем файл на диск потоково
-                const writeStream = createWriteStream(tempFile);
-                
                 try {
                   // fileUpload.bytes - это ReadableStream, записываем напрямую на диск
                   // Библиотека обрабатывает потоково, не загружая весь файл в память
