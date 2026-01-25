@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
         }
         
         console.log('[TRANSCRIBE] File received:', file ? {
-          name: file.name,
+          name: fileName,
           size: file.size,
           type: file.type
         } : 'null');
@@ -206,6 +206,10 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
+
+        // Сохраняем имя файла для использования в дальнейшем
+        // file уже проверен на null выше, поэтому используем non-null assertion
+        const fileName = file!.name;
 
         sendProgress(controller, 'Проверка раздела...', 10);
 
@@ -244,7 +248,7 @@ export async function POST(request: NextRequest) {
         // Конвертируем файл в нужный формат для Whisper API
         console.log('[TRANSCRIBE] Converting file to buffer...');
         console.log('[TRANSCRIBE] File details:', {
-          name: file.name,
+          name: fileName,
           size: file.size,
           type: file.type,
           lastModified: file.lastModified
@@ -291,7 +295,7 @@ export async function POST(request: NextRequest) {
         // @ts-ignore
         arrayBuffer = null;
 
-        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        const fileExtension = fileName.split('.').pop()?.toLowerCase();
         let mimeType = file.type;
         
         // Если MIME тип не определен, определяем по расширению
@@ -309,25 +313,25 @@ export async function POST(request: NextRequest) {
         }
 
         // Проверяем, является ли файл видео
-        const isVideo = isVideoFile(mimeType, file.name);
+        const isVideo = isVideoFile(mimeType, fileName);
         let finalBuffer: Buffer = buffer;
         let finalMimeType = mimeType;
-        let finalFileName = file.name;
+        let finalFileName = fileName;
         let finalSizeMB = fileSizeMB;
 
         // Если это видео файл, извлекаем аудио
         if (isVideo) {
           sendProgress(controller, 'Извлечение аудио из видео...', 20);
-          console.log(`[TRANSCRIBE] Extracting audio from video file: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB`);
+          console.log(`[TRANSCRIBE] Extracting audio from video file: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
           
           try {
             sendProgress(controller, 'Обработка видео файла...', 22);
             console.log('[TRANSCRIBE] Starting audio extraction with FFmpeg...');
-            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, file.name);
+            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, fileName);
             console.log('[TRANSCRIBE] Audio extraction completed successfully');
             finalBuffer = Buffer.from(audioBuffer);
             finalMimeType = 'audio/mpeg';
-            finalFileName = file.name.replace(/\.[^/.]+$/, '.mp3');
+            finalFileName = fileName.replace(/\.[^/.]+$/, '.mp3');
             finalSizeMB = audioSizeMB;
             
             console.log(`Audio extracted successfully: ${finalSizeMB.toFixed(2)}MB (from ${fileSizeMB.toFixed(2)}MB video)`);
@@ -660,7 +664,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: file.name,
+                file_name: fileName,
                 created_at: new Date().toISOString(),
               },
               created_at: new Date().toISOString(),
@@ -709,7 +713,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: file.name,
+                file_name: fileName,
                 created_at: new Date().toISOString(),
               },
             created_at: new Date().toISOString(),
@@ -749,7 +753,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               chunk_index: batchIndices[batchIndex],
               total_chunks: chunkIndex,
-              file_name: file.name,
+              file_name: fileName,
               created_at: new Date().toISOString(),
             },
             created_at: new Date().toISOString(),
