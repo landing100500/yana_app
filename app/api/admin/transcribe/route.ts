@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      // Объявляем переменные в начале функции для доступа в catch блоке
+      let tempFilePath: string | null = null;
+      
       try {
         console.log('[TRANSCRIBE] Starting transcription process...');
         console.log('[TRANSCRIBE] Stream controller started');
@@ -89,7 +92,6 @@ export async function POST(request: NextRequest) {
         // Это позволяет сохранять файл на диск без загрузки всего в память
         let file: File | null = null;
         let sectionId: string = '';
-        let tempFilePath: string | null = null;
         
         if (uploadFileSizeMB > 50) {
           console.log('[TRANSCRIBE] Large file detected, using streaming parser...');
