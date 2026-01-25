@@ -28,23 +28,56 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Проверяем что request не закрыт
+  console.log('[TRANSCRIBE] POST request received');
+  console.log('[TRANSCRIBE] Request method:', request.method);
+  console.log('[TRANSCRIBE] Request headers:', Object.fromEntries(request.headers.entries()));
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
         console.log('[TRANSCRIBE] Starting transcription process...');
+        console.log('[TRANSCRIBE] Stream controller started');
         sendProgress(controller, 'Загрузка файла...', 5);
 
+        // Проверяем что request body доступен
+        if (!request.body) {
+          console.error('[TRANSCRIBE] Request body is null or undefined');
+          const error = JSON.stringify({ 
+            type: 'error', 
+            error: 'Тело запроса недоступно',
+            details: 'Request body is null'
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+          controller.close();
+          return;
+        }
+
         console.log('[TRANSCRIBE] Reading FormData...');
+        console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
+        console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
+        
         let formData: FormData;
         try {
-          formData = await request.formData();
+          // Добавляем таймаут для чтения FormData (10 минут)
+          const formDataPromise = request.formData();
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('FormData read timeout after 10 minutes')), 10 * 60 * 1000);
+          });
+          
+          formData = await Promise.race([formDataPromise, timeoutPromise]);
           console.log('[TRANSCRIBE] FormData read successfully');
         } catch (formDataError: any) {
           console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
+          console.error('[TRANSCRIBE] Error code:', formDataError.code);
+          console.error('[TRANSCRIBE] Error message:', formDataError.message);
+          console.error('[TRANSCRIBE] Error stack:', formDataError.stack);
+          
           const error = JSON.stringify({ 
             type: 'error', 
             error: 'Ошибка при загрузке файла',
-            details: formDataError.message || String(formDataError)
+            details: formDataError.message || String(formDataError),
+            code: formDataError.code
           });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
           controller.close();

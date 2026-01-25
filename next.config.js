@@ -1,9 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-        experimental: {
-          serverComponentsExternalPackages: ['mysql2', 'fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'swisseph'],
-        },
+  experimental: {
+    serverComponentsExternalPackages: ['mysql2', 'fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'swisseph'],
+  },
+  // Увеличиваем лимит размера body для API routes (по умолчанию 1MB)
+  // В Next.js 14 это настраивается через runtime config
+  serverRuntimeConfig: {
+    // Максимальный размер body для API routes (500MB)
+    bodyParser: {
+      sizeLimit: '500mb',
+    },
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Игнорируем предупреждения о динамических require в sequelize и ffmpeg
