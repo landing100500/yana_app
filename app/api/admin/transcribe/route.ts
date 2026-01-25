@@ -31,11 +31,34 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        console.log('[TRANSCRIBE] Starting transcription process...');
         sendProgress(controller, 'Загрузка файла...', 5);
 
-        const formData = await request.formData();
+        console.log('[TRANSCRIBE] Reading FormData...');
+        let formData: FormData;
+        try {
+          formData = await request.formData();
+          console.log('[TRANSCRIBE] FormData read successfully');
+        } catch (formDataError: any) {
+          console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
+          const error = JSON.stringify({ 
+            type: 'error', 
+            error: 'Ошибка при загрузке файла',
+            details: formDataError.message || String(formDataError)
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+          controller.close();
+          return;
+        }
+
         const file = formData.get('file') as File;
         const sectionId = formData.get('sectionId') as string;
+        
+        console.log('[TRANSCRIBE] File received:', file ? {
+          name: file.name,
+          size: file.size,
+          type: file.type
+        } : 'null');
 
         if (!file) {
           const error = JSON.stringify({ type: 'error', error: 'Файл не загружен' });
@@ -86,8 +109,25 @@ export async function POST(request: NextRequest) {
         sendProgress(controller, `Подготовка файла (${fileSizeMB.toFixed(2)}MB)...`, 18);
 
         // Конвертируем файл в нужный формат для Whisper API
-        const arrayBuffer = await file.arrayBuffer();
+        console.log('[TRANSCRIBE] Converting file to buffer...');
+        let arrayBuffer: ArrayBuffer;
+        try {
+          arrayBuffer = await file.arrayBuffer();
+          console.log('[TRANSCRIBE] File converted to ArrayBuffer, size:', arrayBuffer.byteLength);
+        } catch (bufferError: any) {
+          console.error('[TRANSCRIBE] Error converting file to buffer:', bufferError);
+          const error = JSON.stringify({ 
+            type: 'error', 
+            error: 'Ошибка при чтении файла',
+            details: bufferError.message || String(bufferError)
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+          controller.close();
+          return;
+        }
+        
         const buffer = Buffer.from(arrayBuffer);
+        console.log('[TRANSCRIBE] Buffer created, size:', buffer.length);
 
         const fileExtension = file.name.split('.').pop()?.toLowerCase();
         let mimeType = file.type;
@@ -116,11 +156,13 @@ export async function POST(request: NextRequest) {
         // Если это видео файл, извлекаем аудио
         if (isVideo) {
           sendProgress(controller, 'Извлечение аудио из видео...', 20);
-          console.log(`Extracting audio from video file: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB`);
+          console.log(`[TRANSCRIBE] Extracting audio from video file: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB`);
           
           try {
             sendProgress(controller, 'Обработка видео файла...', 22);
+            console.log('[TRANSCRIBE] Starting audio extraction with FFmpeg...');
             const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, file.name);
+            console.log('[TRANSCRIBE] Audio extraction completed successfully');
             finalBuffer = Buffer.from(audioBuffer);
             finalMimeType = 'audio/mpeg';
             finalFileName = file.name.replace(/\.[^/.]+$/, '.mp3');
@@ -579,8 +621,18 @@ export async function POST(request: NextRequest) {
         controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
         controller.close();
       } catch (error: any) {
-        console.error('Transcription error:', error);
-        console.error('Error stack:', error.stack);
+        console.error('[TRANSCRIBE] Transcription error:', error);
+        console.error('[TRANSCRIBE] Error code:', error.code);
+        console.error('[TRANSCRIBE] Error message:', error.message);
+        console.error('[TRANSCRIBE] Error stack:', error.stack);
+        
+        // Проверяем, не разорвано ли соединение
+        if (error.code === 'ECONNRESET' || error.message?.includes('aborted')) {
+          console.error('[TRANSCRIBE] Connection was aborted/reset. This usually means:');
+          console.error('[TRANSCRIBE] 1. Client disconnected (browser timeout)');
+          console.error('[TRANSCRIBE] 2. Nginx timeout');
+          console.error('[TRANSCRIBE] 3. Network issue');
+        }
         const errorMsg = JSON.stringify({
           type: 'error',
           error: error.message || 'Ошибка при транскрибации',

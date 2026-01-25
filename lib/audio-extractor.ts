@@ -6,13 +6,42 @@ import { existsSync } from 'fs';
 // Динамический импорт для избежания проблем с webpack
 async function getFFmpeg() {
   const ffmpeg = (await import('fluent-ffmpeg')).default;
-  const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
   
-  // Устанавливаем путь к ffmpeg
-  const ffmpegPath = ffmpegInstaller.path;
-  if (!existsSync(ffmpegPath)) {
-    throw new Error(`FFmpeg not found at path: ${ffmpegPath}`);
+  // Сначала пытаемся использовать системный FFmpeg (более надежно на сервере)
+  const systemFfmpegPaths = [
+    '/usr/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+    '/opt/homebrew/bin/ffmpeg', // для macOS
+  ];
+  
+  let ffmpegPath: string | null = null;
+  
+  // Проверяем системные пути
+  for (const path of systemFfmpegPaths) {
+    if (existsSync(path)) {
+      ffmpegPath = path;
+      console.log(`Found system FFmpeg at: ${path}`);
+      break;
+    }
   }
+  
+  // Если системный FFmpeg не найден, используем @ffmpeg-installer
+  if (!ffmpegPath) {
+    try {
+      const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
+      ffmpegPath = ffmpegInstaller.path;
+      if (!existsSync(ffmpegPath)) {
+        throw new Error(`FFmpeg from @ffmpeg-installer not found at path: ${ffmpegPath}`);
+      }
+      console.log(`Using FFmpeg from @ffmpeg-installer at: ${ffmpegPath}`);
+    } catch (error: any) {
+      throw new Error(
+        `FFmpeg not found. Please install FFmpeg system-wide: sudo apt install -y ffmpeg libmp3lame-dev. ` +
+        `Original error: ${error.message}`
+      );
+    }
+  }
+  
   ffmpeg.setFfmpegPath(ffmpegPath);
   console.log(`FFmpeg initialized at: ${ffmpegPath}`);
   
