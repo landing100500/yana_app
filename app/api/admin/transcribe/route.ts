@@ -109,9 +109,10 @@ export async function POST(request: NextRequest) {
             // Используем потоковый парсер для больших файлов
             const formData = await parseFormData(request, async (fileUpload) => {
               if (fileUpload.fieldName === 'file') {
-                fileName = fileUpload.filename || 'upload';
-                fileType = fileUpload.contentType || 'application/octet-stream';
-                console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType);
+                // FileUpload расширяет File, поэтому используем свойства File API
+                fileName = fileUpload.name || 'upload';
+                fileType = fileUpload.type || 'application/octet-stream';
+                console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType, 'size:', fileUpload.size);
                 
                 // Сохраняем файл на диск потоково
                 const writeStream = createWriteStream(tempFile);
