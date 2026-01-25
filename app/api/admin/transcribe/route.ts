@@ -20,8 +20,15 @@ async function checkAdminAuth() {
 }
 
 function sendProgress(controller: ReadableStreamDefaultController, message: string, progress?: number) {
-  const data = JSON.stringify({ type: 'progress', message, progress });
-  controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+  try {
+    const data = JSON.stringify({ type: 'progress', message, progress });
+    controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+  } catch (error: any) {
+    // Игнорируем ошибки если контроллер уже закрыт
+    if (error.code !== 'ERR_INVALID_STATE') {
+      console.error('[TRANSCRIBE] Error sending progress:', error);
+    }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -78,14 +85,22 @@ export async function POST(request: NextRequest) {
         try {
           sendProgress(controller, 'Чтение файла с сервера...', 6);
           process.stdout.write('[TRANSCRIBE] Starting request.formData()...\n');
+          console.log('[TRANSCRIBE] File size from Content-Length:', request.headers.get('content-length'), 'bytes');
           
-          // Добавляем таймаут для чтения FormData (10 минут)
+          // Для больших файлов увеличиваем таймаут (30 минут для файлов до 250MB)
+          const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+          const fileSizeMB = contentLength / (1024 * 1024);
+          const timeoutMs = fileSizeMB > 50 ? 30 * 60 * 1000 : 10 * 60 * 1000; // 30 минут для больших файлов
+          
+          console.log('[TRANSCRIBE] File size:', fileSizeMB.toFixed(2), 'MB, timeout:', timeoutMs / 1000, 'seconds');
+          
+          // Добавляем таймаут для чтения FormData
           const formDataPromise = request.formData();
           const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
-              process.stderr.write('[TRANSCRIBE] FormData read timeout!\n');
-              reject(new Error('FormData read timeout after 10 minutes'));
-            }, 10 * 60 * 1000);
+              process.stderr.write(`[TRANSCRIBE] FormData read timeout after ${timeoutMs / 1000} seconds!\n`);
+              reject(new Error(`FormData read timeout after ${timeoutMs / 1000} seconds`));
+            }, timeoutMs);
           });
           
           formData = await Promise.race([formDataPromise, timeoutPromise]);
@@ -536,17 +551,39 @@ export async function POST(request: NextRequest) {
             chunkIndex++;
             
             // Переходим к следующему чанку с учетом перекрытия
-            start = actualEnd - OVERLAP;
-            if (start < 0) start = 0;
-            // Защита от зацикливания - если start не изменился, увеличиваем на 1
-            if (start === actualEnd - OVERLAP && actualEnd === end && start >= end - OVERLAP) {
-              start = end;
+            const newStart = actualEnd - OVERLAP;
+            start = newStart < 0 ? 0 : newStart;
+            
+            // Защита от зацикливания - если start не изменился или стал меньше, увеличиваем
+            if (start >= actualEnd - OVERLAP && start < actualEnd) {
+              start = actualEnd;
+            }
+            // Дополнительная защита - если start не продвинулся, принудительно увеличиваем
+            if (start <= end - OVERLAP && start < transcriptText.length) {
+              const prevStart = start;
+              start = Math.max(start + 1, end - OVERLAP);
+              if (start === prevStart) {
+                start = end; // Принудительно переходим к концу текущего чанка
+              }
             }
           } else {
             // Слишком маленький или пустой чанк - переходим дальше
             start = actualEnd;
+            // Защита от зацикливания для маленьких чанков
+            if (start >= transcriptText.length) break;
+            // Если start не изменился, увеличиваем
+            if (start === actualEnd && actualEnd < transcriptText.length) {
+              start = actualEnd + 1;
+            }
           }
           
+          // Финальная проверка от зацикливания
+          if (start >= transcriptText.length) break;
+          // Если start не продвинулся после всех проверок, принудительно увеличиваем
+          const currentStart = start;
+          if (currentStart === end || currentStart === actualEnd) {
+            start = Math.min(currentStart + 1, transcriptText.length);
+          }
           if (start >= transcriptText.length) break;
           
           // Когда накопили батч, обрабатываем его
@@ -704,8 +741,18 @@ export async function POST(request: NextRequest) {
           chunksCount: processedCount,
           message: `Успешно обработано! Создано ${processedCount} чанков с эмбеддингами.`,
         });
-        controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
-        controller.close();
+        try {
+          controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
+          controller.close();
+        } catch (error: any) {
+          // Если контроллер уже закрыт, просто логируем
+          if (error.code === 'ERR_INVALID_STATE') {
+            console.log('[TRANSCRIBE] Controller already closed, skipping final message');
+          } else {
+            console.error('[TRANSCRIBE] Error sending final message:', error);
+            throw error;
+          }
+        }
       } catch (error: any) {
         console.error('[TRANSCRIBE] Transcription error:', error);
         console.error('[TRANSCRIBE] Error code:', error.code);
@@ -724,8 +771,17 @@ export async function POST(request: NextRequest) {
           error: error.message || 'Ошибка при транскрибации',
           details: error.stack || String(error),
         });
-        controller.enqueue(new TextEncoder().encode(`data: ${errorMsg}\n\n`));
-        controller.close();
+        try {
+          controller.enqueue(new TextEncoder().encode(`data: ${errorMsg}\n\n`));
+          controller.close();
+        } catch (closeError: any) {
+          // Если контроллер уже закрыт, просто логируем
+          if (closeError.code === 'ERR_INVALID_STATE') {
+            console.log('[TRANSCRIBE] Controller already closed, skipping error message');
+          } else {
+            console.error('[TRANSCRIBE] Error sending error message:', closeError);
+          }
+        }
       }
     },
   });
