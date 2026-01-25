@@ -187,12 +187,6 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        console.log('[TRANSCRIBE] File received:', file ? {
-          name: fileName,
-          size: file.size,
-          type: file.type
-        } : 'null');
-
         if (!file) {
           const error = JSON.stringify({ type: 'error', error: 'Файл не загружен' });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
@@ -210,6 +204,12 @@ export async function POST(request: NextRequest) {
         // Сохраняем имя файла для использования в дальнейшем
         // file уже проверен на null выше, поэтому используем non-null assertion
         const fileName = file!.name;
+        
+        console.log('[TRANSCRIBE] File received:', {
+          name: fileName,
+          size: file.size,
+          type: file.type
+        });
 
         sendProgress(controller, 'Проверка раздела...', 10);
 
