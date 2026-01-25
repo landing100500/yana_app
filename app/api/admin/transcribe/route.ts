@@ -4,10 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
 import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
-import { parseFormData } from '@mjackson/form-data-parser';
-import { readFile, unlink, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { readFile, unlink } from 'fs/promises';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
@@ -88,105 +85,31 @@ export async function POST(request: NextRequest) {
         const uploadFileSizeMB = contentLength / (1024 * 1024);
         console.log('[TRANSCRIBE] Upload file size:', uploadFileSizeMB.toFixed(2), 'MB');
         
-        // Для больших файлов (>50MB) используем потоковое чтение через @mjackson/form-data-parser
-        // Это позволяет сохранять файл на диск без загрузки всего в память
+        // Используем стандартный formData для всех файлов
+        // Библиотека @mjackson/form-data-parser имеет жесткий лимит 2MB, который сложно обойти
+        // У нас уже настроена память Node.js (8GB) и Nginx, поэтому используем стандартный подход
         let file: File | null = null;
         let sectionId: string = '';
         
-        if (uploadFileSizeMB > 50) {
-          console.log('[TRANSCRIBE] Large file detected, using streaming parser...');
-          sendProgress(controller, 'Потоковая загрузка большого файла...', 6);
-          
-          try {
-            const tempDir = tmpdir();
-            const tempFile = join(tempDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}`);
-            tempFilePath = tempFile;
-            
-            let sectionIdValue = '';
-            let fileName = '';
-            let fileType = '';
-            
-            // Используем потоковый парсер для больших файлов
-            const formData = await parseFormData(request, async (fileUpload) => {
-              if (fileUpload.fieldName === 'file') {
-                // FileUpload расширяет File, поэтому используем свойства File API
-                fileName = fileUpload.name || 'upload';
-                fileType = fileUpload.type || 'application/octet-stream';
-                console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType, 'size:', fileUpload.size);
-                
-                try {
-                  // fileUpload.bytes - это функция, которая возвращает Promise<Uint8Array>
-                  // Библиотека обрабатывает файл потоково внутри себя, но bytes() возвращает весь файл
-                  // Для больших файлов это все еще может быть проблемой, но лучше чем request.formData()
-                  const bytes = await fileUpload.bytes();
-                  
-                  // Записываем на диск
-                  await writeFile(tempFile, bytes);
-                  
-                  console.log('[TRANSCRIBE] File saved to disk:', tempFile, 'size:', bytes.length);
-                  
-                  // Создаем File объект из сохраненного файла
-                  const fileBuffer = await readFile(tempFile);
-                  file = new File([fileBuffer], fileName, {
-                    type: fileType
-                  });
-                } catch (writeError) {
-                  throw writeError;
-                }
-              } else if (fileUpload.fieldName === 'sectionId') {
-                // Читаем sectionId из текстового поля
-                const textDecoder = new TextDecoder();
-                const bytes = await fileUpload.bytes();
-                sectionIdValue = textDecoder.decode(bytes).trim();
-                console.log('[TRANSCRIBE] SectionId from stream:', sectionIdValue);
-              }
-            });
-            
-            sectionId = sectionIdValue || (formData.get('sectionId') as string) || '';
-            
-            if (!file) {
-              throw new Error('File not found in FormData');
-            }
-            
-            if (!sectionId) {
-              throw new Error('SectionId not found in FormData');
-            }
-            
-            console.log('[TRANSCRIBE] Streaming parser completed successfully');
-          } catch (streamError: any) {
-            console.error('[TRANSCRIBE] Error with streaming parser:', streamError);
-            // Удаляем временный файл при ошибке
-            if (tempFilePath) {
-              try {
-                await unlink(tempFilePath);
-              } catch (e) {
-                // Игнорируем ошибки удаления
-              }
-            }
-            throw streamError;
-          }
-        } else {
-          // Для маленьких файлов используем обычный formData
-          console.log('[TRANSCRIBE] Small file, using standard FormData...');
-          sendProgress(controller, 'Чтение файла с сервера...', 6);
-          
-          try {
-            const formData = await request.formData();
-            file = formData.get('file') as File;
-            sectionId = formData.get('sectionId') as string;
-            console.log('[TRANSCRIBE] FormData read successfully');
-          } catch (formDataError: any) {
-            console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
-            const error = JSON.stringify({ 
-              type: 'error', 
-              error: 'Ошибка при загрузке файла',
-              details: formDataError.message || String(formDataError),
-              code: formDataError.code
-            });
-            controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-            controller.close();
-            return;
-          }
+        console.log('[TRANSCRIBE] Using standard FormData for file upload...');
+        sendProgress(controller, 'Чтение файла с сервера...', 6);
+        
+        try {
+          const formData = await request.formData();
+          file = formData.get('file') as File;
+          sectionId = formData.get('sectionId') as string;
+          console.log('[TRANSCRIBE] FormData read successfully');
+        } catch (formDataError: any) {
+          console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
+          const error = JSON.stringify({ 
+            type: 'error', 
+            error: 'Ошибка при загрузке файла',
+            details: formDataError.message || String(formDataError),
+            code: formDataError.code
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+          controller.close();
+          return;
         }
         
         if (!file) {
