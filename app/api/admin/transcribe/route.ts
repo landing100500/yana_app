@@ -84,8 +84,8 @@ export async function POST(request: NextRequest) {
         console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
         
         const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
-        const fileSizeMB = contentLength / (1024 * 1024);
-        console.log('[TRANSCRIBE] File size:', fileSizeMB.toFixed(2), 'MB');
+        const uploadFileSizeMB = contentLength / (1024 * 1024);
+        console.log('[TRANSCRIBE] Upload file size:', uploadFileSizeMB.toFixed(2), 'MB');
         
         // Для больших файлов (>50MB) используем потоковое чтение через @mjackson/form-data-parser
         // Это позволяет сохранять файл на диск без загрузки всего в память
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         let sectionId: string = '';
         let tempFilePath: string | null = null;
         
-        if (fileSizeMB > 50) {
+        if (uploadFileSizeMB > 50) {
           console.log('[TRANSCRIBE] Large file detected, using streaming parser...');
           sendProgress(controller, 'Потоковая загрузка большого файла...', 6);
           

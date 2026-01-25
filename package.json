@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@mjackson/form-data-parser": "^1.0.0",
+    "@mjackson/form-data-parser": "^0.9.1",
     "@supabase/supabase-js": "^2.90.1",
     "@types/fluent-ffmpeg": "^2.1.28",
     "axios": "^1.6.2",
