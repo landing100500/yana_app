@@ -4,6 +4,12 @@ import { supabase } from '@/lib/supabase';
 import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
 import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
+import { parseFormData } from '@mjackson/form-data-parser';
+import { readFile, unlink } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { Readable } from 'stream';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
@@ -77,54 +83,125 @@ export async function POST(request: NextRequest) {
         console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
         console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
         
-        // Принудительно сбрасываем буфер логов
-        process.stdout.write('[TRANSCRIBE] About to read FormData...\n');
-        process.stderr.write('[TRANSCRIBE] About to read FormData (stderr)...\n');
+        const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+        const fileSizeMB = contentLength / (1024 * 1024);
+        console.log('[TRANSCRIBE] File size:', fileSizeMB.toFixed(2), 'MB');
         
-        let formData: FormData;
-        try {
+        // Для больших файлов (>50MB) используем потоковое чтение через @mjackson/form-data-parser
+        // Это позволяет сохранять файл на диск без загрузки всего в память
+        let file: File | null = null;
+        let sectionId: string = '';
+        let tempFilePath: string | null = null;
+        
+        if (fileSizeMB > 50) {
+          console.log('[TRANSCRIBE] Large file detected, using streaming parser...');
+          sendProgress(controller, 'Потоковая загрузка большого файла...', 6);
+          
+          try {
+            const tempDir = tmpdir();
+            const tempFile = join(tempDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+            tempFilePath = tempFile;
+            
+            let sectionIdValue = '';
+            let fileName = '';
+            let fileType = '';
+            
+            // Используем потоковый парсер для больших файлов
+            const formData = await parseFormData(request, async (fileUpload) => {
+              if (fileUpload.fieldName === 'file') {
+                fileName = fileUpload.filename || 'upload';
+                fileType = fileUpload.contentType || 'application/octet-stream';
+                console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType);
+                
+                // Сохраняем файл на диск потоково
+                const writeStream = createWriteStream(tempFile);
+                
+                try {
+                  // Потоково записываем файл на диск
+                  for await (const chunk of fileUpload.bytes) {
+                    const canContinue = writeStream.write(chunk);
+                    if (!canContinue) {
+                      // Если буфер полон, ждем drain
+                      await new Promise(resolve => writeStream.once('drain', resolve));
+                    }
+                  }
+                  writeStream.end();
+                  
+                  // Ждем завершения записи
+                  await new Promise((resolve, reject) => {
+                    writeStream.on('finish', resolve);
+                    writeStream.on('error', reject);
+                  });
+                  
+                  console.log('[TRANSCRIBE] File saved to disk:', tempFile);
+                  
+                  // Создаем File объект из сохраненного файла
+                  const fileBuffer = await readFile(tempFile);
+                  file = new File([fileBuffer], fileName, {
+                    type: fileType
+                  });
+                } catch (writeError) {
+                  writeStream.destroy();
+                  throw writeError;
+                }
+              } else if (fileUpload.fieldName === 'sectionId') {
+                // Читаем sectionId из текстового поля
+                const textDecoder = new TextDecoder();
+                let sectionIdText = '';
+                for await (const chunk of fileUpload.bytes) {
+                  sectionIdText += textDecoder.decode(chunk, { stream: true });
+                }
+                sectionIdValue = sectionIdText.trim();
+                console.log('[TRANSCRIBE] SectionId from stream:', sectionIdValue);
+              }
+            });
+            
+            sectionId = sectionIdValue || (formData.get('sectionId') as string) || '';
+            
+            if (!file) {
+              throw new Error('File not found in FormData');
+            }
+            
+            if (!sectionId) {
+              throw new Error('SectionId not found in FormData');
+            }
+            
+            console.log('[TRANSCRIBE] Streaming parser completed successfully');
+          } catch (streamError: any) {
+            console.error('[TRANSCRIBE] Error with streaming parser:', streamError);
+            // Удаляем временный файл при ошибке
+            if (tempFilePath) {
+              try {
+                await unlink(tempFilePath);
+              } catch (e) {
+                // Игнорируем ошибки удаления
+              }
+            }
+            throw streamError;
+          }
+        } else {
+          // Для маленьких файлов используем обычный formData
+          console.log('[TRANSCRIBE] Small file, using standard FormData...');
           sendProgress(controller, 'Чтение файла с сервера...', 6);
-          process.stdout.write('[TRANSCRIBE] Starting request.formData()...\n');
-          console.log('[TRANSCRIBE] File size from Content-Length:', request.headers.get('content-length'), 'bytes');
           
-          // Для больших файлов увеличиваем таймаут (30 минут для файлов до 250MB)
-          const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
-          const fileSizeMB = contentLength / (1024 * 1024);
-          const timeoutMs = fileSizeMB > 50 ? 30 * 60 * 1000 : 10 * 60 * 1000; // 30 минут для больших файлов
-          
-          console.log('[TRANSCRIBE] File size:', fileSizeMB.toFixed(2), 'MB, timeout:', timeoutMs / 1000, 'seconds');
-          
-          // Добавляем таймаут для чтения FormData
-          const formDataPromise = request.formData();
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => {
-              process.stderr.write(`[TRANSCRIBE] FormData read timeout after ${timeoutMs / 1000} seconds!\n`);
-              reject(new Error(`FormData read timeout after ${timeoutMs / 1000} seconds`));
-            }, timeoutMs);
-          });
-          
-          formData = await Promise.race([formDataPromise, timeoutPromise]);
-          process.stdout.write('[TRANSCRIBE] FormData read successfully\n');
-          console.log('[TRANSCRIBE] FormData read successfully');
-        } catch (formDataError: any) {
-          console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
-          console.error('[TRANSCRIBE] Error code:', formDataError.code);
-          console.error('[TRANSCRIBE] Error message:', formDataError.message);
-          console.error('[TRANSCRIBE] Error stack:', formDataError.stack);
-          
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: 'Ошибка при загрузке файла',
-            details: formDataError.message || String(formDataError),
-            code: formDataError.code
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
+          try {
+            const formData = await request.formData();
+            file = formData.get('file') as File;
+            sectionId = formData.get('sectionId') as string;
+            console.log('[TRANSCRIBE] FormData read successfully');
+          } catch (formDataError: any) {
+            console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
+            const error = JSON.stringify({ 
+              type: 'error', 
+              error: 'Ошибка при загрузке файла',
+              details: formDataError.message || String(formDataError),
+              code: formDataError.code
+            });
+            controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+            controller.close();
+            return;
+          }
         }
-
-        const file = formData.get('file') as File;
-        const sectionId = formData.get('sectionId') as string;
         
         console.log('[TRANSCRIBE] File received:', file ? {
           name: file.name,
@@ -718,6 +795,16 @@ export async function POST(request: NextRequest) {
         
         console.log(`Successfully processed and inserted ${processedCount} chunks into database`);
 
+        // Удаляем временный файл если был создан
+        if (tempFilePath) {
+          try {
+            await unlink(tempFilePath);
+            console.log('[TRANSCRIBE] Temporary file deleted:', tempFilePath);
+          } catch (unlinkError) {
+            console.warn('[TRANSCRIBE] Failed to delete temp file:', unlinkError);
+          }
+        }
+
         sendProgress(controller, 'Обновление статистики раздела...', 95);
 
         // Обновляем статистику раздела
@@ -758,6 +845,16 @@ export async function POST(request: NextRequest) {
         console.error('[TRANSCRIBE] Error code:', error.code);
         console.error('[TRANSCRIBE] Error message:', error.message);
         console.error('[TRANSCRIBE] Error stack:', error.stack);
+        
+        // Удаляем временный файл если был создан (даже при ошибке)
+        if (tempFilePath) {
+          try {
+            await unlink(tempFilePath);
+            console.log('[TRANSCRIBE] Temporary file deleted after error:', tempFilePath);
+          } catch (unlinkError) {
+            console.warn('[TRANSCRIBE] Failed to delete temp file after error:', unlinkError);
+          }
+        }
         
         // Проверяем, не разорвано ли соединение
         if (error.code === 'ECONNRESET' || error.message?.includes('aborted')) {
