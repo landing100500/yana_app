@@ -4,15 +4,10 @@ import { supabase } from '@/lib/supabase';
 import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
 import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
-import { readFile, unlink } from 'fs/promises';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
 export const runtime = 'nodejs';
-
-// Отключаем body parsing по умолчанию для больших файлов
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 async function checkAdminAuth() {
   const cookieStore = await cookies();
@@ -21,97 +16,27 @@ async function checkAdminAuth() {
 }
 
 function sendProgress(controller: ReadableStreamDefaultController, message: string, progress?: number) {
-  try {
-    const data = JSON.stringify({ type: 'progress', message, progress });
-    controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
-  } catch (error: any) {
-    // Игнорируем ошибки если контроллер уже закрыт
-    if (error.code !== 'ERR_INVALID_STATE') {
-      console.error('[TRANSCRIBE] Error sending progress:', error);
-    }
-  }
+  const data = JSON.stringify({ type: 'progress', message, progress });
+  controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
 }
 
 export async function POST(request: NextRequest) {
-  // Логируем ДО всего остального
-  console.log('='.repeat(80));
-  console.log('[TRANSCRIBE] ===== POST HANDLER CALLED =====');
-  console.log('[TRANSCRIBE] Timestamp:', new Date().toISOString());
-  console.log('[TRANSCRIBE] Request URL:', request.url);
-  console.log('[TRANSCRIBE] Request method:', request.method);
-  console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
-  console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
-  console.log('[TRANSCRIBE] All headers:', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
-  console.log('='.repeat(80));
-
   if (!(await checkAdminAuth())) {
-    console.log('[TRANSCRIBE] Auth check failed');
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  console.log('[TRANSCRIBE] Auth check passed');
-
   const stream = new ReadableStream({
     async start(controller) {
-      // Объявляем переменные в начале функции для доступа в catch блоке
-      let tempFilePath: string | null = null;
-      
       try {
-        console.log('[TRANSCRIBE] Starting transcription process...');
-        console.log('[TRANSCRIBE] Stream controller started');
         sendProgress(controller, 'Загрузка файла...', 5);
 
-        // Проверяем что request body доступен
-        if (!request.body) {
-          console.error('[TRANSCRIBE] Request body is null or undefined');
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: 'Тело запроса недоступно',
-            details: 'Request body is null'
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
-        }
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
+        const sectionId = formData.get('sectionId') as string;
 
-        console.log('[TRANSCRIBE] Reading FormData...');
-        console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
-        console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
-        
-        const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
-        const uploadFileSizeMB = contentLength / (1024 * 1024);
-        console.log('[TRANSCRIBE] Upload file size:', uploadFileSizeMB.toFixed(2), 'MB');
-        
-        // Используем стандартный formData для всех файлов
-        // Библиотека @mjackson/form-data-parser имеет жесткий лимит 2MB, который сложно обойти
-        // У нас уже настроена память Node.js (8GB) и Nginx, поэтому используем стандартный подход
-        let file: File | null = null;
-        let sectionId: string = '';
-        
-        console.log('[TRANSCRIBE] Using standard FormData for file upload...');
-        sendProgress(controller, 'Чтение файла с сервера...', 6);
-        
-        try {
-          const formData = await request.formData();
-          file = formData.get('file') as File;
-          sectionId = formData.get('sectionId') as string;
-          console.log('[TRANSCRIBE] FormData read successfully');
-        } catch (formDataError: any) {
-          console.error('[TRANSCRIBE] Error reading FormData:', formDataError);
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: 'Ошибка при загрузке файла',
-            details: formDataError.message || String(formDataError),
-            code: formDataError.code
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
-        }
-        
         if (!file) {
           const error = JSON.stringify({ type: 'error', error: 'Файл не загружен' });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
@@ -125,16 +50,6 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
-
-        // Сохраняем имя файла для использования в дальнейшем
-        // file уже проверен на null выше, поэтому используем non-null assertion
-        const fileName = file!.name;
-        
-        console.log('[TRANSCRIBE] File received:', {
-          name: fileName,
-          size: file.size,
-          type: file.type
-        });
 
         sendProgress(controller, 'Проверка раздела...', 10);
 
@@ -171,56 +86,10 @@ export async function POST(request: NextRequest) {
         sendProgress(controller, `Подготовка файла (${fileSizeMB.toFixed(2)}MB)...`, 18);
 
         // Конвертируем файл в нужный формат для Whisper API
-        console.log('[TRANSCRIBE] Converting file to buffer...');
-        console.log('[TRANSCRIBE] File details:', {
-          name: fileName,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        });
-        
-        let arrayBuffer: ArrayBuffer;
-        try {
-          // Для больших файлов используем stream чтение
-          sendProgress(controller, 'Чтение файла...', 19);
-          console.log('[TRANSCRIBE] Starting to read file arrayBuffer...');
-          
-          // Добавляем таймаут для чтения файла (5 минут)
-          const readTimeout = setTimeout(() => {
-            console.error('[TRANSCRIBE] Timeout reading file after 5 minutes');
-          }, 5 * 60 * 1000);
-          
-          arrayBuffer = await file.arrayBuffer();
-          clearTimeout(readTimeout);
-          
-          console.log('[TRANSCRIBE] File converted to ArrayBuffer, size:', arrayBuffer.byteLength, 'bytes');
-          console.log('[TRANSCRIBE] ArrayBuffer size in MB:', (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2));
-        } catch (bufferError: any) {
-          console.error('[TRANSCRIBE] Error converting file to buffer:', bufferError);
-          console.error('[TRANSCRIBE] Error code:', bufferError.code);
-          console.error('[TRANSCRIBE] Error message:', bufferError.message);
-          console.error('[TRANSCRIBE] Error stack:', bufferError.stack);
-          
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: 'Ошибка при чтении файла',
-            details: bufferError.message || String(bufferError),
-            code: bufferError.code
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
-        }
-        
-        console.log('[TRANSCRIBE] Creating Buffer from ArrayBuffer...');
+        const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        console.log('[TRANSCRIBE] Buffer created, size:', buffer.length, 'bytes');
-        
-        // Очищаем arrayBuffer из памяти
-        // @ts-ignore
-        arrayBuffer = null;
 
-        const fileExtension = fileName.split('.').pop()?.toLowerCase();
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
         let mimeType = file.type;
         
         // Если MIME тип не определен, определяем по расширению
@@ -238,25 +107,23 @@ export async function POST(request: NextRequest) {
         }
 
         // Проверяем, является ли файл видео
-        const isVideo = isVideoFile(mimeType, fileName);
+        const isVideo = isVideoFile(mimeType, file.name);
         let finalBuffer: Buffer = buffer;
         let finalMimeType = mimeType;
-        let finalFileName = fileName;
+        let finalFileName = file.name;
         let finalSizeMB = fileSizeMB;
 
         // Если это видео файл, извлекаем аудио
         if (isVideo) {
           sendProgress(controller, 'Извлечение аудио из видео...', 20);
-          console.log(`[TRANSCRIBE] Extracting audio from video file: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
+          console.log(`Extracting audio from video file: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB`);
           
           try {
             sendProgress(controller, 'Обработка видео файла...', 22);
-            console.log('[TRANSCRIBE] Starting audio extraction with FFmpeg...');
-            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, fileName);
-            console.log('[TRANSCRIBE] Audio extraction completed successfully');
+            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, file.name);
             finalBuffer = Buffer.from(audioBuffer);
             finalMimeType = 'audio/mpeg';
-            finalFileName = fileName.replace(/\.[^/.]+$/, '.mp3');
+            finalFileName = file.name.replace(/\.[^/.]+$/, '.mp3');
             finalSizeMB = audioSizeMB;
             
             console.log(`Audio extracted successfully: ${finalSizeMB.toFixed(2)}MB (from ${fileSizeMB.toFixed(2)}MB video)`);
@@ -541,39 +408,17 @@ export async function POST(request: NextRequest) {
             chunkIndex++;
             
             // Переходим к следующему чанку с учетом перекрытия
-            const newStart = actualEnd - OVERLAP;
-            start = newStart < 0 ? 0 : newStart;
-            
-            // Защита от зацикливания - если start не изменился или стал меньше, увеличиваем
-            if (start >= actualEnd - OVERLAP && start < actualEnd) {
-              start = actualEnd;
-            }
-            // Дополнительная защита - если start не продвинулся, принудительно увеличиваем
-            if (start <= end - OVERLAP && start < transcriptText.length) {
-              const prevStart = start;
-              start = Math.max(start + 1, end - OVERLAP);
-              if (start === prevStart) {
-                start = end; // Принудительно переходим к концу текущего чанка
-              }
+            start = actualEnd - OVERLAP;
+            if (start < 0) start = 0;
+            // Защита от зацикливания - если start не изменился, увеличиваем на 1
+            if (start === actualEnd - OVERLAP && actualEnd === end && start >= end - OVERLAP) {
+              start = end;
             }
           } else {
             // Слишком маленький или пустой чанк - переходим дальше
             start = actualEnd;
-            // Защита от зацикливания для маленьких чанков
-            if (start >= transcriptText.length) break;
-            // Если start не изменился, увеличиваем
-            if (start === actualEnd && actualEnd < transcriptText.length) {
-              start = actualEnd + 1;
-            }
           }
           
-          // Финальная проверка от зацикливания
-          if (start >= transcriptText.length) break;
-          // Если start не продвинулся после всех проверок, принудительно увеличиваем
-          const currentStart = start;
-          if (currentStart === end || currentStart === actualEnd) {
-            start = Math.min(currentStart + 1, transcriptText.length);
-          }
           if (start >= transcriptText.length) break;
           
           // Когда накопили батч, обрабатываем его
@@ -589,7 +434,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: fileName,
+                file_name: file.name,
                 created_at: new Date().toISOString(),
               },
               created_at: new Date().toISOString(),
@@ -638,7 +483,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: fileName,
+                file_name: file.name,
                 created_at: new Date().toISOString(),
               },
             created_at: new Date().toISOString(),
@@ -678,7 +523,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               chunk_index: batchIndices[batchIndex],
               total_chunks: chunkIndex,
-              file_name: fileName,
+              file_name: file.name,
               created_at: new Date().toISOString(),
             },
             created_at: new Date().toISOString(),
@@ -708,16 +553,6 @@ export async function POST(request: NextRequest) {
         
         console.log(`Successfully processed and inserted ${processedCount} chunks into database`);
 
-        // Удаляем временный файл если был создан
-        if (tempFilePath) {
-          try {
-            await unlink(tempFilePath);
-            console.log('[TRANSCRIBE] Temporary file deleted:', tempFilePath);
-          } catch (unlinkError) {
-            console.warn('[TRANSCRIBE] Failed to delete temp file:', unlinkError);
-          }
-        }
-
         sendProgress(controller, 'Обновление статистики раздела...', 95);
 
         // Обновляем статистику раздела
@@ -741,57 +576,18 @@ export async function POST(request: NextRequest) {
           chunksCount: processedCount,
           message: `Успешно обработано! Создано ${processedCount} чанков с эмбеддингами.`,
         });
-        try {
-          controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
-          controller.close();
-        } catch (error: any) {
-          // Если контроллер уже закрыт, просто логируем
-          if (error.code === 'ERR_INVALID_STATE') {
-            console.log('[TRANSCRIBE] Controller already closed, skipping final message');
-          } else {
-            console.error('[TRANSCRIBE] Error sending final message:', error);
-            throw error;
-          }
-        }
+        controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
+        controller.close();
       } catch (error: any) {
-        console.error('[TRANSCRIBE] Transcription error:', error);
-        console.error('[TRANSCRIBE] Error code:', error.code);
-        console.error('[TRANSCRIBE] Error message:', error.message);
-        console.error('[TRANSCRIBE] Error stack:', error.stack);
-        
-        // Удаляем временный файл если был создан (даже при ошибке)
-        if (tempFilePath) {
-          try {
-            await unlink(tempFilePath);
-            console.log('[TRANSCRIBE] Temporary file deleted after error:', tempFilePath);
-          } catch (unlinkError) {
-            console.warn('[TRANSCRIBE] Failed to delete temp file after error:', unlinkError);
-          }
-        }
-        
-        // Проверяем, не разорвано ли соединение
-        if (error.code === 'ECONNRESET' || error.message?.includes('aborted')) {
-          console.error('[TRANSCRIBE] Connection was aborted/reset. This usually means:');
-          console.error('[TRANSCRIBE] 1. Client disconnected (browser timeout)');
-          console.error('[TRANSCRIBE] 2. Nginx timeout');
-          console.error('[TRANSCRIBE] 3. Network issue');
-        }
+        console.error('Transcription error:', error);
+        console.error('Error stack:', error.stack);
         const errorMsg = JSON.stringify({
           type: 'error',
           error: error.message || 'Ошибка при транскрибации',
           details: error.stack || String(error),
         });
-        try {
-          controller.enqueue(new TextEncoder().encode(`data: ${errorMsg}\n\n`));
-          controller.close();
-        } catch (closeError: any) {
-          // Если контроллер уже закрыт, просто логируем
-          if (closeError.code === 'ERR_INVALID_STATE') {
-            console.log('[TRANSCRIBE] Controller already closed, skipping error message');
-          } else {
-            console.error('[TRANSCRIBE] Error sending error message:', closeError);
-          }
-        }
+        controller.enqueue(new TextEncoder().encode(`data: ${errorMsg}\n\n`));
+        controller.close();
       }
     },
   });
