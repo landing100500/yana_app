@@ -113,11 +113,15 @@ export async function POST(request: NextRequest) {
                 console.log('[TRANSCRIBE] Streaming file to disk:', fileName, 'type:', fileType, 'size:', fileUpload.size);
                 
                 try {
-                  // fileUpload.bytes - это ReadableStream, записываем напрямую на диск
-                  // Библиотека обрабатывает потоково, не загружая весь файл в память
-                  await writeFile(tempFile, fileUpload.bytes);
+                  // fileUpload.bytes - это функция, которая возвращает Promise<Uint8Array>
+                  // Библиотека обрабатывает файл потоково внутри себя, но bytes() возвращает весь файл
+                  // Для больших файлов это все еще может быть проблемой, но лучше чем request.formData()
+                  const bytes = await fileUpload.bytes();
                   
-                  console.log('[TRANSCRIBE] File saved to disk:', tempFile);
+                  // Записываем на диск
+                  await writeFile(tempFile, bytes);
+                  
+                  console.log('[TRANSCRIBE] File saved to disk:', tempFile, 'size:', bytes.length);
                   
                   // Создаем File объект из сохраненного файла
                   const fileBuffer = await readFile(tempFile);
@@ -129,22 +133,9 @@ export async function POST(request: NextRequest) {
                 }
               } else if (fileUpload.fieldName === 'sectionId') {
                 // Читаем sectionId из текстового поля
-                // fileUpload.bytes - это ReadableStream, читаем как текст
-                const reader = fileUpload.bytes.getReader();
                 const textDecoder = new TextDecoder();
-                let sectionIdText = '';
-                
-                try {
-                  while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    sectionIdText += textDecoder.decode(value, { stream: true });
-                  }
-                } finally {
-                  reader.releaseLock();
-                }
-                
-                sectionIdValue = sectionIdText.trim();
+                const bytes = await fileUpload.bytes();
+                sectionIdValue = textDecoder.decode(bytes).trim();
                 console.log('[TRANSCRIBE] SectionId from stream:', sectionIdValue);
               }
             });
