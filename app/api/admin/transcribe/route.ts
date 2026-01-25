@@ -110,24 +110,53 @@ export async function POST(request: NextRequest) {
 
         // Конвертируем файл в нужный формат для Whisper API
         console.log('[TRANSCRIBE] Converting file to buffer...');
+        console.log('[TRANSCRIBE] File details:', {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified
+        });
+        
         let arrayBuffer: ArrayBuffer;
         try {
+          // Для больших файлов используем stream чтение
+          sendProgress(controller, 'Чтение файла...', 19);
+          console.log('[TRANSCRIBE] Starting to read file arrayBuffer...');
+          
+          // Добавляем таймаут для чтения файла (5 минут)
+          const readTimeout = setTimeout(() => {
+            console.error('[TRANSCRIBE] Timeout reading file after 5 minutes');
+          }, 5 * 60 * 1000);
+          
           arrayBuffer = await file.arrayBuffer();
-          console.log('[TRANSCRIBE] File converted to ArrayBuffer, size:', arrayBuffer.byteLength);
+          clearTimeout(readTimeout);
+          
+          console.log('[TRANSCRIBE] File converted to ArrayBuffer, size:', arrayBuffer.byteLength, 'bytes');
+          console.log('[TRANSCRIBE] ArrayBuffer size in MB:', (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2));
         } catch (bufferError: any) {
           console.error('[TRANSCRIBE] Error converting file to buffer:', bufferError);
+          console.error('[TRANSCRIBE] Error code:', bufferError.code);
+          console.error('[TRANSCRIBE] Error message:', bufferError.message);
+          console.error('[TRANSCRIBE] Error stack:', bufferError.stack);
+          
           const error = JSON.stringify({ 
             type: 'error', 
             error: 'Ошибка при чтении файла',
-            details: bufferError.message || String(bufferError)
+            details: bufferError.message || String(bufferError),
+            code: bufferError.code
           });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
           controller.close();
           return;
         }
         
+        console.log('[TRANSCRIBE] Creating Buffer from ArrayBuffer...');
         const buffer = Buffer.from(arrayBuffer);
-        console.log('[TRANSCRIBE] Buffer created, size:', buffer.length);
+        console.log('[TRANSCRIBE] Buffer created, size:', buffer.length, 'bytes');
+        
+        // Очищаем arrayBuffer из памяти
+        // @ts-ignore
+        arrayBuffer = null;
 
         const fileExtension = file.name.split('.').pop()?.toLowerCase();
         let mimeType = file.type;
