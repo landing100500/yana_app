@@ -9,6 +9,10 @@ import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
 export const runtime = 'nodejs';
 
+// Отключаем body parsing по умолчанию для больших файлов
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function checkAdminAuth() {
   const cookieStore = await cookies();
   const adminAuth = cookieStore.get('admin_auth');
@@ -21,17 +25,26 @@ function sendProgress(controller: ReadableStreamDefaultController, message: stri
 }
 
 export async function POST(request: NextRequest) {
+  // Логируем ДО всего остального
+  console.log('='.repeat(80));
+  console.log('[TRANSCRIBE] ===== POST HANDLER CALLED =====');
+  console.log('[TRANSCRIBE] Timestamp:', new Date().toISOString());
+  console.log('[TRANSCRIBE] Request URL:', request.url);
+  console.log('[TRANSCRIBE] Request method:', request.method);
+  console.log('[TRANSCRIBE] Content-Type:', request.headers.get('content-type'));
+  console.log('[TRANSCRIBE] Content-Length:', request.headers.get('content-length'));
+  console.log('[TRANSCRIBE] All headers:', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
+  console.log('='.repeat(80));
+
   if (!(await checkAdminAuth())) {
+    console.log('[TRANSCRIBE] Auth check failed');
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  // Проверяем что request не закрыт
-  console.log('[TRANSCRIBE] POST request received');
-  console.log('[TRANSCRIBE] Request method:', request.method);
-  console.log('[TRANSCRIBE] Request headers:', Object.fromEntries(request.headers.entries()));
+  console.log('[TRANSCRIBE] Auth check passed');
 
   const stream = new ReadableStream({
     async start(controller) {
