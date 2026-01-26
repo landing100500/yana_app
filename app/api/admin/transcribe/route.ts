@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
           const writeStream = createWriteStream(tempFile);
           
           await new Promise<void>((resolve, reject) => {
+            console.log('[TRANSCRIBE] Creating busboy parser...');
             const bb = busboy({ 
               headers: Object.fromEntries(request.headers.entries()),
               limits: {
@@ -72,7 +73,11 @@ export async function POST(request: NextRequest) {
               }
             });
             
+            let fileStarted = false;
+            
             bb.on('file', (name, stream, info) => {
+              console.log(`[TRANSCRIBE] File event received: ${name}`);
+              fileStarted = true;
               if (name === 'file') {
                 fileName = info.filename || 'upload';
                 fileType = info.mimeType || 'application/octet-stream';
@@ -129,12 +134,14 @@ export async function POST(request: NextRequest) {
             });
             
             bb.on('field', (name, value) => {
+              console.log(`[TRANSCRIBE] Field event received: ${name} = ${value}`);
               if (name === 'sectionId') {
                 sectionIdValue = value;
               }
             });
             
             bb.on('finish', async () => {
+              console.log('[TRANSCRIBE] Busboy finish event received');
               await new Promise<void>((resolve, reject) => {
                 writeStream.on('finish', () => resolve());
                 writeStream.on('error', reject);
@@ -160,15 +167,50 @@ export async function POST(request: NextRequest) {
             });
             
             bb.on('error', (err) => {
+              console.error('[TRANSCRIBE] Busboy error:', err);
               writeStream.destroy();
               reject(err);
             });
             
             // Пайпим request body в busboy
+            console.log('[TRANSCRIBE] Starting to pipe request body to busboy...');
             if (request.body) {
-              const nodeStream = Readable.fromWeb(request.body as any);
-              nodeStream.pipe(bb);
+              try {
+                // В Next.js request.body - это ReadableStream, преобразуем в Node.js stream
+                const reader = (request.body as ReadableStream).getReader();
+                console.log('[TRANSCRIBE] Got reader from request.body');
+                
+                // Читаем поток и пишем в busboy
+                const pump = async () => {
+                  try {
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) {
+                        console.log('[TRANSCRIBE] Request body stream ended');
+                        bb.end();
+                        break;
+                      }
+                      if (value) {
+                        bb.write(value);
+                        if (!fileStarted) {
+                          console.log('[TRANSCRIBE] Writing data to busboy, chunk size:', value.length);
+                        }
+                      }
+                    }
+                  } catch (readError: any) {
+                    console.error('[TRANSCRIBE] Error reading from stream:', readError);
+                    reader.releaseLock();
+                    reject(readError);
+                  }
+                };
+                
+                pump().catch(reject);
+              } catch (streamError: any) {
+                console.error('[TRANSCRIBE] Error setting up stream:', streamError);
+                reject(streamError);
+              }
             } else {
+              console.error('[TRANSCRIBE] Request body is null');
               reject(new Error('Request body is null'));
             }
           });
