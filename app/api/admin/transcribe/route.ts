@@ -78,19 +78,50 @@ export async function POST(request: NextRequest) {
                 fileType = info.mimeType || 'application/octet-stream';
                 console.log(`[TRANSCRIBE] Streaming file to disk: ${fileName}, type: ${fileType}`);
                 
+                let bytesReceived = 0;
+                const totalSize = contentLength;
+                let lastProgressUpdate = Date.now();
+                
+                // Heartbeat каждые 10 секунд во время загрузки
+                const heartbeatInterval = setInterval(() => {
+                  const progress = totalSize > 0 ? Math.min(95, Math.round((bytesReceived / totalSize) * 90)) : undefined;
+                  const message = `Загрузка файла... ${(bytesReceived / (1024 * 1024)).toFixed(2)}MB из ${uploadFileSizeMB.toFixed(2)}MB`;
+                  try {
+                    sendProgress(controller, message, progress);
+                  } catch (e) {
+                    // Игнорируем ошибки если контроллер закрыт
+                  }
+                }, 10000); // Каждые 10 секунд
+                
                 stream.on('data', (chunk) => {
+                  bytesReceived += chunk.length;
                   const canContinue = writeStream.write(chunk);
                   if (!canContinue) {
                     stream.pause();
                     writeStream.once('drain', () => stream.resume());
                   }
+                  
+                  // Обновляем прогресс каждые 5MB или каждые 5 секунд
+                  const now = Date.now();
+                  if (now - lastProgressUpdate > 5000 || bytesReceived % (5 * 1024 * 1024) < chunk.length) {
+                    const progress = totalSize > 0 ? Math.min(95, Math.round((bytesReceived / totalSize) * 90)) : undefined;
+                    const message = `Загрузка файла... ${(bytesReceived / (1024 * 1024)).toFixed(2)}MB из ${uploadFileSizeMB.toFixed(2)}MB`;
+                    try {
+                      sendProgress(controller, message, progress);
+                    } catch (e) {
+                      // Игнорируем ошибки
+                    }
+                    lastProgressUpdate = now;
+                  }
                 });
                 
                 stream.on('end', () => {
+                  clearInterval(heartbeatInterval);
                   writeStream.end();
                 });
                 
                 stream.on('error', (err) => {
+                  clearInterval(heartbeatInterval);
                   writeStream.destroy();
                   reject(err);
                 });
