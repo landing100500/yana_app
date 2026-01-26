@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        const fileExtension = fileName.split('.').pop()?.toLowerCase();
         let mimeType = file.type;
         
         // Если MIME тип не определен, определяем по расширению
@@ -222,23 +222,23 @@ export async function POST(request: NextRequest) {
         }
 
         // Проверяем, является ли файл видео
-        const isVideo = isVideoFile(mimeType, file.name);
+        const isVideo = isVideoFile(mimeType, fileName);
         let finalBuffer: Buffer = buffer;
         let finalMimeType = mimeType;
-        let finalFileName = file.name;
+        let finalFileName = fileName;
         let finalSizeMB = fileSizeMB;
 
         // Если это видео файл, извлекаем аудио
         if (isVideo) {
           sendProgress(controller, 'Извлечение аудио из видео...', 20);
-          console.log(`Extracting audio from video file: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB`);
+          console.log(`Extracting audio from video file: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
           
           try {
             sendProgress(controller, 'Обработка видео файла...', 22);
-            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, file.name);
+            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, fileName);
             finalBuffer = Buffer.from(audioBuffer);
             finalMimeType = 'audio/mpeg';
-            finalFileName = file.name.replace(/\.[^/.]+$/, '.mp3');
+            finalFileName = fileName.replace(/\.[^/.]+$/, '.mp3');
             finalSizeMB = audioSizeMB;
             
             console.log(`Audio extracted successfully: ${finalSizeMB.toFixed(2)}MB (from ${fileSizeMB.toFixed(2)}MB video)`);
@@ -638,7 +638,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               chunk_index: batchIndices[batchIndex],
               total_chunks: chunkIndex,
-              file_name: file.name,
+              file_name: fileName,
               created_at: new Date().toISOString(),
             },
             created_at: new Date().toISOString(),
