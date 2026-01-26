@@ -163,6 +163,9 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // Сохраняем имя файла для использования в дальнейшем
+        const fileName = file.name;
+
         sendProgress(controller, 'Проверка раздела...', 10);
 
         // Проверяем, что раздел существует
@@ -546,7 +549,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: file.name,
+                file_name: fileName,
                 created_at: new Date().toISOString(),
               },
               created_at: new Date().toISOString(),
@@ -595,7 +598,7 @@ export async function POST(request: NextRequest) {
               metadata: {
                 chunk_index: batchIndices[batchIndex],
                 total_chunks: chunkIndex, // Используем реальное количество чанков
-                file_name: file.name,
+                file_name: fileName,
                 created_at: new Date().toISOString(),
               },
             created_at: new Date().toISOString(),
