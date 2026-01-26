@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
             });
             
             bb.on('finish', async () => {
-              await new Promise((resolve, reject) => {
-                writeStream.on('finish', resolve);
+              await new Promise<void>((resolve, reject) => {
+                writeStream.on('finish', () => resolve());
                 writeStream.on('error', reject);
               });
               
