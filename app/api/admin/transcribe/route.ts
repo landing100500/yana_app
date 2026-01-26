@@ -9,6 +9,7 @@ import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import busboy from 'busboy';
+import { Readable } from 'stream';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
         // Проверяем размер файла из заголовков
         const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
         const uploadFileSizeMB = contentLength / (1024 * 1024);
-        const LARGE_FILE_THRESHOLD_MB = 50; // Для файлов >50MB используем потоковую обработку
+        const LARGE_FILE_THRESHOLD_MB = 10; // Для файлов >10MB используем потоковую обработку
         
         let file: File | null = null;
         let sectionId: string = '';
@@ -134,7 +135,6 @@ export async function POST(request: NextRequest) {
             
             // Пайпим request body в busboy
             if (request.body) {
-              const { Readable } = await import('stream');
               const nodeStream = Readable.fromWeb(request.body as any);
               nodeStream.pipe(bb);
             } else {
