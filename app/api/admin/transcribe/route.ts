@@ -4,6 +4,11 @@ import { supabase } from '@/lib/supabase';
 import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
 import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
+import { readFile, unlink } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import busboy from 'busboy';
 
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
@@ -30,12 +35,119 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let tempFilePath: string | null = null;
+      
       try {
         sendProgress(controller, 'Загрузка файла...', 5);
 
-        const formData = await request.formData();
-        const file = formData.get('file') as File;
-        const sectionId = formData.get('sectionId') as string;
+        // Проверяем размер файла из заголовков
+        const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+        const uploadFileSizeMB = contentLength / (1024 * 1024);
+        const LARGE_FILE_THRESHOLD_MB = 50; // Для файлов >50MB используем потоковую обработку
+        
+        let file: File | null = null;
+        let sectionId: string = '';
+
+        // Для больших файлов используем busboy (потоковая обработка)
+        // Для маленьких - стандартный formData (как раньше)
+        if (uploadFileSizeMB > LARGE_FILE_THRESHOLD_MB) {
+          console.log(`[TRANSCRIBE] Large file detected (${uploadFileSizeMB.toFixed(2)}MB), using streaming parser...`);
+          sendProgress(controller, 'Потоковая загрузка большого файла...', 6);
+          
+          const tempDir = tmpdir();
+          const tempFile = join(tempDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+          tempFilePath = tempFile;
+          
+          let fileName = '';
+          let fileType = '';
+          let sectionIdValue = '';
+          const writeStream = createWriteStream(tempFile);
+          
+          await new Promise<void>((resolve, reject) => {
+            const bb = busboy({ 
+              headers: Object.fromEntries(request.headers.entries()),
+              limits: {
+                fileSize: 500 * 1024 * 1024 // 500MB лимит
+              }
+            });
+            
+            bb.on('file', (name, stream, info) => {
+              if (name === 'file') {
+                fileName = info.filename || 'upload';
+                fileType = info.mimeType || 'application/octet-stream';
+                console.log(`[TRANSCRIBE] Streaming file to disk: ${fileName}, type: ${fileType}`);
+                
+                stream.on('data', (chunk) => {
+                  const canContinue = writeStream.write(chunk);
+                  if (!canContinue) {
+                    stream.pause();
+                    writeStream.once('drain', () => stream.resume());
+                  }
+                });
+                
+                stream.on('end', () => {
+                  writeStream.end();
+                });
+                
+                stream.on('error', (err) => {
+                  writeStream.destroy();
+                  reject(err);
+                });
+              }
+            });
+            
+            bb.on('field', (name, value) => {
+              if (name === 'sectionId') {
+                sectionIdValue = value;
+              }
+            });
+            
+            bb.on('finish', async () => {
+              await new Promise((resolve, reject) => {
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+              });
+              
+              // Читаем файл с диска и создаем File объект
+              const fileBuffer = await readFile(tempFile);
+              file = new File([fileBuffer], fileName, { type: fileType });
+              sectionId = sectionIdValue;
+              
+              console.log(`[TRANSCRIBE] File saved to disk: ${tempFile}, size: ${fileBuffer.length}`);
+              
+              // Удаляем временный файл после чтения
+              try {
+                await unlink(tempFile);
+                tempFilePath = null; // Уже удален
+                console.log(`[TRANSCRIBE] Temporary file deleted: ${tempFile}`);
+              } catch (e) {
+                console.warn(`[TRANSCRIBE] Failed to delete temp file: ${e}`);
+              }
+              
+              resolve();
+            });
+            
+            bb.on('error', (err) => {
+              writeStream.destroy();
+              reject(err);
+            });
+            
+            // Пайпим request body в busboy
+            if (request.body) {
+              const { Readable } = await import('stream');
+              const nodeStream = Readable.fromWeb(request.body as any);
+              nodeStream.pipe(bb);
+            } else {
+              reject(new Error('Request body is null'));
+            }
+          });
+        } else {
+          // Для маленьких файлов используем стандартный formData (как раньше)
+          console.log(`[TRANSCRIBE] Small file (${uploadFileSizeMB.toFixed(2)}MB), using standard FormData...`);
+          const formData = await request.formData();
+          file = formData.get('file') as File;
+          sectionId = formData.get('sectionId') as string;
+        }
 
         if (!file) {
           const error = JSON.stringify({ type: 'error', error: 'Файл не загружен' });
@@ -581,6 +693,17 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         console.error('Transcription error:', error);
         console.error('Error stack:', error.stack);
+        
+        // Удаляем временный файл при ошибке
+        if (tempFilePath) {
+          try {
+            await unlink(tempFilePath);
+            console.log(`[TRANSCRIBE] Temporary file deleted after error: ${tempFilePath}`);
+          } catch (unlinkError) {
+            console.warn(`[TRANSCRIBE] Failed to delete temp file after error: ${unlinkError}`);
+          }
+        }
+        
         const errorMsg = JSON.stringify({
           type: 'error',
           error: error.message || 'Ошибка при транскрибации',
