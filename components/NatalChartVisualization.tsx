@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import styles from './NatalChartVisualization.module.css';
+import VedicChartCanvas from './VedicChartCanvas';
 
 interface NavamshaData {
   sun?: { longitude: number; sign: number; signName: string; degree: number };
@@ -78,20 +79,41 @@ const SIGN_NAMES = [
   'Мина'       // Рыбы (Pisces)
 ];
 
+const SIGN_ABBREVIATIONS = [
+  'Ar', 'Ta', 'Ge', 'Cn', 'Le', 'Vi', 'Li', 'Sc', 'Sg', 'Cp', 'Aq', 'Pi'
+];
+
+const PLANET_ABBREVIATIONS: Record<string, string> = {
+  sun: 'Su',
+  moon: 'Mo',
+  mercury: 'Me',
+  venus: 'Ve',
+  mars: 'Ma',
+  jupiter: 'Ju',
+  saturn: 'Sa',
+  uranus: 'Ur',
+  neptune: 'Ne',
+  pluto: 'Pl',
+  northNode: 'Ra',
+  southNode: 'Ke',
+  ascendant: 'As',
+  midheaven: 'MC'
+};
+
 const PLANET_NAMES: Record<string, string> = {
-  sun: 'Сурья',
-  moon: 'Чандра',
-  mercury: 'Будха',
-  venus: 'Шукра',
-  mars: 'Мангала',
-  jupiter: 'Гуру',
-  saturn: 'Шани',
+  sun: 'Солнце',
+  moon: 'Луна',
+  mercury: 'Меркурий',
+  venus: 'Венера',
+  mars: 'Марс',
+  jupiter: 'Юпитер',
+  saturn: 'Сатурн',
   uranus: 'Уран',
   neptune: 'Нептун',
   pluto: 'Плутон',
   northNode: 'Раху',
   southNode: 'Кету',
-  ascendant: 'Лагна',
+  ascendant: 'Асцендент',
   midheaven: 'MC'
 };
 
@@ -109,20 +131,70 @@ function longitudeToSign(longitude: number): { sign: number; degree: number; sig
   };
 }
 
-function angleToRadians(angle: number): number {
-  return ((angle - 90) * Math.PI) / 180;
+// Определение накшатры
+function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string } {
+  let normalized = longitude % 360;
+  if (normalized < 0) normalized += 360;
+  
+  const nakshatraIndex = Math.floor(normalized / (360 / 27));
+  const degreeInNakshatra = normalized % (360 / 27);
+  const pada = Math.floor(degreeInNakshatra / (360 / 27 / 4)) + 1;
+  
+  const nakshatraNames = [
+    'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
+    'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
+    'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
+    'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
+    'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
+  ];
+  
+  return {
+    nakshatra: nakshatraIndex % 27,
+    pada: pada > 4 ? 4 : pada,
+    name: nakshatraNames[nakshatraIndex % 27]
+  };
 }
 
-type VisualizationType = 'circle' | 'square' | 'list' | 'diamond';
+// Форматирование градусов
+function formatDegrees(longitude: number): string {
+  const degrees = Math.floor(longitude);
+  const minutesFloat = (longitude - degrees) * 60;
+  const minutes = Math.floor(minutesFloat);
+  const seconds = Math.round((minutesFloat - minutes) * 60);
+  return `${degrees}°${String(minutes).padStart(2, '0')}'${String(seconds).padStart(2, '0')}"`;
+}
+
+// Форматирование градусов для отображения в карте
+function formatDegreesShort(longitude: number): string {
+  const signData = longitudeToSign(longitude);
+  return `${Math.floor(signData.degree)}°`;
+}
+
+// Определение дома для планеты
+function getPlanetHouse(planetLongitude: number, houses: number[], ascendant: number): number {
+  let planetNorm = planetLongitude % 360;
+  if (planetNorm < 0) planetNorm += 360;
+  
+  let ascNorm = ascendant % 360;
+  if (ascNorm < 0) ascNorm += 360;
+  
+  // Находим разницу между планетой и асцендентом
+  let diff = (planetNorm - ascNorm + 360) % 360;
+  
+  // Определяем дом (каждый дом = 30 градусов)
+  let houseNum = Math.floor(diff / 30) + 1;
+  if (houseNum > 12) houseNum = houseNum - 12;
+  if (houseNum < 1) houseNum = 1;
+  
+  return houseNum;
+}
+
+type TabType = 'general' | 'other' | 'yogas' | 'bala' | 'bhava-chalita' | 'periods' | 'tajaka' | 'rectification';
 
 export default function NatalChartVisualization({ chart }: Props) {
-  const [visualizationType, setVisualizationType] = useState<VisualizationType>('circle');
-  
-  const centerX = 400;
-  const centerY = 400;
-  const radius = 350;
-  const innerRadius = 250;
-  const houseRadius = 220;
+  const [activeTab, setActiveTab] = useState<TabType>('general');
+  const [selectedHouse, setSelectedHouse] = useState<number | null>(null);
+  const [selectedChartType, setSelectedChartType] = useState<'D1' | 'D9'>('D1');
 
   const planets = useMemo(() => {
     return [
@@ -140,12 +212,22 @@ export default function NatalChartVisualization({ chart }: Props) {
       { name: 'southNode', longitude: chart.southNode },
     ].map(planet => {
       const signData = longitudeToSign(planet.longitude);
+      const nakshatraData = longitudeToNakshatra(planet.longitude);
+      const houses = [
+        chart.house1, chart.house2, chart.house3, chart.house4,
+        chart.house5, chart.house6, chart.house7, chart.house8,
+        chart.house9, chart.house10, chart.house11, chart.house12
+      ];
+      const house = getPlanetHouse(planet.longitude, houses, chart.ascendant);
+      
       return {
         ...planet,
         ...signData,
-        angle: planet.longitude,
-        x: centerX + radius * Math.cos(angleToRadians(planet.longitude)),
-        y: centerY + radius * Math.sin(angleToRadians(planet.longitude)),
+        nakshatraName: nakshatraData.name,
+        nakshatraPada: nakshatraData.pada,
+        house,
+        formattedDegrees: formatDegrees(planet.longitude),
+        formattedDegreesShort: formatDegreesShort(planet.longitude)
       };
     });
   }, [chart]);
@@ -169,517 +251,233 @@ export default function NatalChartVisualization({ chart }: Props) {
       return {
         ...house,
         ...signData,
-        angle: house.longitude,
-        x: centerX + houseRadius * Math.cos(angleToRadians(house.longitude)),
-        y: centerY + houseRadius * Math.sin(angleToRadians(house.longitude)),
+        signAbbr: SIGN_ABBREVIATIONS[signData.sign]
       };
     });
   }, [chart]);
 
-  const ascendantData = useMemo(() => {
-    const signData = longitudeToSign(chart.ascendant);
-    return {
-      ...signData,
-      angle: chart.ascendant,
-      x: centerX + innerRadius * Math.cos(angleToRadians(chart.ascendant)),
-      y: centerY + innerRadius * Math.sin(angleToRadians(chart.ascendant)),
-    };
-  }, [chart.ascendant]);
+  // Получаем планеты в каждом доме для D1
+  const getPlanetsInHouse = (houseNum: number) => {
+    return planets.filter(p => p.house === houseNum);
+  };
 
-  const midheavenData = useMemo(() => {
-    const signData = longitudeToSign(chart.midheaven);
-    return {
-      ...signData,
-      angle: chart.midheaven,
-      x: centerX + innerRadius * Math.cos(angleToRadians(chart.midheaven)),
-      y: centerY + innerRadius * Math.sin(angleToRadians(chart.midheaven)),
-    };
-  }, [chart.midheaven]);
+  // Получаем планеты в каждом доме для D9 (Навамша)
+  const getNavamshaPlanetsInHouse = (houseNum: number) => {
+    if (!chart.navamsha) return [];
+    
+    const navamshaPlanets: Array<{ name: string; signName: string; longitude: number; degree: number }> = [];
+    
+    if (chart.navamsha.sun) {
+      const signData = longitudeToSign(chart.navamsha.sun.longitude);
+      navamshaPlanets.push({ name: 'Su', signName: chart.navamsha.sun.signName, longitude: chart.navamsha.sun.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.moon) {
+      const signData = longitudeToSign(chart.navamsha.moon.longitude);
+      navamshaPlanets.push({ name: 'Mo', signName: chart.navamsha.moon.signName, longitude: chart.navamsha.moon.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.mercury) {
+      const signData = longitudeToSign(chart.navamsha.mercury.longitude);
+      navamshaPlanets.push({ name: 'Me', signName: chart.navamsha.mercury.signName, longitude: chart.navamsha.mercury.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.venus) {
+      const signData = longitudeToSign(chart.navamsha.venus.longitude);
+      navamshaPlanets.push({ name: 'Ve', signName: chart.navamsha.venus.signName, longitude: chart.navamsha.venus.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.mars) {
+      const signData = longitudeToSign(chart.navamsha.mars.longitude);
+      navamshaPlanets.push({ name: 'Ma', signName: chart.navamsha.mars.signName, longitude: chart.navamsha.mars.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.jupiter) {
+      const signData = longitudeToSign(chart.navamsha.jupiter.longitude);
+      navamshaPlanets.push({ name: 'Ju', signName: chart.navamsha.jupiter.signName, longitude: chart.navamsha.jupiter.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.saturn) {
+      const signData = longitudeToSign(chart.navamsha.saturn.longitude);
+      navamshaPlanets.push({ name: 'Sa', signName: chart.navamsha.saturn.signName, longitude: chart.navamsha.saturn.longitude, degree: signData.degree });
+    }
+    if (chart.navamsha.ascendant) {
+      const signData = longitudeToSign(chart.navamsha.ascendant.longitude);
+      navamshaPlanets.push({ name: 'As', signName: chart.navamsha.ascendant.signName, longitude: chart.navamsha.ascendant.longitude, degree: signData.degree });
+    }
+    
+    // Определяем дом для каждой планеты в навамше
+    const navamshaAscendant = chart.navamsha.ascendant?.longitude || 0;
+    return navamshaPlanets.filter(planet => {
+      const planetHouse = getPlanetHouse(planet.longitude, houses.map(h => h.longitude), navamshaAscendant);
+      return planetHouse === houseNum;
+    });
+  };
 
-  // Переключатель вариантов визуализации
-  const visualizationOptions = [
-    { value: 'circle' as VisualizationType, label: 'Круг' },
-    { value: 'square' as VisualizationType, label: 'Квадрат' },
-    { value: 'diamond' as VisualizationType, label: 'Ромб' },
-    { value: 'list' as VisualizationType, label: 'Список' },
+  // Преобразование данных для VedicChart
+  const getPlanetsInHousesForVedicChart = (chartType: 'D1' | 'D9'): string[][] => {
+    const result: string[][] = [[], [], [], [], [], [], [], [], [], [], [], []];
+    
+    for (let houseNum = 1; houseNum <= 12; houseNum++) {
+      const planetsInHouse = chartType === 'D9'
+        ? getNavamshaPlanetsInHouse(houseNum)
+        : getPlanetsInHouse(houseNum);
+      
+      // Добавляем знак зодиака в начало списка планет
+      const house = houses.find(h => h.num === houseNum);
+      if (house && chartType === 'D1') {
+        result[houseNum - 1].push(house.signAbbr);
+      }
+      
+      // Добавляем планеты
+      planetsInHouse.forEach(planet => {
+        if (chartType === 'D9') {
+          result[houseNum - 1].push(planet.name);
+        } else {
+          const planetAbbr = PLANET_ABBREVIATIONS[planet.name] || planet.name;
+          const degree = planet.formattedDegreesShort;
+          result[houseNum - 1].push(`${planetAbbr} ${degree}`);
+        }
+      });
+    }
+    
+    return result;
+  };
+
+  // Расчет аспектов (упрощенная версия - можно расширить)
+  const calculateAspects = (chartType: 'D1' | 'D9'): { from: number; to: number }[] => {
+    const aspects: { from: number; to: number }[] = [];
+    
+    // Находим дом Марса
+    const marsPlanet = planets.find(p => p.name === 'mars');
+    if (!marsPlanet) return aspects;
+    
+    const marsHouse = marsPlanet.house;
+    
+    // В ведической астрологии Марс аспектирует 3-й, 5-й и 10-й дома от себя
+    // (7-й, 5-й и 4-й дома считая от себя)
+    const aspectHouses = [
+      (marsHouse + 2) % 12 || 12, // 3-й дом (7-й от Марса)
+      (marsHouse + 4) % 12 || 12, // 5-й дом (5-й от Марса)
+      (marsHouse + 7) % 12 || 12  // 10-й дом (4-й от Марса)
+    ];
+    
+    aspectHouses.forEach(toHouse => {
+      if (toHouse !== marsHouse) {
+        aspects.push({ from: marsHouse, to: toHouse });
+      }
+    });
+    
+    return aspects;
+  };
+
+  // Рендер ведической карты (North Indian style - квадратная сетка)
+  const renderVedicChart = (chartType: 'D1' | 'D9', title: string) => {
+    const planetsInHouses = getPlanetsInHousesForVedicChart(chartType);
+    const aspects = calculateAspects(chartType);
+    
+    const handleHouseClick = (houseNumber: number) => {
+      if (selectedHouse === houseNumber && selectedChartType === chartType) {
+        setSelectedHouse(null);
+      } else {
+        setSelectedHouse(houseNumber);
+        setSelectedChartType(chartType);
+      }
+    };
+
+              return (
+      <div className={styles.vedicChartWrapper}>
+        <div className={styles.chartTitle}>{title}</div>
+        <VedicChartCanvas
+          planetsInHouses={planetsInHouses}
+          aspects={aspects}
+          onHouseClick={handleHouseClick}
+          selectedHouse={selectedHouse && selectedChartType === chartType ? selectedHouse : null}
+        />
+                </div>
+              );
+  };
+
+  const tabs = [
+    { id: 'general' as TabType, label: 'Общее' },
+    { id: 'other' as TabType, label: 'Разное' },
+    { id: 'yogas' as TabType, label: 'Йоги' },
+    { id: 'bala' as TabType, label: 'Бала' },
+    { id: 'bhava-chalita' as TabType, label: 'Бхава Чалита' },
+    { id: 'periods' as TabType, label: 'Периоды' },
+    { id: 'tajaka' as TabType, label: 'Таджака-йоги' },
+    { id: 'rectification' as TabType, label: 'Ректификация' },
   ];
 
-  return (
+  // Получаем информацию о выбранном доме
+  const getHouseInfo = () => {
+    if (!selectedHouse) return null;
+    
+    const house = houses.find(h => h.num === selectedHouse);
+    if (!house) return null;
+    
+    const planetsInHouse = selectedChartType === 'D9'
+      ? getNavamshaPlanetsInHouse(selectedHouse)
+      : getPlanetsInHouse(selectedHouse);
+    
+    return {
+      houseNum: selectedHouse,
+      sign: house.signName,
+      signAbbr: house.signAbbr,
+      cusp: formatDegrees(house.longitude),
+      planets: planetsInHouse.map(p => ({
+        name: selectedChartType === 'D9' ? p.name : PLANET_NAMES[p.name] || p.name,
+        abbreviation: selectedChartType === 'D9' ? p.name : PLANET_ABBREVIATIONS[p.name],
+        degree: selectedChartType === 'D9' ? `${Math.floor(p.degree)}°` : p.formattedDegreesShort,
+        fullDegree: selectedChartType === 'D9' ? formatDegrees(p.longitude) : p.formattedDegrees
+      }))
+    };
+  };
+
+  const houseInfo = getHouseInfo();
+
+              return (
     <div className={styles.container}>
-      {/* Переключатель вариантов визуализации */}
-      <div className={styles.visualizationSwitcher}>
-        {visualizationOptions.map((option) => (
-          <button
-            key={option.value}
-            className={`${styles.switchButton} ${
-              visualizationType === option.value ? styles.switchButtonActive : ''
-            }`}
-            onClick={() => setVisualizationType(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Круговая визуализация */}
-      {visualizationType === 'circle' && (
-        <div className={styles.chartWrapper}>
-          <svg width="800" height="800" viewBox="0 0 800 800" className={styles.chart}>
-          {/* Внешний круг - знаки зодиака */}
-          {SIGN_NAMES.map((sign, index) => {
-            const angle = (index * 30) - 90;
-            const rad = angleToRadians(index * 30);
-            const x = centerX + radius * Math.cos(rad);
-            const y = centerY + radius * Math.sin(rad);
-            
-            return (
-              <g key={sign}>
-                <line
-                  x1={centerX}
-                  y1={centerY}
-                  x2={x}
-                  y2={y}
-                  stroke="rgba(255, 255, 255, 0.2)"
-                  strokeWidth="1"
-                />
-                <text
-                  x={centerX + (radius + 30) * Math.cos(rad)}
-                  y={centerY + (radius + 30) * Math.sin(rad)}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className={styles.signLabel}
-                >
-                  {sign}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Дома */}
-          {houses.map((house, index) => {
-            const nextHouse = houses[(index + 1) % houses.length];
-            const startAngle = angleToRadians(house.longitude);
-            const endAngle = angleToRadians(nextHouse.longitude);
-            
-            return (
-              <g key={`house-${house.num}`}>
-                <line
-                  x1={centerX}
-                  y1={centerY}
-                  x2={house.x}
-                  y2={house.y}
-                  stroke="rgba(155, 143, 184, 0.4)"
-                  strokeWidth="2"
-                />
-                <text
-                  x={house.x}
-                  y={house.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className={styles.houseLabel}
-                >
-                  {house.num}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Асцендент и MC */}
-          <line
-            x1={centerX}
-            y1={centerY}
-            x2={ascendantData.x}
-            y2={ascendantData.y}
-            stroke="#9b8fb8"
-            strokeWidth="3"
-          />
-          <text
-            x={ascendantData.x + 20}
-            y={ascendantData.y}
-            className={styles.ascLabel}
-          >
-            ASC
-          </text>
-
-          <line
-            x1={centerX}
-            y1={centerY}
-            x2={midheavenData.x}
-            y2={midheavenData.y}
-            stroke="#9b8fb8"
-            strokeWidth="3"
-          />
-          <text
-            x={midheavenData.x}
-            y={midheavenData.y - 20}
-            textAnchor="middle"
-            className={styles.mcLabel}
-          >
-            MC
-          </text>
-
-          {/* Планеты */}
-          {planets.map((planet) => (
-            <g key={planet.name}>
-              <circle
-                cx={planet.x}
-                cy={planet.y}
-                r="8"
-                fill="#9b8fb8"
-                className={styles.planet}
-              />
-              <text
-                x={planet.x}
-                y={planet.y - 15}
-                textAnchor="middle"
-                className={styles.planetLabel}
-              >
-                {PLANET_NAMES[planet.name] || planet.name}
-              </text>
-            </g>
-          ))}
-        </svg>
-        </div>
-      )}
-
-      {/* Квадратная визуализация (North Indian style) */}
-      {visualizationType === 'square' && (
-        <div className={styles.squareChartWrapper}>
-          <div className={styles.squareChart}>
-            {houses.map((house, idx) => {
-              const houseNum = house.num;
-              
-              // Позиционирование домов в квадрате (North Indian style)
-              // Дома 1-6 внизу слева направо, 7-12 вверху справа налево
-              let top = '0%', left = '0%';
-              if (houseNum === 1) { top = '75%'; left = '50%'; }
-              else if (houseNum === 2) { top = '75%'; left = '66.66%'; }
-              else if (houseNum === 3) { top = '75%'; left = '83.33%'; }
-              else if (houseNum === 4) { top = '50%'; left = '100%'; }
-              else if (houseNum === 5) { top = '25%'; left = '83.33%'; }
-              else if (houseNum === 6) { top = '25%'; left = '66.66%'; }
-              else if (houseNum === 7) { top = '25%'; left = '50%'; }
-              else if (houseNum === 8) { top = '25%'; left = '33.33%'; }
-              else if (houseNum === 9) { top = '25%'; left = '16.66%'; }
-              else if (houseNum === 10) { top = '50%'; left = '0%'; }
-              else if (houseNum === 11) { top = '75%'; left = '16.66%'; }
-              else if (houseNum === 12) { top = '75%'; left = '33.33%'; }
-
-              const planetsInHouse = planets.filter(p => {
-                const planetNorm = p.longitude % 360;
-                const houseNorm = house.longitude % 360;
-                const nextHouseNorm = houses[(idx + 1) % 12].longitude % 360;
-                const diff = (planetNorm - houseNorm + 360) % 360;
-                const houseSize = (nextHouseNorm - houseNorm + 360) % 360;
-                return diff < houseSize;
-              });
-
-              return (
-                <div
-                  key={houseNum}
-                  className={styles.squareHouse}
-                  style={{ top, left }}
-                >
-                  <div className={styles.squareHouseNumber}>{houseNum}</div>
-                  <div className={styles.squareHouseSign}>{house.signName}</div>
-                  <div className={styles.squarePlanets}>
-                    {planetsInHouse.map(planet => (
-                      <span key={planet.name} className={styles.squarePlanet}>
-                        {PLANET_NAMES[planet.name].charAt(0)}
-                      </span>
-                    ))}
+      {/* Карта D1 и информация о доме */}
+      <div className={styles.chartsRow}>
+        {renderVedicChart('D1', 'D1 Раши')}
+        
+        {/* Информация о выбранном доме */}
+        {houseInfo ? (
+          <div className={styles.houseInfoPanel}>
+            <div className={styles.houseInfoTitle}>
+              Дом {houseInfo.houseNum} - {houseInfo.sign} ({houseInfo.signAbbr})
                   </div>
+            <div className={styles.houseInfoContent}>
+              <div className={styles.houseInfoRow}>
+                <span className={styles.houseInfoLabel}>Куспид:</span>
+                <span className={styles.houseInfoValue}>{houseInfo.cusp}</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Ромбовидная визуализация (South Indian style) */}
-      {visualizationType === 'diamond' && (
-        <div className={styles.diamondChartWrapper}>
-          <div className={styles.diamondChart}>
-            {houses.map((house, idx) => {
-              const houseNum = idx + 1;
-              const angle = (houseNum - 1) * 30 - 90; // Начинаем с верха
-              const radius = 200;
-              const x = 50 + (radius * Math.cos((angle * Math.PI) / 180)) / 4;
-              const y = 50 + (radius * Math.sin((angle * Math.PI) / 180)) / 4;
-
-              const planetsInHouse = planets.filter(p => {
-                const planetNorm = p.longitude % 360;
-                const houseNorm = house.longitude % 360;
-                const nextHouseNorm = houses[(idx + 1) % 12].longitude % 360;
-                const diff = (planetNorm - houseNorm + 360) % 360;
-                const houseSize = (nextHouseNorm - houseNorm + 360) % 360;
-                return diff < houseSize;
-              });
-
-              return (
-                <div
-                  key={houseNum}
-                  className={styles.diamondHouse}
-                  style={{
-                    left: `${x}%`,
-                    top: `${y}%`,
-                  }}
-                >
-                  <div className={styles.diamondHouseNumber}>{houseNum}</div>
-                  <div className={styles.diamondHouseSign}>{house.signName}</div>
-                  <div className={styles.diamondPlanets}>
-                    {planetsInHouse.map(planet => (
-                      <span key={planet.name} className={styles.diamondPlanet}>
-                        {PLANET_NAMES[planet.name]}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Список/таблица визуализация */}
-      {visualizationType === 'list' && (
-        <div className={styles.listChartWrapper}>
-          <div className={styles.listChart}>
-            <h3 className={styles.listTitle}>Натальная карта (Джйотиш)</h3>
-            <div className={styles.listHouses}>
-              {houses.map((house, idx) => {
-                const houseNum = idx + 1;
-                const planetsInHouse = planets.filter(p => {
-                  const planetNorm = p.longitude % 360;
-                  const houseNorm = house.longitude % 360;
-                  const nextHouseNorm = houses[(idx + 1) % 12].longitude % 360;
-                  const diff = (planetNorm - houseNorm + 360) % 360;
-                  const houseSize = (nextHouseNorm - houseNorm + 360) % 360;
-                  return diff < houseSize;
-                });
-
-                return (
-                  <div key={houseNum} className={styles.listHouse}>
-                    <div className={styles.listHouseHeader}>
-                      <span className={styles.listHouseNumber}>Дом {houseNum}</span>
-                      <span className={styles.listHouseSign}>{house.signName}</span>
+              {houseInfo.planets.length > 0 ? (
+                <div className={styles.houseInfoPlanets}>
+                  <div className={styles.houseInfoLabel}>Планеты в доме:</div>
+                  {houseInfo.planets.map((planet, idx) => (
+                    <div key={idx} className={styles.houseInfoPlanet}>
+                      <span className={styles.planetName}>{planet.name}</span>
+                      <span className={styles.planetAbbrInfo}>({planet.abbreviation})</span>
+                      <span className={styles.planetDegreeInfo}>{planet.fullDegree}</span>
                     </div>
-                    <div className={styles.listPlanets}>
-                      {planetsInHouse.length > 0 ? (
-                        planetsInHouse.map(planet => {
-                          const signData = longitudeToSign(planet.longitude);
-                          return (
-                            <div key={planet.name} className={styles.listPlanet}>
-                              <span className={styles.listPlanetName}>
-                                {PLANET_NAMES[planet.name]}
-                              </span>
-                              <span className={styles.listPlanetPosition}>
-                                {signData.signName} {signData.degree.toFixed(1)}°
-                              </span>
+                  ))}
                             </div>
-                          );
-                        })
                       ) : (
-                        <span className={styles.listEmpty}>Нет планет</span>
+                <div className={styles.houseInfoEmpty}>В доме нет планет</div>
                       )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+        ) : (
+          <div className={styles.houseInfoPanel}>
+            <div className={styles.houseInfoTitle}>Выберите дом на карте</div>
+            <div className={styles.houseInfoContent}>
+              <div className={styles.houseInfoEmpty}>Кликните на любой дом для просмотра информации</div>
           </div>
         </div>
       )}
-
-      {/* Планеты в знаках и Детальная информация - внизу, рядом */}
-      <div className={styles.bottomSection}>
-        <div className={styles.legend}>
-          <h3 className={styles.legendTitle}>Планеты в раши (Джйотиш)</h3>
-          <div className={styles.planetsList}>
-            {planets.map((planet) => {
-              const signData = longitudeToSign(planet.longitude);
-              const degrees = Math.floor(planet.longitude);
-              const minutesFloat = (planet.longitude - degrees) * 60;
-              const minutes = Math.floor(minutesFloat);
-              const seconds = Math.round((minutesFloat - minutes) * 60);
-              
-              // Определяем накшатру
-              const nakshatraIndex = Math.floor((planet.longitude % 360) / (360 / 27));
-              const nakshatraDegree = (planet.longitude % 360) % (360 / 27);
-              const pada = Math.floor(nakshatraDegree / (360 / 27 / 4)) + 1;
-              const nakshatraNames = [
-                'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
-                'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
-                'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
-                'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
-                'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
-              ];
-              const nakshatraName = nakshatraNames[nakshatraIndex % 27] || 'Неизвестно';
-              
-              return (
-                <div key={planet.name} className={styles.planetItem}>
-                  <div className={styles.planetRow}>
-                    <span className={styles.planetName}>{PLANET_NAMES[planet.name]}:</span>
-                    <span className={styles.planetSign}>
-                      {signData.signName} {signData.degree.toFixed(1)}°
-                    </span>
-                  </div>
-                  <div className={styles.planetDetails}>
-                    <span className={styles.planetDegrees}>
-                      {degrees}°{String(minutes).padStart(2, '0')}&apos;{String(seconds).padStart(2, '0')}&quot;
-                    </span>
-                    <span className={styles.planetNakshatra}>
-                      {nakshatraName} ({pada > 4 ? 4 : pada})
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
         
-        {/* Детальная таблица для ведической астрологии */}
-        <div className={styles.detailsTable}>
-          <h3 className={styles.legendTitle}>Детальная информация (Джйотиш)</h3>
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Планета</th>
-                <th>Градусы</th>
-                <th>Раши</th>
-                <th>Накшатра</th>
-                <th>Пада</th>
-                <th>Дом</th>
-              </tr>
-            </thead>
-            <tbody>
-              {planets.map((planet) => {
-                const signData = longitudeToSign(planet.longitude);
-                const degrees = Math.floor(planet.longitude);
-                const minutesFloat = (planet.longitude - degrees) * 60;
-                const minutes = Math.floor(minutesFloat);
-                const seconds = Math.round((minutesFloat - minutes) * 60);
-                
-                // Определяем накшатру
-                const nakshatraIndex = Math.floor((planet.longitude % 360) / (360 / 27));
-                const nakshatraDegree = (planet.longitude % 360) % (360 / 27);
-                const pada = Math.floor(nakshatraDegree / (360 / 27 / 4)) + 1;
-                const nakshatraNames = [
-                  'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
-                  'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
-                  'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
-                  'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
-                  'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
-                ];
-                const nakshatraName = nakshatraNames[nakshatraIndex % 27] || 'Неизвестно';
-                
-                // Определяем дом (упрощенная версия)
-                let houseNum = 1;
-                const planetNorm = planet.longitude % 360;
-                const ascNorm = chart.ascendant % 360;
-                const diff = (planetNorm - ascNorm + 360) % 360;
-                houseNum = Math.floor(diff / 30) + 1;
-                if (houseNum > 12) houseNum = houseNum - 12;
-                if (houseNum < 1) houseNum = 1;
-                
-                return (
-                  <tr key={planet.name}>
-                    <td>{PLANET_NAMES[planet.name]}</td>
-                    <td>{degrees}°{String(minutes).padStart(2, '0')}&apos;{String(seconds).padStart(2, '0')}&quot;</td>
-                    <td>{signData.signName}</td>
-                    <td>{nakshatraName}</td>
-                    <td>{pada > 4 ? 4 : pada}</td>
-                    <td>{houseNum}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
-          
-          {/* Навамша (D9) */}
-          {chart.navamsha && (
-            <div className={styles.navamshaSection}>
-              <h4 className={styles.navamshaTitle}>Навамша (D9)</h4>
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Планета</th>
-                    <th>Раши</th>
-                    <th>Градусы</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chart.navamsha.sun && (
-                    <tr>
-                      <td>Сурья</td>
-                      <td>{chart.navamsha.sun.signName}</td>
-                      <td>{chart.navamsha.sun.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.moon && (
-                    <tr>
-                      <td>Чандра</td>
-                      <td>{chart.navamsha.moon.signName}</td>
-                      <td>{chart.navamsha.moon.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.mercury && (
-                    <tr>
-                      <td>Будха</td>
-                      <td>{chart.navamsha.mercury.signName}</td>
-                      <td>{chart.navamsha.mercury.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.venus && (
-                    <tr>
-                      <td>Шукра</td>
-                      <td>{chart.navamsha.venus.signName}</td>
-                      <td>{chart.navamsha.venus.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.mars && (
-                    <tr>
-                      <td>Мангала</td>
-                      <td>{chart.navamsha.mars.signName}</td>
-                      <td>{chart.navamsha.mars.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.jupiter && (
-                    <tr>
-                      <td>Гуру</td>
-                      <td>{chart.navamsha.jupiter.signName}</td>
-                      <td>{chart.navamsha.jupiter.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.saturn && (
-                    <tr>
-                      <td>Шани</td>
-                      <td>{chart.navamsha.saturn.signName}</td>
-                      <td>{chart.navamsha.saturn.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                  {chart.navamsha.ascendant && (
-                    <tr>
-                      <td>Лагна</td>
-                      <td>{chart.navamsha.ascendant.signName}</td>
-                      <td>{chart.navamsha.ascendant.degree.toFixed(2)}°</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          )}
-          
-          {/* Вимшоттари даши */}
+        {/* Вимшоттари даша справа */}
           {chart.dashas && chart.dashas.length > 0 && (
-            <div className={styles.dashaSection}>
-              <h4 className={styles.dashaTitle}>Вимшоттари даши</h4>
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
+          <div className={styles.dashaPanel}>
+            <div className={styles.dashaTitle}>Вимшоттари даша</div>
+            <div className={styles.dashaTable}>
+              <table>
                 <thead>
                   <tr>
                     <th>Планета</th>
@@ -703,6 +501,106 @@ export default function NatalChartVisualization({ chart }: Props) {
             </div>
           )}
         </div>
+
+      {/* Вкладки */}
+      <div className={styles.tabsContainer}>
+        <div className={styles.tabs}>
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Содержимое вкладок */}
+      <div className={styles.tabContent}>
+        {activeTab === 'general' && (
+          <div className={styles.generalTab}>
+            <table className={styles.dataTable}>
+              <thead>
+                <tr>
+                  <th>Карака</th>
+                  <th>Градусы</th>
+                  <th>Раши</th>
+                  <th>Навамша</th>
+                  <th>Накшатра (Пада, Упр)</th>
+                  <th>Дом</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Асцендент</td>
+                  <td>{formatDegrees(chart.ascendant)}</td>
+                  <td>{longitudeToSign(chart.ascendant).signName}</td>
+                  <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
+                  <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada})</td>
+                  <td>1</td>
+                </tr>
+                {planets.map((planet) => (
+                  <tr key={planet.name}>
+                    <td>{PLANET_NAMES[planet.name]}</td>
+                    <td>{planet.formattedDegrees}</td>
+                    <td>{planet.signName}</td>
+                    <td>
+                      {chart.navamsha && chart.navamsha[planet.name as keyof NavamshaData] 
+                        ? (chart.navamsha[planet.name as keyof NavamshaData] as any)?.signName 
+                        : '-'}
+                    </td>
+                    <td>{planet.nakshatraName} ({planet.nakshatraPada})</td>
+                    <td>{planet.house}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'other' && (
+          <div className={styles.otherTab}>
+            <p>Разное - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'yogas' && (
+          <div className={styles.yogasTab}>
+            <p>Йоги - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'bala' && (
+          <div className={styles.balaTab}>
+            <p>Бала - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'bhava-chalita' && (
+          <div className={styles.bhavaChalitaTab}>
+            <p>Бхава Чалита - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'periods' && (
+          <div className={styles.periodsTab}>
+            <p>Периоды - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'tajaka' && (
+          <div className={styles.tajakaTab}>
+            <p>Таджака-йоги - в разработке</p>
+          </div>
+        )}
+
+        {activeTab === 'rectification' && (
+          <div className={styles.rectificationTab}>
+            <p>Ректификация - в разработке</p>
+          </div>
+        )}
       </div>
     </div>
   );

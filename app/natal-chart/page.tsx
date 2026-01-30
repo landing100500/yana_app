@@ -68,6 +68,7 @@ export default function NatalChartPage() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [calculationProgress, setCalculationProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [deletingChartId, setDeletingChartId] = useState<number | null>(null);
 
   useEffect(() => {
     loadCharts();
@@ -156,6 +157,43 @@ export default function NatalChartPage() {
     }
   };
 
+  const handleDelete = async (chartId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Предотвращаем выбор карты при клике на удаление
+    
+    if (!confirm('Вы уверены, что хотите удалить эту карту?')) {
+      return;
+    }
+
+    try {
+      setDeletingChartId(chartId);
+      const response = await fetch(`/api/natal-chart/${chartId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Ошибка при удалении' }));
+        throw new Error(errorData.error || 'Ошибка при удалении карты');
+      }
+
+      // Удаляем карту из списка
+      setCharts(prev => {
+        const remainingCharts = prev.filter(chart => chart.id !== chartId);
+        
+        // Если удаленная карта была выбрана, выбираем другую или очищаем выбор
+        if (selectedChart?.id === chartId) {
+          setSelectedChart(remainingCharts.length > 0 ? remainingCharts[0] : null);
+        }
+        
+        return remainingCharts;
+      });
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при удалении карты');
+      console.error(err);
+    } finally {
+      setDeletingChartId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className={styles.container}>
@@ -236,11 +274,21 @@ export default function NatalChartPage() {
                   className={`${styles.chartListItem} ${selectedChart?.id === chart.id ? styles.selected : ''}`}
                   onClick={() => setSelectedChart(chart)}
                 >
-                  <div className={styles.chartListItemName}>{chart.name}</div>
-                  <div className={styles.chartListItemDate}>
-                    {chart.chartDate} {chart.chartTime}
+                  <div className={styles.chartListItemContent}>
+                    <div className={styles.chartListItemName}>{chart.name}</div>
+                    <div className={styles.chartListItemDate}>
+                      {chart.chartDate} {chart.chartTime}
+                    </div>
+                    <div className={styles.chartListItemCity}>{chart.chartCity}</div>
                   </div>
-                  <div className={styles.chartListItemCity}>{chart.chartCity}</div>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={(e) => handleDelete(chart.id, e)}
+                    disabled={deletingChartId === chart.id}
+                    title="Удалить карту"
+                  >
+                    {deletingChartId === chart.id ? '...' : '×'}
+                  </button>
                 </div>
               ))}
             </div>

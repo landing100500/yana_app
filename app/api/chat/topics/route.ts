@@ -66,9 +66,7 @@ export async function POST(request: NextRequest) {
         { error: 'Не авторизован' },
         { status: 401 }
       );
-    }
-
-    const { title } = await request.json();
+    }    const { title } = await request.json();
 
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
       return NextResponse.json(

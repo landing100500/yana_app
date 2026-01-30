@@ -88,20 +88,27 @@ export default function LoginPage() {
           <div className={styles.inputGroup}>
             <input
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              name="phone"
               placeholder="+7 (999) 123-45-67"
-              value={phone}
+              value={phone ?? ''}
               onChange={(e) => setPhone(e.target.value)}
               className={styles.input}
+              aria-label="Номер телефона"
             />
           </div>
 
           <div className={styles.inputGroup}>
             <input
               type="password"
+              autoComplete="current-password"
+              name="password"
               placeholder="Пароль"
-              value={password}
+              value={password ?? ''}
               onChange={(e) => setPassword(e.target.value)}
               className={styles.input}
+              aria-label="Пароль"
             />
           </div>
 
