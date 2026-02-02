@@ -329,7 +329,9 @@ export default function NatalChartVisualization({ chart }: Props) {
           result[houseNum - 1].push(planet.name);
         } else {
           const planetAbbr = PLANET_ABBREVIATIONS[planet.name] || planet.name;
-          const degree = planet.formattedDegreesShort;
+          const degree = 'formattedDegreesShort' in planet
+            ? planet.formattedDegreesShort
+            : formatDegreesShort(planet.longitude);
           result[houseNum - 1].push(`${planetAbbr} ${degree}`);
         }
       });
