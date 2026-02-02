@@ -74,7 +74,7 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
       },
       pinch: {
         scaleBounds: { min: 0.5, max: 2 },
-        from: () => [transform.scale],
+        from: () => [transform.scale, transform.scale],
       },
     }
   );
