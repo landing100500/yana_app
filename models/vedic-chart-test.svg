@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-220 -220 440 440"
+     width="600" height="600"
+     preserveAspectRatio="xMidYMid meet"
+     style="background:#1e1e2e">
+  <!-- Центральная точка: (0,0) -->
+  <!-- Вся карта — квадрат 400x400, повернутый на 45° -->
+  <!-- Линии рисуем в "неповёрнутой" системе, затем поворачиваем всё -->
+
+  <g transform="rotate(45 0 0)">
+    <!-- Внешний квадрат (граница чакры) -->
+    <rect x="-200" y="-200" width="400" height="400" fill="none" stroke="#444" stroke-width="1"/>
+
+    <!-- Вертикальные линии (в неповёрнутой системе): x = -100, 0, 100 -->
+    <line x1="-100" y1="-200" x2="-100" y2="200" stroke="#444" stroke-width="0.8"/>
+    <line x1="0" y1="-200" x2="0" y2="200" stroke="#444" stroke-width="0.8"/>
+    <line x1="100" y1="-200" x2="100" y2="200" stroke="#444" stroke-width="0.8"/>
+
+    <!-- Горизонтальные линии: y = -100, 0, 100 -->
+    <line x1="-200" y1="-100" x2="200" y2="-100" stroke="#444" stroke-width="0.8"/>
+    <line x1="-200" y1="0" x2="200" y2="0" stroke="#444" stroke-width="0.8"/>
+    <line x1="-200" y1="100" x2="200" y2="100" stroke="#444" stroke-width="0.8"/>
+
+    <!-- Теперь разметка домов (номера в центрах секторов) -->
+    <!-- Дом 1: (-50, -150) -->
+    <text x="-50" y="-150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">1</text>
+    <text x="-50" y="-136" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Li</text>
+
+    <!-- Дом 2: (-150, -50) -->
+    <text x="-150" y="-50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">2</text>
+    <text x="-150" y="-36" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Sc</text>
+
+    <!-- Дом 3: (-150, 50) -->
+    <text x="-150" y="50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">3</text>
+    <text x="-150" y="64" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Sg</text>
+
+    <!-- Дом 4: (50, -150) -->
+    <text x="50" y="-150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">4</text>
+    <text x="50" y="-136" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Cp</text>
+
+    <!-- Дом 5: (-150, 150) -->
+    <text x="-150" y="150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">5</text>
+    <text x="-150" y="164" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Aq</text>
+
+    <!-- Дом 6: (-50, 150) -->
+    <text x="-50" y="150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">6</text>
+    <text x="-50" y="164" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Pi</text>
+
+    <!-- Дом 7: (50, 150) -->
+    <text x="50" y="150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">7</text>
+    <text x="50" y="164" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Ar</text>
+
+    <!-- Дом 8: (150, 50) -->
+    <text x="150" y="50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">8</text>
+    <text x="150" y="64" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Ta</text>
+
+    <!-- Дом 9: (50, -50) -->
+    <text x="50" y="-50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">9</text>
+    <text x="50" y="-36" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Ge</text>
+
+    <!-- Дом 10: (150, -50) -->
+    <text x="150" y="-50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">10</text>
+    <text x="150" y="-36" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Cn</text>
+
+    <!-- Дом 11: (150, -150) -->
+    <text x="150" y="-150" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">11</text>
+    <text x="150" y="-136" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Le</text>
+
+    <!-- Дом 12: (50, 50) -->
+    <text x="50" y="50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="12">12</text>
+    <text x="50" y="64" text-anchor="middle" dominant-baseline="middle" fill="#a0a0c0" font-size="10">Vi</text>
+
+    <!-- Аспекты: 9 → 3, 5, 10 -->
+    <line x1="50" y1="-50" x2="-150" y2="50" stroke="#d32f2f" stroke-width="1" stroke-dasharray="4,2"/>
+    <line x1="50" y1="-50" x2="-150" y2="150" stroke="#d32f2f" stroke-width="1" stroke-dasharray="4,2"/>
+    <line x1="50" y1="-50" x2="150" y2="-50" stroke="#d32f2f" stroke-width="1" stroke-dasharray="4,2"/>
+  </g>
+</svg>

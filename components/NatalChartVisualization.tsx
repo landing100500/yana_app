@@ -407,12 +407,12 @@ export default function NatalChartVisualization({ chart }: Props) {
   const getHouseInfo = () => {
     if (!selectedHouse) return null;
     
+    // Для D1 карты используем обычные дома
     const house = houses.find(h => h.num === selectedHouse);
     if (!house) return null;
     
-    const planetsInHouse = selectedChartType === 'D9'
-      ? getNavamshaPlanetsInHouse(selectedHouse)
-      : getPlanetsInHouse(selectedHouse);
+    // Всегда используем D1 данные для отображения в плашке (так как D9 убрали)
+    const planetsInHouse = getPlanetsInHouse(selectedHouse);
     
     return {
       houseNum: selectedHouse,
@@ -420,10 +420,10 @@ export default function NatalChartVisualization({ chart }: Props) {
       signAbbr: house.signAbbr,
       cusp: formatDegrees(house.longitude),
       planets: planetsInHouse.map(p => ({
-        name: selectedChartType === 'D9' ? p.name : PLANET_NAMES[p.name] || p.name,
-        abbreviation: selectedChartType === 'D9' ? p.name : PLANET_ABBREVIATIONS[p.name],
-        degree: selectedChartType === 'D9' ? `${Math.floor(p.degree)}°` : p.formattedDegreesShort,
-        fullDegree: selectedChartType === 'D9' ? formatDegrees(p.longitude) : p.formattedDegrees
+        name: PLANET_NAMES[p.name] || p.name,
+        abbreviation: PLANET_ABBREVIATIONS[p.name],
+        degree: p.formattedDegreesShort,
+        fullDegree: p.formattedDegrees
       }))
     };
   };
@@ -521,42 +521,44 @@ export default function NatalChartVisualization({ chart }: Props) {
       <div className={styles.tabContent}>
         {activeTab === 'general' && (
           <div className={styles.generalTab}>
-            <table className={styles.dataTable}>
-              <thead>
-                <tr>
-                  <th>Карака</th>
-                  <th>Градусы</th>
-                  <th>Раши</th>
-                  <th>Навамша</th>
-                  <th>Накшатра (Пада, Упр)</th>
-                  <th>Дом</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Асцендент</td>
-                  <td>{formatDegrees(chart.ascendant)}</td>
-                  <td>{longitudeToSign(chart.ascendant).signName}</td>
-                  <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
-                  <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada})</td>
-                  <td>1</td>
-                </tr>
-                {planets.map((planet) => (
-                  <tr key={planet.name}>
-                    <td>{PLANET_NAMES[planet.name]}</td>
-                    <td>{planet.formattedDegrees}</td>
-                    <td>{planet.signName}</td>
-                    <td>
-                      {chart.navamsha && chart.navamsha[planet.name as keyof NavamshaData] 
-                        ? (chart.navamsha[planet.name as keyof NavamshaData] as any)?.signName 
-                        : '-'}
-                    </td>
-                    <td>{planet.nakshatraName} ({planet.nakshatraPada})</td>
-                    <td>{planet.house}</td>
+            <div className={styles.tableWrapper}>
+              <table className={styles.dataTable}>
+                <thead>
+                  <tr>
+                    <th>Карака</th>
+                    <th>Градусы</th>
+                    <th>Раши</th>
+                    <th>Навамша</th>
+                    <th>Накшатра (Пада, Упр)</th>
+                    <th>Дом</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Асцендент</td>
+                    <td>{formatDegrees(chart.ascendant)}</td>
+                    <td>{longitudeToSign(chart.ascendant).signName}</td>
+                    <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
+                    <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada})</td>
+                    <td>1</td>
+                  </tr>
+                  {planets.map((planet) => (
+                    <tr key={planet.name}>
+                      <td>{PLANET_NAMES[planet.name]}</td>
+                      <td>{planet.formattedDegrees}</td>
+                      <td>{planet.signName}</td>
+                      <td>
+                        {chart.navamsha && chart.navamsha[planet.name as keyof NavamshaData] 
+                          ? (chart.navamsha[planet.name as keyof NavamshaData] as any)?.signName 
+                          : '-'}
+                      </td>
+                      <td>{planet.nakshatraName} ({planet.nakshatraPada})</td>
+                      <td>{planet.house}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

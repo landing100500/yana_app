@@ -22,93 +22,35 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // ТОЧНЫЕ координаты из эталонного SVG - НЕ МЕНЯТЬ!
-  // s = 119px, d = s * √2 / 2 ≈ 84.1px
-  const houseData: Array<{
+  // Координаты центров домов из эталонного SVG (неповернутая система)
+  const houseCenters: Array<{
     houseNum: number;
-    centerX: number;
-    centerY: number;
-    polygonPoints: string;
+    x: number;
+    y: number;
   }> = [
-    {
-      houseNum: 1,
-      centerX: 0,
-      centerY: 0,
-      polygonPoints: "0,-59.5 59.5,0 0,59.5 -59.5,0"
-    },
-    {
-      houseNum: 2,
-      centerX: -84.1,
-      centerY: 84.1,
-      polygonPoints: "-84.1,24.6 -24.6,84.1 -84.1,143.6 -143.6,84.1"
-    },
-    {
-      houseNum: 3,
-      centerX: -84.1,
-      centerY: 168.2,
-      polygonPoints: "-84.1,108.7 -24.6,168.2 -84.1,227.7 -143.6,168.2"
-    },
-    {
-      houseNum: 4,
-      centerX: 84.1,
-      centerY: 84.1,
-      polygonPoints: "84.1,24.6 143.6,84.1 84.1,143.6 24.6,84.1"
-    },
-    {
-      houseNum: 5,
-      centerX: -84.1,
-      centerY: 252.3,
-      polygonPoints: "-84.1,192.8 -24.6,252.3 -84.1,311.8 -143.6,252.3"
-    },
-    {
-      houseNum: 6,
-      centerX: 0,
-      centerY: 252.3,
-      polygonPoints: "0,192.8 59.5,252.3 0,311.8 -59.5,252.3"
-    },
-    {
-      houseNum: 7,
-      centerX: 0,
-      centerY: 336.4,
-      polygonPoints: "0,276.9 59.5,336.4 0,395.9 -59.5,336.4"
-    },
-    {
-      houseNum: 8,
-      centerX: 84.1,
-      centerY: 168.2,
-      polygonPoints: "84.1,108.7 143.6,168.2 84.1,227.7 24.6,168.2"
-    },
-    {
-      houseNum: 9,
-      centerX: 0,
-      centerY: 420.5,
-      polygonPoints: "0,361 59.5,420.5 0,480 -59.5,420.5"
-    },
-    {
-      houseNum: 10,
-      centerX: 84.1,
-      centerY: 252.3,
-      polygonPoints: "84.1,192.8 143.6,252.3 84.1,311.8 24.6,252.3"
-    },
-    {
-      houseNum: 11,
-      centerX: 84.1,
-      centerY: 336.4,
-      polygonPoints: "84.1,276.9 143.6,336.4 84.1,395.9 24.6,336.4"
-    },
-    {
-      houseNum: 12,
-      centerX: 84.1,
-      centerY: 0,
-      polygonPoints: "84.1,-59.5 143.6,0 84.1,59.5 24.6,0"
-    },
+    { houseNum: 1, x: -50, y: -150 },  // Дом 1
+    { houseNum: 2, x: -150, y: -50 },   // Дом 2
+    { houseNum: 3, x: -150, y: 50 },    // Дом 3
+    { houseNum: 4, x: 50, y: -150 },    // Дом 4
+    { houseNum: 5, x: -150, y: 150 },   // Дом 5
+    { houseNum: 6, x: -50, y: 150 },    // Дом 6
+    { houseNum: 7, x: 50, y: 150 },     // Дом 7
+    { houseNum: 8, x: 150, y: 50 },     // Дом 8
+    { houseNum: 9, x: 50, y: -50 },     // Дом 9
+    { houseNum: 10, x: 150, y: -50 },   // Дом 10
+    { houseNum: 11, x: 150, y: -150 },  // Дом 11
+    { houseNum: 12, x: 50, y: 50 },     // Дом 12
   ];
 
-  // Координаты центров для аспектов
+  // Координаты центров для аспектов (в исходной системе)
   const centers: Record<number, { x: number; y: number }> = {};
-  houseData.forEach(({ houseNum, centerX, centerY }) => {
-    centers[houseNum] = { x: centerX, y: centerY };
+  houseCenters.forEach(({ houseNum, x, y }) => {
+    centers[houseNum] = { x, y };
   });
+
+  // Параметры сетки из эталонного SVG (квадрат 400x400)
+  const gridSize = 400; // размер квадрата
+  const halfSize = gridSize / 2; // 200
 
   // Обработка drag (pan) и pinch (zoom)
   useGesture(
@@ -182,8 +124,8 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
     setTransform({ x: 0, y: 0, scale: 1 });
   };
 
-  // ТОЧНЫЙ viewBox из эталонного SVG
-  const viewBox = "-250 -150 700 1000";
+  // ViewBox увеличен с большим запасом во всех направлениях
+  const viewBox = "-300 -300 600 600";
 
   return (
     <div className={styles.chartCanvasWrapper}>
@@ -194,7 +136,7 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
         <button onClick={handleReset} className={styles.zoomButton} title="Сброс">⌂</button>
       </div>
 
-      {/* Контейнер с overflow: hidden - БЕЗ transform, filter, clip-path */}
+      {/* Контейнер с overflow: hidden */}
       <div 
         ref={containerRef}
         className={styles.chartCanvas}
@@ -207,87 +149,133 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
             transformOrigin: 'center center',
           }}
         >
-          {/* Единый SVG холст - ТОЧНАЯ геометрия из эталона */}
+          {/* Единый SVG холст */}
           <svg
             ref={svgRef}
             xmlns="http://www.w3.org/2000/svg"
             viewBox={viewBox}
             width="600"
-            height="900"
+            height="600"
             preserveAspectRatio="xMidYMid meet"
             role="img"
             aria-hidden="true"
             style={{ display: 'block', background: '#1e1e2e' }}
           >
-          {/* Аспекты (рисуем первыми, чтобы были под ромбами) */}
-          <g className={styles.aspectsGroup}>
-            {aspects.map((aspect, i) => {
-              const from = centers[aspect.from];
-              const to = centers[aspect.to];
-              if (!from || !to) return null;
-              return (
-                <line
-                  key={i}
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
-                  className={styles.aspectLine}
-                />
-              );
-            })}
-          </g>
+            {/* Группа с поворотом на 45° */}
+            <g transform="rotate(45 0 0)">
+              {/* Внешний квадрат (граница чакры) */}
+              <rect x="-200" y="-200" width="400" height="400" fill="none" stroke="#444" strokeWidth="1" />
 
-          {/* Ромбы (дома) - ТОЧНАЯ геометрия из эталонного SVG */}
-          {houseData.map(({ houseNum, centerX, centerY, polygonPoints }) => {
-            const planets = planetsInHouses[houseNum - 1] || [];
-            const isSelected = selectedHouse === houseNum;
+              {/* Вертикальные линии: x = -100, 0, 100 */}
+              <line x1="-100" y1="-200" x2="-100" y2="200" stroke="#444" strokeWidth="0.8" />
+              <line x1="0" y1="-200" x2="0" y2="200" stroke="#444" strokeWidth="0.8" />
+              <line x1="100" y1="-200" x2="100" y2="200" stroke="#444" strokeWidth="0.8" />
 
-            return (
-              <g
-                key={`house-${houseNum}`}
-                onClick={(e) => handleHouseClick(houseNum, e)}
-                className={styles.houseGroup}
-                style={{ cursor: 'pointer' }}
-              >
-                {/* Ромб - ТОЧНЫЕ координаты из эталона */}
-                <polygon
-                  points={polygonPoints}
-                  className={`${styles.rhombus} ${isSelected ? styles.rhombusSelected : ''}`}
-                />
-                
-                {/* Номер дома - ТОЧНАЯ позиция из эталона */}
-                <text
-                  x={centerX}
-                  y={centerY}
-                  className={styles.houseNumber}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                >
-                  {houseNum}
-                </text>
+              {/* Горизонтальные линии: y = -100, 0, 100 */}
+              <line x1="-200" y1="-100" x2="200" y2="-100" stroke="#444" strokeWidth="0.8" />
+              <line x1="-200" y1="0" x2="200" y2="0" stroke="#444" strokeWidth="0.8" />
+              <line x1="-200" y1="100" x2="200" y2="100" stroke="#444" strokeWidth="0.8" />
 
-                {/* Планеты - динамические данные, позиция как в эталоне */}
-                {planets.map((planet, pIdx) => {
-                  // В эталоне первая планета на centerY + 14, следующие с шагом 14
-                  const yOffset = centerY + 14 + (pIdx * 14);
+              {/* Аспекты (рисуем внутри повернутой группы) */}
+              <g className={styles.aspectsGroup}>
+                {aspects.map((aspect, i) => {
+                  const from = centers[aspect.from];
+                  const to = centers[aspect.to];
+                  if (!from || !to) return null;
                   
                   return (
-                    <text
-                      key={pIdx}
-                      x={centerX}
-                      y={yOffset}
-                      className={styles.planetText}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                    >
-                      {planet}
-                    </text>
+                    <line
+                      key={i}
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      className={styles.aspectLine}
+                    />
                   );
                 })}
               </g>
-            );
-          })}
+
+              {/* Дома с текстом (текст повернут обратно на -45°) */}
+              {houseCenters.map(({ houseNum, x, y }) => {
+                const planets = planetsInHouses[houseNum - 1] || [];
+                const isSelected = selectedHouse === houseNum;
+
+                // Определяем границы квадрата для этого дома
+                // Каждый дом занимает область 100x100 в сетке
+                const cellSize = 100;
+                let rectX: number, rectY: number;
+                
+                // Вычисляем позицию квадрата на основе координат центра
+                if (x === -50 && y === -150) { rectX = -100; rectY = -200; } // Дом 1
+                else if (x === -150 && y === -50) { rectX = -200; rectY = -100; } // Дом 2
+                else if (x === -150 && y === 50) { rectX = -200; rectY = 0; } // Дом 3
+                else if (x === 50 && y === -150) { rectX = 0; rectY = -200; } // Дом 4
+                else if (x === -150 && y === 150) { rectX = -200; rectY = 100; } // Дом 5
+                else if (x === -50 && y === 150) { rectX = -100; rectY = 100; } // Дом 6
+                else if (x === 50 && y === 150) { rectX = 0; rectY = 100; } // Дом 7
+                else if (x === 150 && y === 50) { rectX = 100; rectY = 0; } // Дом 8
+                else if (x === 50 && y === -50) { rectX = 0; rectY = -100; } // Дом 9
+                else if (x === 150 && y === -50) { rectX = 100; rectY = -100; } // Дом 10
+                else if (x === 150 && y === -150) { rectX = 100; rectY = -200; } // Дом 11
+                else { rectX = 0; rectY = 0; } // Дом 12
+
+                return (
+                  <g
+                    key={`house-${houseNum}`}
+                    onClick={(e) => handleHouseClick(houseNum, e)}
+                    className={`${styles.houseGroup} ${isSelected ? styles.houseGroupSelected : ''}`}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {/* Невидимый прямоугольник для hover и клика */}
+                    <rect
+                      x={rectX}
+                      y={rectY}
+                      width={cellSize}
+                      height={cellSize}
+                      fill="transparent"
+                      className={styles.houseArea}
+                    />
+                    
+                    {/* Текст с обратным поворотом для горизонтального отображения */}
+                    <g transform={`rotate(-45 ${x} ${y})`}>
+                      {/* Номер дома */}
+                      <text
+                        x={x}
+                        y={y}
+                        className={styles.houseNumber}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                      >
+                        {houseNum}
+                      </text>
+
+                      {/* Планеты */}
+                      {planets.map((planet, pIdx) => {
+                        let yOffset: number;
+                        if (y < 0) {
+                          yOffset = y + 14 + (pIdx * 14);
+                        } else {
+                          yOffset = y + 14 + (pIdx * 14);
+                        }
+                        return (
+                          <text
+                            key={pIdx}
+                            x={x}
+                            y={yOffset}
+                            className={styles.planetText}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {planet}
+                          </text>
+                        );
+                      })}
+                    </g>
+                  </g>
+                );
+              })}
+            </g>
           </svg>
         </div>
       </div>

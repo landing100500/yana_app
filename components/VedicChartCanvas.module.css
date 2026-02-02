@@ -2,8 +2,10 @@
   position: relative;
   width: 100%;
   height: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .chartCanvas {
@@ -41,22 +43,116 @@
   top: 50%;
   left: 50%;
   width: 600px;
-  height: 900px;
-  margin: -450px 0 0 -300px; /* Центрирование: -height/2 и -width/2 */
+  height: 600px;
+  max-width: 100vw;
+  max-height: 100vh;
+  margin: -300px 0 0 -300px; /* Центрирование: -height/2 и -width/2 */
   transition: transform 0.1s ease-out;
   will-change: transform;
   overflow: visible;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .chartCanvasWrapper {
+    min-height: 400px;
+    max-width: 100%;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .chartCanvas {
+    min-height: 400px;
+    max-height: 70vh;
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+  }
+
+  .svgWrapper {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin: -50% 0 0 -50%;
+  }
+
+  .svgWrapper svg {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .zoomControls {
+    top: 5px;
+    right: 5px;
+    z-index: 100;
+  }
+
+  .zoomButton {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+}
+
+/* Очень маленькие экраны */
+@media (max-width: 480px) {
+  .chartCanvasWrapper {
+    min-height: 350px;
+  }
+
+  .chartCanvas {
+    min-height: 350px;
+    max-height: 60vh;
+  }
+
+  .houseNumber {
+    font-size: 10px;
+  }
+
+  .planetText {
+    font-size: 8px;
+  }
 }
 
 .houseGroup {
   transition: all 0.2s ease;
 }
 
-.houseGroup:hover .rhombus {
-  fill: rgba(65, 65, 85, 0.9);
+.houseArea {
+  pointer-events: all;
+  transition: all 0.2s ease;
+}
+
+.houseGroup:hover .houseArea {
+  fill: rgba(155, 143, 184, 0.1);
   stroke: rgba(155, 143, 184, 0.6);
-  stroke-width: 1.2;
-  filter: drop-shadow(0 4px 12px rgba(155, 143, 184, 0.4));
+  stroke-width: 2;
+}
+
+.houseGroup:hover .houseNumber {
+  fill: rgba(155, 143, 184, 1);
+  font-weight: 700;
+}
+
+.houseGroup:hover .planetText {
+  fill: rgba(255, 255, 255, 1);
+}
+
+.houseGroupSelected .houseArea {
+  fill: rgba(155, 143, 184, 0.2) !important;
+  stroke: rgba(155, 143, 184, 0.9) !important;
+  stroke-width: 2 !important;
+}
+
+.houseGroupSelected .houseNumber {
+  fill: rgba(155, 143, 184, 1) !important;
+  font-weight: 700 !important;
 }
 
 .rhombus {
