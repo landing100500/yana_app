@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
+import AdminUsersCharts from './components/AdminUsersCharts';
 
 interface Section {
   id: string;
@@ -11,6 +12,8 @@ interface Section {
   created_at: string;
   total_chunks?: number;
 }
+
+type AdminView = 'training' | 'users-charts';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -26,6 +29,7 @@ export default function AdminPage() {
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadProgressPercent, setUploadProgressPercent] = useState(0);
   const [deletingSection, setDeletingSection] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<AdminView>('training');
   const router = useRouter();
 
   useEffect(() => {
@@ -321,9 +325,32 @@ export default function AdminPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.adminPanel}>
-        <h1 className={styles.title}>Панель администратора</h1>
-        <p className={styles.subtitle}>Обучение ИИ</p>
+      <div className={styles.adminLayout}>
+        {/* Боковое меню */}
+        <div className={styles.sidebar}>
+          <h2 className={styles.sidebarTitle}>Админ-панель</h2>
+          <nav className={styles.sidebarNav}>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'training' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('training')}
+            >
+              Обучение ИИ
+            </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'users-charts' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('users-charts')}
+            >
+              Карты пользователей
+            </button>
+          </nav>
+        </div>
+
+        {/* Основной контент */}
+        <div className={styles.mainContent}>
+          {currentView === 'training' ? (
+            <div className={styles.adminPanel}>
+              <h1 className={styles.title}>Панель администратора</h1>
+              <p className={styles.subtitle}>Обучение ИИ</p>
 
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Разделы</h2>
@@ -451,6 +478,11 @@ export default function AdminPage() {
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
+            </div>
+          ) : (
+            <AdminUsersCharts />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,0 +1,209 @@
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+
+.backButton {
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.backButton:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(155, 143, 184, 0.5);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.2rem;
+}
+
+.error {
+  background: rgba(212, 165, 165, 0.2);
+  backdrop-filter: blur(10px);
+  color: #ffcccc;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border-left: 3px solid rgba(212, 165, 165, 0.6);
+  margin-bottom: 2rem;
+}
+
+.empty {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.1rem;
+  padding: 3rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.usersList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.userCard {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.userCard:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(155, 143, 184, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.userCardHeader {
+  margin-bottom: 1rem;
+}
+
+.userCardName {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 0.5rem 0;
+}
+
+.userCardPhone {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.userCardStats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.userCardStat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.userCardStatLabel {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.userCardStatValue {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+.chartsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.chartCard {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.chartCard:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(155, 143, 184, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.chartCardHeader {
+  margin-bottom: 1rem;
+}
+
+.chartCardTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+
+.chartCardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chartCardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chartCardLabel {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chartCardValue {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+.chartContainer {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .usersList,
+  .chartsList {
+    grid-template-columns: 1fr;
+  }
+
+  .title {
+    font-size: 1.5rem;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
