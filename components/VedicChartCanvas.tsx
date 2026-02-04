@@ -303,20 +303,22 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
                       style={{ pointerEvents: 'all' }}
                     />
                     
-                    {/* Номер дома в углу ромба (до поворота текста) */}
-                    <text
-                      x={x - rhombusSize/2 + 6}
-                      y={y - rhombusSize/2 + 10}
-                      className={styles.houseNumber}
-                      textAnchor="start"
-                      dominantBaseline="hanging"
-                      fill="#4a9eff"
-                      fontSize="11"
-                      fontWeight="500"
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {houseNum}
-                    </text>
+                    {/* Номер дома в углу ромба - поворот вокруг собственного центра для горизонтальности */}
+                    <g transform={`translate(${x - rhombusSize/2 + 6}, ${y - rhombusSize/2 + 10}) rotate(-45)`}>
+                      <text
+                        x={0}
+                        y={0}
+                        className={styles.houseNumber}
+                        textAnchor="start"
+                        dominantBaseline="hanging"
+                        fill="#4a9eff"
+                        fontSize="11"
+                        fontWeight="500"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {houseNum}
+                      </text>
+                    </g>
                     
                     {/* Текст с обратным поворотом для горизонтального отображения */}
                     <g transform={`rotate(-45 ${x} ${y})`}>
