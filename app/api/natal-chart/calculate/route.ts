@@ -34,36 +34,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Получаем данные из анкеты для координат города
+    // Получаем данные из анкеты
     const anketa = await UserAnketa.findOne({ where: { userId } });
-    if (!anketa || !anketa.birthCity) {
+    if (!anketa || !anketa.birthCity || !anketa.birthDate || !anketa.birthTime) {
       return NextResponse.json(
-        { error: 'Анкета не заполнена. Заполните город рождения в анкете.' },
+        { error: 'Анкета не заполнена. Заполните дату рождения, время и город рождения в анкете.' },
         { status: 400 }
       );
     }
 
-    // Используем ТЕКУЩЕЕ время для создания новой карты
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
-    const finalHour = now.getHours();
-    const finalMinute = now.getMinutes();
-    const finalSecond = now.getSeconds();
+    // Парсим дату рождения из анкеты (формат: YYYY-MM-DD)
+    const birthDateParts = anketa.birthDate.split('-');
+    if (birthDateParts.length !== 3) {
+      return NextResponse.json(
+        { error: 'Неверный формат даты рождения в анкете. Ожидается формат YYYY-MM-DD.' },
+        { status: 400 }
+      );
+    }
 
-    // Формируем название карты: "Январь 2025, 14:30:15"
+    const year = parseInt(birthDateParts[0], 10);
+    const month = parseInt(birthDateParts[1], 10);
+    const day = parseInt(birthDateParts[2], 10);
+
+    // Парсим время рождения из анкеты (формат: HH:MM или HH:MM:SS)
+    const birthTimeParts = anketa.birthTime.split(':');
+    if (birthTimeParts.length < 2) {
+      return NextResponse.json(
+        { error: 'Неверный формат времени рождения в анкете. Ожидается формат HH:MM.' },
+        { status: 400 }
+      );
+    }
+
+    const finalHour = parseInt(birthTimeParts[0], 10);
+    const finalMinute = parseInt(birthTimeParts[1], 10);
+    const finalSecond = birthTimeParts.length > 2 ? parseInt(birthTimeParts[2], 10) : 0;
+
+    // Валидация данных
+    if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(finalHour) || isNaN(finalMinute)) {
+      return NextResponse.json(
+        { error: 'Неверные данные даты или времени рождения в анкете.' },
+        { status: 400 }
+      );
+    }
+
+    // Формируем название карты: используем имя из анкеты или дату рождения
     const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
                         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-    const chartName = `${monthNames[month - 1]} ${year}, ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}:${String(finalSecond).padStart(2, '0')}`;
+    const chartName = anketa.name || `${monthNames[month - 1]} ${year}`;
     
     const chartDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const chartTime = `${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}:${String(finalSecond).padStart(2, '0')}`;
+    const chartTime = `${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}${finalSecond > 0 ? `:${String(finalSecond).padStart(2, '0')}` : ''}`;
 
-    console.log('Создание новой карты с текущим временем:', {
+    console.log('Создание новой карты с данными из анкеты:', {
       name: chartName,
       date: chartDate,
-      time: chartTime
+      time: chartTime,
+      city: anketa.birthCity
     });
 
     // Получаем координаты города из анкеты

@@ -35,6 +35,8 @@ export interface PlanetPosition {
   nakshatra?: number; // Индекс накшатры (0-26)
   nakshatraName?: string; // Название накшатры
   pada?: number; // Пада накшатры (1-4)
+  nakshatraRuler?: string; // Управитель накшатры (Кету, Венера, Солнце, Луна, Марс, Раху, Юпитер, Сатурн, Меркурий)
+  karaka?: string; // Карака (AK, АмК, БК, MK, ПК, ΓΚ, ДК, ПиК)
 }
 
 export interface NavamshaData {
@@ -316,6 +318,18 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
         // Определяем накшатру
         const nakshatraData = longitudeToNakshatra(longitude);
         
+        // Определяем управителя накшатры
+        // 27 накшатр, каждая управляется одной из 9 планет в цикле
+        // Порядок планет: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
+        const nakshatraRulers = [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
+          0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
+          0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26) - повторение цикла
+        ];
+        const rulerIndex = nakshatraRulers[nakshatraData.nakshatra % 27];
+        const rulerNames = ['Ке', 'Ve', 'Su', 'Mo', 'Ma', 'Ra', 'Ju', 'Sa', 'Me'];
+        const nakshatraRuler = rulerNames[rulerIndex];
+        
         return {
           longitude,
           sign: signData.sign,
@@ -329,7 +343,8 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
           dignity,
           nakshatra: nakshatraData.nakshatra,
           nakshatraName: nakshatraData.name,
-          pada: nakshatraData.pada
+          pada: nakshatraData.pada,
+          nakshatraRuler
         };
       } catch (error: any) {
         console.error(`Ошибка при расчете планеты ${planetId}:`, error);
@@ -566,6 +581,46 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       saturn: calculateNavamsha(saturnFull.longitude),
       ascendant: calculateNavamsha(ascendant.longitude),
     };
+
+    // Рассчитываем караки (только для 7 планет: Солнце, Луна, Марс, Меркурий, Юпитер, Венера, Сатурн)
+    // Караки определяются по долготе планет (от наибольшей к наименьшей)
+    // Порядок карак: AK (Атмакарака - наибольшая), АмК, БК, MK, ПК, ΓΚ, ДК (Дарикарака - наименьшая)
+    const planetsForKaraka = [
+      { name: 'sun', longitude: sunFull.longitude, planetName: 'Солнце' },
+      { name: 'moon', longitude: moonFull.longitude, planetName: 'Луна' },
+      { name: 'mars', longitude: marsFull.longitude, planetName: 'Марс' },
+      { name: 'mercury', longitude: mercuryFull.longitude, planetName: 'Меркурий' },
+      { name: 'jupiter', longitude: jupiterFull.longitude, planetName: 'Юпитер' },
+      { name: 'venus', longitude: venusFull.longitude, planetName: 'Венера' },
+      { name: 'saturn', longitude: saturnFull.longitude, planetName: 'Сатурн' },
+    ];
+    
+    // Сортируем по долготе (от наибольшей к наименьшей)
+    // Важно: нормализуем долготы для правильного сравнения
+    const sortedPlanets = [...planetsForKaraka].sort((a, b) => {
+      const aNorm = a.longitude % 360;
+      const bNorm = b.longitude % 360;
+      // Сортируем от наибольшей к наименьшей
+      return bNorm - aNorm;
+    });
+    
+    // Назначаем караки в порядке от наибольшей долготы (AK) к наименьшей (ДК)
+    const karakaNames = ['AK', 'АмК', 'БК', 'MK', 'ПК', 'ΓΚ', 'ДК'];
+    const karakaMap: Record<string, string> = {};
+    sortedPlanets.forEach((planet, index) => {
+      if (index < karakaNames.length) {
+        karakaMap[planet.name] = karakaNames[index];
+      }
+    });
+    
+    // Добавляем караки к планетам
+    sunFull.karaka = karakaMap['sun'];
+    moonFull.karaka = karakaMap['moon'];
+    marsFull.karaka = karakaMap['mars'];
+    mercuryFull.karaka = karakaMap['mercury'];
+    jupiterFull.karaka = karakaMap['jupiter'];
+    venusFull.karaka = karakaMap['venus'];
+    saturnFull.karaka = karakaMap['saturn'];
 
     // Рассчитываем Вимшоттари даши
     // Начало даши рассчитывается от положения Луны в накшатре

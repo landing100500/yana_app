@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-200 -200 1200 1200"
+     width="800" height="800">
+  <g transform="rotate(45 400 400)">
+    <!-- Фон -->
+    <rect width="800" height="800" fill="#ffffff"/>
+    
+    <!-- Внешняя рамка -->
+    <rect x="50" y="50" width="700" height="700" fill="none" stroke="#333" stroke-width="2"/>
+    
+    <!-- Линии -->
+    <line x1="50" y1="225" x2="750" y2="225" stroke="#333" stroke-width="1.5"/>
+    <line x1="50" y1="400" x2="750" y2="400" stroke="#333" stroke-width="1.5"/>
+    <line x1="50" y1="575" x2="750" y2="575" stroke="#333" stroke-width="1.5"/>
+    <line x1="225" y1="50" x2="225" y2="750" stroke="#333" stroke-width="1.5"/>
+    <line x1="400" y1="50" x2="400" y2="750" stroke="#333" stroke-width="1.5"/>
+    <line x1="575" y1="50" x2="575" y2="750" stroke="#333" stroke-width="1.5"/>
+    
+    <!-- Текст: все цифры повёрнуты обратно -->
+    
+    <!-- Первый ряд -->
+    <text x="137.5" y="137.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold"></text>
+    <g transform="rotate(-45 312.5 137.5)">
+      <text x="312.5" y="137.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">6</text>
+    </g>
+    <g transform="rotate(-45 487.5 137.5)">
+      <text x="487.5" y="137.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">5</text>
+    </g>
+    <text x="662.5" y="137.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold"></text>
+    
+    <!-- Второй ряд -->
+    <g transform="rotate(-45 137.5 312.5)">
+      <text x="137.5" y="312.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">8</text>
+    </g>
+    <g transform="rotate(-45 312.5 312.5)">
+      <text x="312.5" y="312.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">7</text>
+    </g>
+    <g transform="rotate(-45 487.5 312.5)">
+      <text x="487.5" y="312.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">4</text>
+    </g>
+    <g transform="rotate(-45 662.5 312.5)">
+      <text x="662.5" y="312.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">3</text>
+    </g>
+    
+    <!-- Третий ряд -->
+    <g transform="rotate(-45 137.5 487.5)">
+      <text x="137.5" y="487.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">9</text>
+    </g>
+    <g transform="rotate(-45 312.5 487.5)">
+      <text x="312.5" y="487.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">10</text>
+    </g>
+    <g transform="rotate(-45 487.5 487.5)">
+      <text x="487.5" y="487.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">1</text>
+    </g>
+    <g transform="rotate(-45 662.5 487.5)">
+      <text x="662.5" y="487.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">2</text>
+    </g>
+    
+    <!-- Четвертый ряд -->
+    <text x="137.5" y="662.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold"></text>
+    <g transform="rotate(-45 312.5 662.5)">
+      <text x="312.5" y="662.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">11</text>
+    </g>
+    <g transform="rotate(-45 487.5 662.5)">
+      <text x="487.5" y="662.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold">12</text>
+    </g>
+    <text x="662.5" y="662.5" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#333" font-weight="bold"></text>
+  </g>
+</svg>

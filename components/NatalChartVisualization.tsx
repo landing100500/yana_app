@@ -132,7 +132,7 @@ function longitudeToSign(longitude: number): { sign: number; degree: number; sig
 }
 
 // Определение накшатры
-function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string } {
+function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string; ruler: string } {
   let normalized = longitude % 360;
   if (normalized < 0) normalized += 360;
   
@@ -148,11 +148,45 @@ function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: num
     'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
   ];
   
+  // Управители накшатр: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
+  const nakshatraRulers = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
+    0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
+    0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26)
+  ];
+  const rulerIndex = nakshatraRulers[nakshatraIndex % 27];
+  const rulerNames = ['Ке', 'Ve', 'Su', 'Mo', 'Ma', 'Ra', 'Ju', 'Sa', 'Me'];
+  const ruler = rulerNames[rulerIndex];
+  
   return {
     nakshatra: nakshatraIndex % 27,
     pada: pada > 4 ? 4 : pada,
-    name: nakshatraNames[nakshatraIndex % 27]
+    name: nakshatraNames[nakshatraIndex % 27],
+    ruler
   };
+}
+
+// Расчет карак для планет
+function calculateKarakas(planets: Array<{ name: string; longitude: number }>): Record<string, string> {
+  // Только 7 планет для карак: Солнце, Луна, Марс, Меркурий, Юпитер, Венера, Сатурн
+  const planetsForKaraka = planets.filter(p => 
+    ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn'].includes(p.name)
+  );
+  
+  // Сортируем по долготе (от наибольшей к наименьшей)
+  const sorted = [...planetsForKaraka].sort((a, b) => {
+    const aNorm = a.longitude % 360;
+    const bNorm = b.longitude % 360;
+    return bNorm - aNorm;
+  });
+  
+  const karakaNames = ['AK', 'АмК', 'БК', 'MK', 'ПК', 'ΓΚ', 'ДК'];
+  const karakaMap: Record<string, string> = {};
+  sorted.forEach((planet, index) => {
+    karakaMap[planet.name] = karakaNames[index];
+  });
+  
+  return karakaMap;
 }
 
 // Форматирование градусов
@@ -189,7 +223,7 @@ function getPlanetHouse(planetLongitude: number, houses: number[], ascendant: nu
   return houseNum;
 }
 
-type TabType = 'general' | 'other' | 'yogas' | 'bala' | 'bhava-chalita' | 'periods' | 'tajaka' | 'rectification';
+type TabType = 'general' | 'transits' | 'other' | 'yogas' | 'bala' | 'bhava-chalita' | 'periods' | 'tajaka' | 'rectification';
 
 export default function NatalChartVisualization({ chart }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('general');
@@ -197,7 +231,7 @@ export default function NatalChartVisualization({ chart }: Props) {
   const [selectedChartType, setSelectedChartType] = useState<'D1' | 'D9'>('D1');
 
   const planets = useMemo(() => {
-    return [
+    const planetList = [
       { name: 'sun', longitude: chart.sun },
       { name: 'moon', longitude: chart.moon },
       { name: 'mercury', longitude: chart.mercury },
@@ -210,7 +244,12 @@ export default function NatalChartVisualization({ chart }: Props) {
       { name: 'pluto', longitude: chart.pluto },
       { name: 'northNode', longitude: chart.northNode },
       { name: 'southNode', longitude: chart.southNode },
-    ].map(planet => {
+    ];
+    
+    // Рассчитываем караки
+    const karakas = calculateKarakas(planetList);
+    
+    return planetList.map(planet => {
       const signData = longitudeToSign(planet.longitude);
       const nakshatraData = longitudeToNakshatra(planet.longitude);
       const houses = [
@@ -225,6 +264,8 @@ export default function NatalChartVisualization({ chart }: Props) {
         ...signData,
         nakshatraName: nakshatraData.name,
         nakshatraPada: nakshatraData.pada,
+        nakshatraRuler: nakshatraData.ruler,
+        karaka: karakas[planet.name] || '',
         house,
         formattedDegrees: formatDegrees(planet.longitude),
         formattedDegreesShort: formatDegreesShort(planet.longitude)
@@ -396,13 +437,7 @@ export default function NatalChartVisualization({ chart }: Props) {
 
   const tabs = [
     { id: 'general' as TabType, label: 'Общее' },
-    { id: 'other' as TabType, label: 'Разное' },
-    { id: 'yogas' as TabType, label: 'Йоги' },
-    { id: 'bala' as TabType, label: 'Бала' },
-    { id: 'bhava-chalita' as TabType, label: 'Бхава Чалита' },
-    { id: 'periods' as TabType, label: 'Периоды' },
-    { id: 'tajaka' as TabType, label: 'Таджака-йоги' },
-    { id: 'rectification' as TabType, label: 'Ректификация' },
+    { id: 'transits' as TabType, label: 'Транзиты' },
   ];
 
   // Получаем информацию о выбранном доме
@@ -537,16 +572,16 @@ export default function NatalChartVisualization({ chart }: Props) {
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Асцендент</td>
+                    <td>-</td>
                     <td>{formatDegrees(chart.ascendant)}</td>
                     <td>{longitudeToSign(chart.ascendant).signName}</td>
                     <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
-                    <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada})</td>
+                    <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada}, {longitudeToNakshatra(chart.ascendant).ruler})</td>
                     <td>1</td>
                   </tr>
                   {planets.map((planet) => (
                     <tr key={planet.name}>
-                      <td>{PLANET_NAMES[planet.name]}</td>
+                      <td>{planet.karaka || '-'}</td>
                       <td>{planet.formattedDegrees}</td>
                       <td>{planet.signName}</td>
                       <td>
@@ -554,13 +589,20 @@ export default function NatalChartVisualization({ chart }: Props) {
                           ? (chart.navamsha[planet.name as keyof NavamshaData] as any)?.signName 
                           : '-'}
                       </td>
-                      <td>{planet.nakshatraName} ({planet.nakshatraPada})</td>
+                      <td>{planet.nakshatraName} ({planet.nakshatraPada}, {planet.nakshatraRuler})</td>
                       <td>{planet.house}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'transits' && (
+          <div className={styles.transitsTab}>
+            <p>Транзиты - в разработке</p>
+            <p>Здесь будет отображение транзитных планет для выбранной даты</p>
           </div>
         )}
 

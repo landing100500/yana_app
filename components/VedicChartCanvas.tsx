@@ -17,40 +17,57 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
   onHouseClick,
   selectedHouse
 }) => {
-  // Состояние для трансформации
-  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  // Состояние для трансформации - начальный масштаб увеличен в 2 раза
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 2 });
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Координаты центров домов из эталонного SVG (неповернутая система)
-  const houseCenters: Array<{
+  // Правильная структура из map-test.svg
+  // Сетка 4x4, размер квадрата 800x800, внешняя рамка 50,50 700x700
+  // Линии делят на: x=225, 400, 575 и y=225, 400, 575
+  // Центры ромбов в неповернутой системе (до rotate(45)):
+  // Структура:
+  //    6    5
+  //  8  7  4  3
+  //  9 10  1  2
+  //   11 12
+  const gridSize = 800; // размер квадрата из map-test.svg
+  const borderOffset = 50; // отступ внешней рамки
+  const innerSize = 700; // размер внутреннего квадрата
+  const cellSize = innerSize / 4; // размер ячейки сетки (175)
+  
+  // Правильная структура из map-test.svg
+  // В неповернутой системе координаты центров (относительно центра 0,0):
+  // После поворота на 45° получаем правильную структуру:
+  //    6    5
+  //  8  7  4  3
+  //  9 10  1  2
+  //   11 12
+  // Дом 1 внизу по центру, дом 7 вверху по центру
+  const finalHouseCenters: Array<{
     houseNum: number;
     x: number;
     y: number;
   }> = [
-    { houseNum: 1, x: -50, y: -150 },  // Дом 1
-    { houseNum: 2, x: -150, y: -50 },   // Дом 2
-    { houseNum: 3, x: -150, y: 50 },    // Дом 3
-    { houseNum: 4, x: 50, y: -150 },    // Дом 4
-    { houseNum: 5, x: -150, y: 150 },   // Дом 5
-    { houseNum: 6, x: -50, y: 150 },    // Дом 6
-    { houseNum: 7, x: 50, y: 150 },     // Дом 7
-    { houseNum: 8, x: 150, y: 50 },     // Дом 8
-    { houseNum: 9, x: 50, y: -50 },     // Дом 9
-    { houseNum: 10, x: 150, y: -50 },   // Дом 10
-    { houseNum: 11, x: 150, y: -150 },  // Дом 11
-    { houseNum: 12, x: 50, y: 50 },     // Дом 12
+    { houseNum: 1, x: 87.5, y: 87.5 },      // внизу по центру после поворота
+    { houseNum: 2, x: 262.5, y: 87.5 },     // справа от 1
+    { houseNum: 3, x: 262.5, y: -87.5 },    // справа вверху
+    { houseNum: 4, x: 87.5, y: -87.5 },     // вверху справа
+    { houseNum: 5, x: 87.5, y: -262.5 },    // вверху
+    { houseNum: 6, x: -87.5, y: -262.5 },  // вверху слева
+    { houseNum: 7, x: -87.5, y: -87.5 },   // вверху по центру
+    { houseNum: 8, x: -262.5, y: -87.5 },  // вверху слева
+    { houseNum: 9, x: -262.5, y: 87.5 },   // слева
+    { houseNum: 10, x: -87.5, y: 87.5 },   // слева по центру
+    { houseNum: 11, x: -87.5, y: 262.5 },  // внизу слева
+    { houseNum: 12, x: 87.5, y: 262.5 },   // внизу справа
   ];
-
+  
   // Координаты центров для аспектов (в исходной системе)
   const centers: Record<number, { x: number; y: number }> = {};
-  houseCenters.forEach(({ houseNum, x, y }) => {
+  finalHouseCenters.forEach(({ houseNum, x, y }) => {
     centers[houseNum] = { x, y };
   });
-
-  // Параметры сетки из эталонного SVG (квадрат 400x400)
-  const gridSize = 400; // размер квадрата
-  const halfSize = gridSize / 2; // 200
 
   // Обработка drag (pan) и pinch (zoom)
   useGesture(
@@ -62,7 +79,7 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
         setTransform(prev => ({ ...prev, x, y }));
       },
       onPinch: ({ offset: [scale] }) => {
-        setTransform(prev => ({ ...prev, scale: Math.max(0.5, Math.min(2, scale)) }));
+        setTransform(prev => ({ ...prev, scale: Math.max(0.5, Math.min(6, scale)) }));
       },
     },
     {
@@ -90,7 +107,7 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
         setTransform(prev => ({
           ...prev,
-          scale: Math.max(0.5, Math.min(2, prev.scale * zoomFactor))
+          scale: Math.max(0.5, Math.min(6, prev.scale * zoomFactor))
         }));
       }
     };
@@ -109,7 +126,7 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
   const handleZoomIn = () => {
     setTransform(prev => ({
       ...prev,
-      scale: Math.min(2, prev.scale * 1.2)
+      scale: Math.min(6, prev.scale * 1.2)
     }));
   };
 
@@ -121,11 +138,28 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
   };
 
   const handleReset = () => {
-    setTransform({ x: 0, y: 0, scale: 1 });
+    setTransform({ x: 0, y: 0, scale: 2 });
   };
 
-  // ViewBox увеличен с большим запасом во всех направлениях
-  const viewBox = "-300 -300 600 600";
+  // ViewBox с запасом для всех домов (центр в 0,0)
+  const viewBox = "-350 -350 700 700";
+  
+  // Функция для вычисления вершин ромба
+  // Размер ромба примерно 175x175 (размер ячейки сетки)
+  const rhombusSize = cellSize * 0.8; // немного меньше ячейки
+  const getRhombusPoints = (cx: number, cy: number, size: number = rhombusSize): string => {
+    const halfSize = size / 2;
+    return `${cx},${cy - halfSize} ${cx + halfSize},${cy} ${cx},${cy + halfSize} ${cx - halfSize},${cy}`;
+  };
+
+  // Парсинг планет из строк для отображения
+  const parsePlanetInfo = (planetStr: string) => {
+    // Формат может быть: "Su 27°", "Ra 12°R", "As 19°", "AL", "UL", "A7 A11"
+    const isRetrograde = planetStr.includes('R') || planetStr.includes('R');
+    const isRed = planetStr.includes('As') || planetStr === 'AL' || planetStr === 'UL' || /^AL\b/.test(planetStr) || /^UL\b/.test(planetStr);
+    const isAValue = /^A\d+/.test(planetStr) || /\bA\d+\b/.test(planetStr);
+    return { text: planetStr, isRetrograde, isRed, isAValue };
+  };
 
   return (
     <div className={styles.chartCanvasWrapper}>
@@ -161,22 +195,72 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
             aria-hidden="true"
             style={{ display: 'block', background: '#1e1e2e' }}
           >
-            {/* Группа с поворотом на 45° */}
+            {/* Группа с поворотом на 45° для всей карты (как в map-test.svg) */}
             <g transform="rotate(45 0 0)">
-              {/* Внешний квадрат (граница чакры) */}
-              <rect x="-200" y="-200" width="400" height="400" fill="none" stroke="#444" strokeWidth="1" />
+              {/* Внешний квадрат (граница чакры) - соответствует 700x700 из map-test.svg */}
+              <rect 
+                x={-innerSize/2} 
+                y={-innerSize/2} 
+                width={innerSize} 
+                height={innerSize} 
+                fill="none" 
+                stroke="#444" 
+                strokeWidth="2" 
+              />
 
-              {/* Вертикальные линии: x = -100, 0, 100 */}
-              <line x1="-100" y1="-200" x2="-100" y2="200" stroke="#444" strokeWidth="0.8" />
-              <line x1="0" y1="-200" x2="0" y2="200" stroke="#444" strokeWidth="0.8" />
-              <line x1="100" y1="-200" x2="100" y2="200" stroke="#444" strokeWidth="0.8" />
+              {/* Вертикальные линии: делят на 4 части */}
+              <line 
+                x1={-innerSize/2 + cellSize} 
+                y1={-innerSize/2} 
+                x2={-innerSize/2 + cellSize} 
+                y2={innerSize/2} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
+              <line 
+                x1={0} 
+                y1={-innerSize/2} 
+                x2={0} 
+                y2={innerSize/2} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
+              <line 
+                x1={innerSize/2 - cellSize} 
+                y1={-innerSize/2} 
+                x2={innerSize/2 - cellSize} 
+                y2={innerSize/2} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
 
-              {/* Горизонтальные линии: y = -100, 0, 100 */}
-              <line x1="-200" y1="-100" x2="200" y2="-100" stroke="#444" strokeWidth="0.8" />
-              <line x1="-200" y1="0" x2="200" y2="0" stroke="#444" strokeWidth="0.8" />
-              <line x1="-200" y1="100" x2="200" y2="100" stroke="#444" strokeWidth="0.8" />
+              {/* Горизонтальные линии: делят на 4 части */}
+              <line 
+                x1={-innerSize/2} 
+                y1={-innerSize/2 + cellSize} 
+                x2={innerSize/2} 
+                y2={-innerSize/2 + cellSize} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
+              <line 
+                x1={-innerSize/2} 
+                y1={0} 
+                x2={innerSize/2} 
+                y2={0} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
+              <line 
+                x1={-innerSize/2} 
+                y1={innerSize/2 - cellSize} 
+                x2={innerSize/2} 
+                y2={innerSize/2 - cellSize} 
+                stroke="#444" 
+                strokeWidth="1.5" 
+              />
 
-              {/* Аспекты (рисуем внутри повернутой группы) */}
+              {/* Аспекты */}
               <g className={styles.aspectsGroup}>
                 {aspects.map((aspect, i) => {
                   const from = centers[aspect.from];
@@ -196,29 +280,11 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
                 })}
               </g>
 
-              {/* Дома с текстом (текст повернут обратно на -45°) */}
-              {houseCenters.map(({ houseNum, x, y }) => {
+              {/* Дома - ромбы через polygon */}
+              {finalHouseCenters.map(({ houseNum, x, y }) => {
                 const planets = planetsInHouses[houseNum - 1] || [];
                 const isSelected = selectedHouse === houseNum;
-
-                // Определяем границы квадрата для этого дома
-                // Каждый дом занимает область 100x100 в сетке
-                const cellSize = 100;
-                let rectX: number, rectY: number;
-                
-                // Вычисляем позицию квадрата на основе координат центра
-                if (x === -50 && y === -150) { rectX = -100; rectY = -200; } // Дом 1
-                else if (x === -150 && y === -50) { rectX = -200; rectY = -100; } // Дом 2
-                else if (x === -150 && y === 50) { rectX = -200; rectY = 0; } // Дом 3
-                else if (x === 50 && y === -150) { rectX = 0; rectY = -200; } // Дом 4
-                else if (x === -150 && y === 150) { rectX = -200; rectY = 100; } // Дом 5
-                else if (x === -50 && y === 150) { rectX = -100; rectY = 100; } // Дом 6
-                else if (x === 50 && y === 150) { rectX = 0; rectY = 100; } // Дом 7
-                else if (x === 150 && y === 50) { rectX = 100; rectY = 0; } // Дом 8
-                else if (x === 50 && y === -50) { rectX = 0; rectY = -100; } // Дом 9
-                else if (x === 150 && y === -50) { rectX = 100; rectY = -100; } // Дом 10
-                else if (x === 150 && y === -150) { rectX = 100; rectY = -200; } // Дом 11
-                else { rectX = 0; rectY = 0; } // Дом 12
+                const rhombusPoints = getRhombusPoints(x, y, rhombusSize);
 
                 return (
                   <g
@@ -227,50 +293,100 @@ const VedicChartCanvas: React.FC<VedicChartProps> = ({
                     className={`${styles.houseGroup} ${isSelected ? styles.houseGroupSelected : ''}`}
                     style={{ cursor: 'pointer' }}
                   >
-                    {/* Невидимый прямоугольник для hover и клика */}
-                    <rect
-                      x={rectX}
-                      y={rectY}
-                      width={cellSize}
-                      height={cellSize}
+                    {/* Ромб дома - кликабельная область */}
+                    <polygon
+                      points={rhombusPoints}
                       fill="transparent"
+                      stroke={isSelected ? "#fff" : "transparent"}
+                      strokeWidth={isSelected ? 2 : 0}
                       className={styles.houseArea}
+                      style={{ pointerEvents: 'all' }}
                     />
+                    
+                    {/* Номер дома в углу ромба (до поворота текста) */}
+                    <text
+                      x={x - rhombusSize/2 + 6}
+                      y={y - rhombusSize/2 + 10}
+                      className={styles.houseNumber}
+                      textAnchor="start"
+                      dominantBaseline="hanging"
+                      fill="#4a9eff"
+                      fontSize="11"
+                      fontWeight="500"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {houseNum}
+                    </text>
                     
                     {/* Текст с обратным поворотом для горизонтального отображения */}
                     <g transform={`rotate(-45 ${x} ${y})`}>
-                      {/* Номер дома */}
-                      <text
-                        x={x}
-                        y={y}
-                        className={styles.houseNumber}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                      >
-                        {houseNum}
-                      </text>
+                      {/* Контент в центре ромба */}
+                      <g transform={`translate(${x}, ${y})`}>
+                        {/* D1 селектор для дома 1 */}
+                        {houseNum === 1 && (
+                          <g>
+                            <rect
+                              x={-25}
+                              y={-rhombusSize/2 + 5}
+                              width={50}
+                              height={18}
+                              fill="#4a9eff"
+                              fillOpacity={0.2}
+                              stroke="#4a9eff"
+                              strokeWidth={1}
+                              rx={3}
+                              style={{ pointerEvents: 'none' }}
+                            />
+                            <text
+                              x={0}
+                              y={-rhombusSize/2 + 15}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fill="#4a9eff"
+                              fontSize="10"
+                              fontWeight="600"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              D1
+                            </text>
+                            {/* Стрелки вверх/вниз */}
+                            <text
+                              x={18}
+                              y={-rhombusSize/2 + 15}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fill="#4a9eff"
+                              fontSize="8"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              ▲▼
+                            </text>
+                          </g>
+                        )}
 
-                      {/* Планеты */}
-                      {planets.map((planet, pIdx) => {
-                        let yOffset: number;
-                        if (y < 0) {
-                          yOffset = y + 14 + (pIdx * 14);
-                        } else {
-                          yOffset = y + 14 + (pIdx * 14);
-                        }
-                        return (
-                          <text
-                            key={pIdx}
-                            x={x}
-                            y={yOffset}
-                            className={styles.planetText}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            {planet}
-                          </text>
-                        );
-                      })}
+                        {/* Планеты и другие элементы */}
+                        {planets.map((planet, pIdx) => {
+                          const planetInfo = parsePlanetInfo(planet);
+                          const yOffset = -rhombusSize/2 + 30 + (pIdx * 16);
+                          
+                          return (
+                            <text
+                              key={pIdx}
+                              x={0}
+                              y={yOffset}
+                              className={styles.planetText}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fill={planetInfo.isRed ? "#ff4444" : "#a0a0c0"}
+                              fontSize={planetInfo.isAValue ? "9" : "10"}
+                              fontWeight={planetInfo.isRed ? "600" : "400"}
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              {planetInfo.text}
+                            </text>
+                          );
+                        })}
+                      </g>
                     </g>
                   </g>
                 );
