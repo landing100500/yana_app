@@ -11,6 +11,8 @@ import { tmpdir } from 'os';
 import busboy from 'busboy';
 import { Readable } from 'stream';
 
+export const dynamic = 'force-dynamic';
+
 // Настройка для больших файлов (до 250MB)
 export const maxDuration = 1800; // 30 минут для обработки больших файлов
 export const runtime = 'nodejs';

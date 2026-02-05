@@ -4,6 +4,8 @@ import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 
+export const dynamic = 'force-dynamic';
+
 async function checkAdminAuth() {
   const cookieStore = await cookies();
   const adminAuth = cookieStore.get('admin_auth');

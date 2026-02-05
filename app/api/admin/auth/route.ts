@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
+
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = '19791979';
 

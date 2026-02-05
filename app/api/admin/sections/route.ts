@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 async function checkAdminAuth() {
   const cookieStore = await cookies();
   const adminAuth = cookieStore.get('admin_auth');
