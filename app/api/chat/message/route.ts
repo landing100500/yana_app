@@ -6,7 +6,7 @@ import User from '@/models/User';
 import Message from '@/models/Message';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { searchRelevantChunks } from '@/lib/rag-search';
+import { searchRelevantChunks, getSectionStyleChunks, findSectionByName } from '@/lib/rag-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,9 +85,26 @@ export async function POST(request: NextRequest) {
     }));
 
     // Ищем релевантные чанки в базе знаний через RAG
+    // Всегда включаем раздел "Результат человека" для постоянной связи
+    const REQUIRED_SECTION_NAME = 'Результат человека';
     console.log('Searching relevant chunks for query:', message);
-    const relevantChunks = await searchRelevantChunks(message, 5);
+    const relevantChunks = await searchRelevantChunks(message, 5, REQUIRED_SECTION_NAME);
     console.log(`Found ${relevantChunks.length} relevant chunks`);
+
+    // Получаем стилистику из раздела "Результат человека"
+    let styleContext = '';
+    const resultSection = await findSectionByName(REQUIRED_SECTION_NAME);
+    if (resultSection) {
+      const styleChunks = await getSectionStyleChunks(resultSection.id, 3);
+      if (styleChunks.length > 0) {
+        styleContext = '\n\nВАЖНО - Стилистика и характер общения:\n';
+        styleContext += 'Ты должен общаться в том же стиле, тональности и характере, что и в следующих примерах из области памяти "Результат человека":\n';
+        styleChunks.forEach((chunk, index) => {
+          styleContext += `\n[Пример стиля ${index + 1}]:\n${chunk.text}\n`;
+        });
+        styleContext += '\nИспользуй эту стилистику, тональность, характер и манеру общения во ВСЕХ диалогах с пользователями. Это твоя базовая личность и способ коммуникации.\n';
+      }
+    }
 
     // Формируем контекст из найденных чанков
     let contextText = '';
@@ -98,10 +115,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Формируем системный промпт с контекстом
+    // Формируем системный промпт с контекстом и стилистикой
     const systemMessage = {
       role: 'system' as const,
-      content: SYSTEM_PROMPT + (contextText ? contextText : ''),
+      content: SYSTEM_PROMPT + styleContext + (contextText ? contextText : ''),
     };
 
     // Создаем массив сообщений для OpenAI
