@@ -72,10 +72,12 @@ export async function searchRelevantChunks(
   limit: number = 5,
   requiredSectionName?: string
 ): Promise<Array<{ text: string; sectionId: string; sectionName?: string }>> {
+  // Объявляем переменные вне try-catch для доступа в catch блоке
+  let requiredChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
+  
   try {
     // Если указан обязательный раздел, находим его
     let requiredSection: { id: string; name: string } | null = null;
-    let requiredChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
     
     if (requiredSectionName) {
       requiredSection = await findSectionByName(requiredSectionName);
