@@ -248,7 +248,10 @@ export default function AdminPage() {
   const handleDeleteSection = async (sectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем выбор раздела при клике на удаление
 
-    if (!confirm('Вы уверены, что хотите удалить этот раздел? Все связанные данные будут удалены безвозвратно.')) {
+    if (!confirm('Точно уверены, что хотите удалить эту область памяти? Все связанные данные будут удалены.')) {
+      return;
+    }
+    if (!confirm('Подтвердите удаление ещё раз. Это действие нельзя отменить.')) {
       return;
     }
 
