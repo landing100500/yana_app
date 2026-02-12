@@ -87,34 +87,6 @@ export default function AnketaPage() {
     },
   ];
 
-  const parentSteps = [
-    {
-      id: 'motherJob',
-      question: 'Кем работала мама?',
-      type: 'text',
-      field: 'motherJob' as keyof AnketaData,
-    },
-    {
-      id: 'fatherJob',
-      question: 'Кем работал папа?',
-      type: 'text',
-      field: 'fatherJob' as keyof AnketaData,
-    },
-    {
-      id: 'hasMoved',
-      question: 'Переезжали ли вы?',
-      type: 'select',
-      options: ['Да', 'Нет'],
-      field: 'hasMoved' as keyof AnketaData,
-    },
-    {
-      id: 'lifeDifficulties',
-      question: 'Основные сложности в жизни?',
-      type: 'textarea',
-      field: 'lifeDifficulties' as keyof AnketaData,
-    },
-  ];
-
   const handleNext = () => {
     const question = getCurrentQuestion();
     const value = anketaData[question.field];
@@ -128,34 +100,14 @@ export default function AnketaPage() {
     }
     // boolean false - это валидное значение, не блокируем
 
-    // Если это вопрос о времени рождения и выбрано "Не знаю"
-    if (question.id === 'birthTime' && value === 'unknown') {
-      // Переходим к вопросу об имени (имя спрашиваем всегда)
+    // Время рождения (указано или "Не знаю" → 12:00) — переходим к вопросу об имени
+    if (question.id === 'birthTime') {
       setCurrentStep(currentStep + 1);
       return;
     }
 
-    // Если это вопрос о времени рождения и время указано
-    if (question.id === 'birthTime' && value !== 'unknown') {
-      // Переходим к вопросу об имени
-      setCurrentStep(currentStep + 1);
-      return;
-    }
-
-    // Если это вопрос об имени и время известно - завершаем
-    if (question.id === 'name' && anketaData.birthTime && anketaData.birthTime !== 'unknown') {
-      handleSubmit();
-      return;
-    }
-
-    // Если это вопрос об имени и время неизвестно - переходим к вопросам о родителях
-    if (question.id === 'name' && anketaData.birthTime === 'unknown') {
-      setCurrentStep(currentStep + 1);
-      return;
-    }
-
-    // Если это последний вопрос из родительских (когда время неизвестно)
-    if (anketaData.birthTime === 'unknown' && currentStep === steps.length + 1 + parentSteps.length - 1) {
+    // Вопрос об имени — завершаем анкету
+    if (question.id === 'name') {
       handleSubmit();
       return;
     }
@@ -212,8 +164,7 @@ export default function AnketaPage() {
     if (currentStep < steps.length) {
       return steps[currentStep];
     }
-    
-    // После основных вопросов всегда показываем вопрос об имени
+    // После времени рождения — только вопрос об имени, затем завершение
     if (currentStep === steps.length) {
       return {
         id: 'name',
@@ -222,16 +173,6 @@ export default function AnketaPage() {
         field: 'name' as keyof AnketaData,
       };
     }
-    
-    // Если время рождения неизвестно - показываем вопросы о родителях (после вопроса об имени)
-    if (anketaData.birthTime === 'unknown') {
-      const parentStepIndex = currentStep - steps.length - 1; // -1 для вопроса об имени
-      if (parentStepIndex >= 0 && parentStepIndex < parentSteps.length) {
-        return parentSteps[parentStepIndex];
-      }
-    }
-    
-    // Fallback - возвращаем последний основной вопрос
     return steps[steps.length - 1];
   };
 
@@ -296,15 +237,15 @@ export default function AnketaPage() {
             <input
               type="time"
               className={styles.input}
-              value={value && value !== 'unknown' ? (value as string) : ''}
+              value={value ? (value as string) : ''}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder="Введите время"
             />
             <div className={styles.orDivider}>или</div>
             <button
               type="button"
-              className={`${styles.optionButton} ${value === 'unknown' ? styles.optionButtonActive : ''}`}
-              onClick={() => handleInputChange('unknown')}
+              className={`${styles.optionButton} ${value === '12:00' ? styles.optionButtonActive : ''}`}
+              onClick={() => handleInputChange('12:00')}
             >
               Не знаю
             </button>
@@ -338,14 +279,8 @@ export default function AnketaPage() {
   const question = getCurrentQuestion();
   const value = anketaData[question.field];
   
-  // Вычисляем общее количество шагов
-  // Имя спрашиваем всегда, поэтому +1 всегда
-  const totalSteps = anketaData.birthTime === 'unknown' 
-    ? steps.length + 1 + parentSteps.length  // +1 для вопроса об имени
-    : steps.length + 1; // +1 для вопроса об имени
-  
-  const isLastStep = (anketaData.birthTime === 'unknown' && currentStep === steps.length + 1 + parentSteps.length - 1) ||
-                     (anketaData.birthTime && anketaData.birthTime !== 'unknown' && question.id === 'name');
+  const totalSteps = steps.length + 1; // +1 вопрос об имени
+  const isLastStep = question.id === 'name';
   
   const canProceed = (() => {
     if (value === null || value === undefined) return false;

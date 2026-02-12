@@ -614,6 +614,14 @@
   text-align: center;
 }
 
+.welcomeGreeting {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  color: var(--dark-purple);
+  margin: 0 0 0.5rem 0;
+}
+
 .welcomeText {
   font-size: 1.1rem;
   font-weight: 400;
@@ -621,6 +629,179 @@
   line-height: 1.5;
   color: var(--gray);
   max-width: 500px;
+  margin: 0 0 1.25rem 0;
+}
+
+.questionsCloud {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem 0.75rem;
+  max-width: 720px;
+  width: 100%;
+}
+
+@keyframes questionChipAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.questionChip {
+  padding: 0.6rem 1rem;
+  background: rgba(155, 143, 184, 0.12);
+  border: 1px solid rgba(155, 143, 184, 0.3);
+  border-radius: 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--dark-purple);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  line-height: 1.35;
+  max-width: 320px;
+  opacity: 0;
+  animation: questionChipAppear 0.4s ease forwards;
+}
+
+.questionChip:hover:not(:disabled) {
+  background: rgba(155, 143, 184, 0.22);
+  border-color: rgba(155, 143, 184, 0.5);
+  transform: translateY(-1px);
+}
+
+.questionChip:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.questionChipMore {
+  padding: 0.6rem 1.25rem;
+  background: rgba(155, 143, 184, 0.2);
+  border: 1px dashed rgba(155, 143, 184, 0.5);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--dark-purple);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  opacity: 0;
+  animation: questionChipAppear 0.4s ease forwards;
+}
+
+.questionChipMore:hover:not(:disabled) {
+  background: rgba(155, 143, 184, 0.3);
+  border-style: solid;
+  transform: translateY(-1px);
+}
+
+.questionChipMore:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.inputSuggestionChip {
+  display: block;
+  width: calc(100% - 4rem);
+  margin: 0 2rem 0.5rem 2rem;
+  padding: 0.6rem 1rem;
+  background: rgba(155, 143, 184, 0.1);
+  border: 1px solid rgba(155, 143, 184, 0.25);
+  border-radius: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--dark-purple);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.inputSuggestionChip:hover:not(:disabled) {
+  background: rgba(155, 143, 184, 0.18);
+  border-color: rgba(155, 143, 184, 0.4);
+}
+
+.inputSuggestionChip:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .inputSuggestionChip {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.modalContent {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(45, 31, 61, 0.2);
+}
+
+.modalTitle {
+  margin: 0 0 1.25rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--dark-purple);
+  text-align: center;
+}
+
+.modalProgressBar {
+  height: 8px;
+  background: var(--light-beige);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.modalProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--purple), var(--dark-purple));
+  border-radius: 4px;
+  transition: width 0.15s ease;
+}
+
+.modalCloseButton {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1.25rem;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  color: var(--white);
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+
+.modalCloseButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(155, 143, 184, 0.35);
 }
 
 .message {

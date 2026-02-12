@@ -54,6 +54,8 @@ interface NatalChartAttributes {
   houseSystem: string; // 'P' для Placidus
   siderealTime: number;
   
+  // Основная натальная карта (по данным анкеты, создаётся при первом заходе в чат)
+  isMain: boolean;
   // Метаданные
   calculatedAt: Date;
   createdAt?: Date;
@@ -101,6 +103,7 @@ class NatalChart extends Model<NatalChartAttributes, NatalChartCreationAttribute
   public house12!: number;
   public houseSystem!: string;
   public siderealTime!: number;
+  public isMain!: boolean;
   public calculatedAt!: Date;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -262,6 +265,11 @@ NatalChart.init(
       type: DataTypes.STRING(10),
       allowNull: false,
       defaultValue: 'P',
+    },
+    isMain: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     siderealTime: {
       type: DataTypes.DECIMAL(10, 6),

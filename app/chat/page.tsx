@@ -23,6 +23,12 @@ interface UserProfile {
   name?: string;
 }
 
+interface ChatContext {
+  name: string | null;
+  hasMainNatalChart: boolean;
+  selfKnowledgeQuestions: string[];
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -31,13 +37,22 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [natalChartModal, setNatalChartModal] = useState<{ show: boolean; progress: number; phase: 'progress' | 'done' }>({ show: false, progress: 0, phase: 'progress' });
+  const [questionsVisibleCount, setQuestionsVisibleCount] = useState(6);
+  const [rotatingQuestionIndex, setRotatingQuestionIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  const QUESTIONS_BATCH = 6;
+  const questions = chatContext?.selfKnowledgeQuestions ?? [];
+  const visibleQuestions = questions.slice(0, questionsVisibleCount);
+  const hasMoreQuestions = questionsVisibleCount < questions.length;
 
   const checkAuth = useCallback(async () => {
     try {
@@ -113,12 +128,71 @@ export default function ChatPage() {
     if (isAuthChecked) {
       loadTopics();
       loadUserProfile();
+      loadChatContext();
     }
   }, [isAuthChecked]);
+
+  const loadChatContext = async () => {
+    try {
+      const res = await fetch('/api/chat/context', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setChatContext({
+          name: data.name ?? null,
+          hasMainNatalChart: !!data.hasMainNatalChart,
+          selfKnowledgeQuestions: Array.isArray(data.selfKnowledgeQuestions) ? data.selfKnowledgeQuestions : [],
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load chat context', err);
+    }
+  };
+
+  // При первом заходе в чат: создаём основную натальную карту, если её нет; показываем попап с прогрессом
+  useEffect(() => {
+    if (!isAuthChecked || chatContext === null) return;
+    if (chatContext.hasMainNatalChart) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/natal-chart/ensure-main', { method: 'POST', credentials: 'include' });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) return;
+        if (data.created) {
+          setNatalChartModal({ show: true, progress: 0, phase: 'progress' });
+          const durationMs = 10000;
+          const steps = 50;
+          const stepMs = durationMs / steps;
+          for (let i = 1; i <= steps; i++) {
+            if (cancelled) return;
+            await new Promise((r) => setTimeout(r, stepMs));
+            if (cancelled) return;
+            setNatalChartModal((m) => ({ ...m, progress: (i / steps) * 100 }));
+          }
+          if (cancelled) return;
+          setNatalChartModal((m) => ({ ...m, phase: 'done' }));
+        }
+      } catch (err) {
+        console.error('Ensure main natal chart error', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthChecked, chatContext?.hasMainNatalChart]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Поочерёдный показ вопросов у поля ввода (как у ChatGPT)
+  useEffect(() => {
+    if (messages.length > 0 || questions.length === 0) return;
+    const id = setInterval(() => {
+      setRotatingQuestionIndex((i) => (i + 1) % questions.length);
+    }, 3500);
+    return () => clearInterval(id);
+  }, [messages.length, questions.length]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -251,6 +325,7 @@ export default function ChatPage() {
   const handleNewTopic = () => {
     setMessages([]);
     setCurrentTopicId(null);
+    setQuestionsVisibleCount(6);
   };
 
   const handleTopicSelect = async (topicId: number) => {
@@ -279,127 +354,84 @@ export default function ChatPage() {
     }
   };
 
-  const handleSelfKnowledge = async () => {
+  const handleSelfKnowledgeQuestion = async (questionIndex: number, questionText: string) => {
     setIsLoading(true);
-
     try {
-      // Сначала создаем топик
-      let newTopicId: number | null = null;
-      try {
-        const topicResponse = await fetch('/api/chat/topics', {
+      let newTopicId: number | null = currentTopicId;
+      if (!newTopicId) {
+        const topicRes = await fetch('/api/chat/topics', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: 'Базовое самопознание',
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: questionText.length > 50 ? questionText.slice(0, 50) + '...' : questionText }),
         });
-
-        if (topicResponse.ok) {
-          const topicData = await topicResponse.json();
+        if (topicRes.ok) {
+          const topicData = await topicRes.json();
           newTopicId = topicData.topic?.id || null;
-
           if (newTopicId) {
             setCurrentTopicId(newTopicId);
-            // Обновляем список тем после создания
             loadTopics();
           }
-        } else {
-          const errorData = await topicResponse.json().catch(() => ({}));
-          console.error('Failed to create topic:', errorData);
         }
-      } catch (topicErr) {
-        console.error('Error creating topic:', topicErr);
       }
 
-      // Добавляем сообщение пользователя
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
-        content: 'Базовое самопознание',
+        content: questionText,
         timestamp: new Date(),
       };
-      setMessages([userMessage]);
+      setMessages((prev) => (newTopicId && prev.length === 0 ? [userMessage] : [...prev, userMessage]));
 
-      // Создаем сообщение ассистента для стриминга
       const assistantMessageId = (Date.now() + 1).toString();
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [...prev, { id: assistantMessageId, role: 'assistant' as const, content: '', timestamp: new Date() }]);
 
-      // Запрашиваем стриминг ответ
       const response = await fetch('/api/self-knowledge', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionNumber: questionIndex + 1 }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Ошибка при получении ответа' }));
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Ошибка при получении ответа');
       }
 
-      // Обрабатываем стрим
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullResponse = '';
-
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           const chunk = decoder.decode(value, { stream: true });
           fullResponse += chunk;
-
-          // Обновляем сообщение ассистента
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: fullResponse }
-                : msg
-            )
+            prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: fullResponse } : msg))
           );
         }
       }
 
-      // Сохраняем сообщения в БД
       if (newTopicId && fullResponse) {
-        try {
-          await fetch('/api/chat/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              topicId: newTopicId,
-              userMessage: 'Базовое самопознание',
-              assistantMessage: fullResponse,
-            }),
-          });
-        } catch (msgErr) {
-          console.error('Error saving message:', msgErr);
-        }
+        await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topicId: newTopicId,
+            userMessage: questionText,
+            assistantMessage: fullResponse,
+          }),
+        }).catch((e) => console.error('Error saving message:', e));
       }
     } catch (err: any) {
-      console.error('Self-knowledge error:', err);
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: err.message || 'Произошла ошибка при обработке запроса. Попробуйте позже.',
+        content: err.message || 'Произошла ошибка. Попробуйте позже.',
         timestamp: new Date(),
       };
       setMessages((prev) => {
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-          return [...prev.slice(0, -1), errorMessage];
-        }
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last.content === '') return [...prev.slice(0, -1), errorMessage];
         return [...prev, errorMessage];
       });
     } finally {
@@ -450,6 +482,34 @@ export default function ChatPage() {
 
   return (
     <div className={styles.container}>
+      {natalChartModal.show && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            {natalChartModal.phase === 'progress' ? (
+              <>
+                <p className={styles.modalTitle}>Создание натальной карты</p>
+                <div className={styles.modalProgressBar}>
+                  <div className={styles.modalProgressFill} style={{ width: `${natalChartModal.progress}%` }} />
+                </div>
+              </>
+            ) : (
+              <>
+                <p className={styles.modalTitle}>Ваша основная натальная карта рассчитана</p>
+                <button
+                  type="button"
+                  className={styles.modalCloseButton}
+                  onClick={() => {
+                    setNatalChartModal((m) => ({ ...m, show: false }));
+                    loadChatContext();
+                  }}
+                >
+                  Продолжить
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <aside 
         className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}
         ref={mobileMenuRef}
@@ -608,83 +668,36 @@ export default function ChatPage() {
                 className={styles.welcomeLogo}
                 priority
               />
-              <p className={styles.welcomeText}>
-                Задайте вопрос о натальной карте, астрологии или эзотерике
+              <p className={styles.welcomeGreeting}>
+                {chatContext?.name ? `Привет, ${chatContext.name}!` : 'Привет!'}
               </p>
-              <div className={styles.badgesContainer}>
-                <div 
-                  className={styles.natalCardBadge}
-                  onClick={() => router.push('/natal-chart')}
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className={styles.badgeIcon}
+              <p className={styles.welcomeText}>
+                Что вас сейчас интересует?
+              </p>
+              <div className={styles.questionsCloud}>
+                {visibleQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={styles.questionChip}
+                    style={{ animationDelay: `${idx * 0.1}s` }}
+                    onClick={() => handleSelfKnowledgeQuestion(idx, q)}
+                    disabled={isLoading}
                   >
-                    <path
-                      d="M12 2L2 7L12 12L22 7L12 2Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 17L12 22L22 17"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 12L12 17L22 12"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <div className={styles.badgeContent}>
-                    <span className={styles.badgeTitle}>Натальные карты</span>
-                    <span className={styles.badgeDescription}>Рассчитать свою карту</span>
-                  </div>
-                </div>
-                <div 
-                  className={styles.natalCardBadge}
-                  onClick={handleSelfKnowledge}
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className={styles.badgeIcon}
+                    {q}
+                  </button>
+                ))}
+                {hasMoreQuestions && (
+                  <button
+                    type="button"
+                    className={styles.questionChipMore}
+                    style={{ animationDelay: `${visibleQuestions.length * 0.1}s` }}
+                    onClick={() => setQuestionsVisibleCount((c) => Math.min(c + QUESTIONS_BATCH, questions.length))}
+                    disabled={isLoading}
                   >
-                    <path
-                      d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle
-                      cx="12"
-                      cy="7"
-                      r="4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <div className={styles.badgeContent}>
-                    <span className={styles.badgeTitle}>Базовое самопознание</span>
-                    <span className={styles.badgeDescription}>Кто я и зачем здесь</span>
-                  </div>
-                </div>
+                    Ещё
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -737,6 +750,16 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
+        {messages.length === 0 && questions.length > 0 && questions[rotatingQuestionIndex] && (
+          <button
+            type="button"
+            className={styles.inputSuggestionChip}
+            onClick={() => handleSelfKnowledgeQuestion(rotatingQuestionIndex, questions[rotatingQuestionIndex])}
+            disabled={isLoading}
+          >
+            {questions[rotatingQuestionIndex]}
+          </button>
+        )}
         <form onSubmit={handleSend} className={styles.inputForm}>
           <input
             type="text"

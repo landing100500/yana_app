@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import ChatTopic from '@/models/ChatTopic';
-import User from '@/models/User';
 import Message from '@/models/Message';
+import UserAnketa from '@/models/UserAnketa';
+import NatalChart from '@/models/NatalChart';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
 import { searchRelevantChunks, getSectionStyleChunks, findSectionByName } from '@/lib/rag-search';
@@ -71,6 +72,18 @@ export async function POST(request: NextRequest) {
       content: message,
     });
 
+    // Контекст пользователя: имя (из анкеты) и наличие основной натальной карты
+    const [anketa, mainChart] = await Promise.all([
+      UserAnketa.findOne({ where: { userId } }),
+      NatalChart.findOne({ where: { userId, isMain: true } }),
+    ]);
+    const userName = anketa?.name?.trim() || null;
+    const hasMainNatalChart = !!mainChart;
+    const userContext = [
+      userName ? `Имя пользователя (как к нему обращаться): ${userName}.` : '',
+      hasMainNatalChart ? 'У пользователя уже рассчитана основная натальная карта по данным анкеты.' : 'Основная натальная карта пользователя ещё не рассчитана.',
+    ].filter(Boolean).join(' ');
+
     // Получаем историю сообщений для контекста (последние 10 сообщений)
     const recentMessages = await Message.findAll({
       where: { topicId: topic.id },
@@ -115,10 +128,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Формируем системный промпт с контекстом и стилистикой
+    // Формируем системный промпт с контекстом пользователя, стилистикой и RAG
     const systemMessage = {
       role: 'system' as const,
-      content: SYSTEM_PROMPT + styleContext + (contextText ? contextText : ''),
+      content: SYSTEM_PROMPT
+        + (userContext ? `\n\nКонтекст пользователя: ${userContext}` : '')
+        + styleContext
+        + (contextText ? contextText : ''),
     };
 
     // Создаем массив сообщений для OpenAI
