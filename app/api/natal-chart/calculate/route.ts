@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
       house12: chartData.houses.house12.longitude,
       houseSystem: chartData.houseSystem,
       siderealTime: chartData.siderealTime,
+      isMain: false,
       calculatedAt: new Date()
     });
 

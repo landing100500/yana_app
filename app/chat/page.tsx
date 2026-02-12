@@ -179,7 +179,7 @@ export default function ChatPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isAuthChecked, chatContext?.hasMainNatalChart]);
+  }, [isAuthChecked, chatContext]);
 
   useEffect(() => {
     scrollToBottom();
