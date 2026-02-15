@@ -932,6 +932,70 @@
   align-items: stretch;
 }
 
+.inputRow {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.inputRow .input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 3.25rem;
+}
+
+.micButton {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(155, 143, 184, 0.2);
+  border: 1px solid rgba(155, 143, 184, 0.35);
+  border-radius: 50%;
+  color: var(--dark-purple);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.25s ease, border-color 0.25s ease;
+}
+
+.micButtonHidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.micButton:hover:not(:disabled):not(.micButtonHidden) {
+  background: rgba(155, 143, 184, 0.3);
+  border-color: rgba(155, 143, 184, 0.5);
+}
+
+.micButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.micButtonActive {
+  background: rgba(212, 165, 165, 0.25);
+  border-color: var(--rose);
+  color: var(--rose);
+  animation: micPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.micIcon {
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .inputForm {
     padding: 1rem;
@@ -940,11 +1004,20 @@
   }
 
   .sendButton {
-    padding: 1rem 1rem;
-    font-size: 0.85rem;
-    white-space: nowrap;
+    padding: 0.75rem;
     flex-shrink: 0;
-    min-width: auto;
+    min-width: 48px;
+    width: 48px;
+  }
+
+  .sendButton .sendButtonText {
+    display: none;
+  }
+
+  .sendButton .sendButtonIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .input {
@@ -960,13 +1033,13 @@
   }
 
   .sendButton {
-    padding: 0.75rem 0.75rem;
-    font-size: 0.8rem;
+    min-width: 44px;
+    width: 44px;
+    padding: 0.65rem;
   }
 }
 
 .input {
-  flex: 1;
   padding: 1rem 1.5rem;
   border: 2px solid var(--beige);
   border-radius: 12px;
@@ -999,6 +1072,17 @@
   cursor: pointer;
   transition: all 0.3s ease;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendButtonIcon {
+  display: none;
+}
+
+.sendButtonIcon svg {
+  display: block;
 }
 
 .sendButton:hover:not(:disabled) {

@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import styles from './page.module.css';
+
+const VoiceInputButton = dynamic(() => import('./VoiceInputButton'), { ssr: false });
 
 interface Message {
   id: string;
@@ -44,6 +47,7 @@ export default function ChatPage() {
   const [natalChartModal, setNatalChartModal] = useState<{ show: boolean; progress: number; phase: 'progress' | 'done' }>({ show: false, progress: 0, phase: 'progress' });
   const [questionsVisibleCount, setQuestionsVisibleCount] = useState(6);
   const [rotatingQuestionIndex, setRotatingQuestionIndex] = useState(0);
+  const [inputFocused, setInputFocused] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -761,20 +765,36 @@ export default function ChatPage() {
           </button>
         )}
         <form onSubmit={handleSend} className={styles.inputForm}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Задайте вопрос..."
-            className={styles.input}
-            disabled={isLoading}
-          />
+          <div className={styles.inputRow}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholder="Задайте вопрос..."
+              className={styles.input}
+              disabled={isLoading}
+            />
+            <VoiceInputButton
+              setInput={setInput}
+              disabled={isLoading}
+              hidden={inputFocused}
+            />
+          </div>
           <button
             type="submit"
             className={styles.sendButton}
             disabled={isLoading || !input.trim()}
+            aria-label="Отправить"
           >
-            Отправить
+            <span className={styles.sendButtonText}>Отправить</span>
+            <span className={styles.sendButtonIcon} aria-hidden>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
           </button>
         </form>
       </main>
