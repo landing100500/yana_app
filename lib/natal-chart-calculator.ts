@@ -203,11 +203,26 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // Флаги для расчета в ведической астрологии (сидерический зодиак)
     const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
     
-    // Аянамша: по умолчанию Лахири; FAGAN_BRADLEY часто ближе к vedic-horo и др. ведическим сервисам
-    const ayanamsaEnv = (process.env.NATAL_CHART_AYANAMSA || 'LAHIRI').toUpperCase();
-    const ayanamsa = ayanamsaEnv === 'FAGAN_BRADLEY'
-      ? swisseph.SE_SIDM_FAGAN_BRADLEY
-      : swisseph.SE_SIDM_LAHIRI;
+    // Аянамша: по умолчанию Lahiri (совпадает с эталоном vedic-horo при корректной широте и системе домов)
+    const ayanamsaEnv = (process.env.NATAL_CHART_AYANAMSA || 'LAHIRI').toUpperCase().replace(/-/g, '_');
+    const ayanamsaMap: Record<string, number> = {
+      FAGAN_BRADLEY: swisseph.SE_SIDM_FAGAN_BRADLEY,
+      LAHIRI: swisseph.SE_SIDM_LAHIRI,
+      DELUCE: swisseph.SE_SIDM_DELUCE,
+      RAMAN: swisseph.SE_SIDM_RAMAN,
+      USHASHASHI: swisseph.SE_SIDM_USHASHASHI,
+      KRISHNAMURTI: swisseph.SE_SIDM_KRISHNAMURTI,
+      YUKTESHWAR: swisseph.SE_SIDM_YUKTESHWAR,
+      TRUE_CITRA: swisseph.SE_SIDM_TRUE_CITRA,
+      SS_CITRA: swisseph.SE_SIDM_SS_CITRA,
+      SURYASIDDHANTA: swisseph.SE_SIDM_SURYASIDDHANTA,
+      SS_REVATI: swisseph.SE_SIDM_SS_REVATI,
+      TRUE_REVATI: swisseph.SE_SIDM_TRUE_REVATI,
+      TRUE_PUSHYA: swisseph.SE_SIDM_TRUE_PUSHYA,
+      TRUE_MULA: swisseph.SE_SIDM_TRUE_MULA,
+      ARYABHATA: swisseph.SE_SIDM_ARYABHATA,
+    };
+    const ayanamsa = ayanamsaMap[ayanamsaEnv] ?? swisseph.SE_SIDM_LAHIRI;
     swisseph.swe_set_sid_mode(ayanamsa, 0, 0);
     
     // Вспомогательные функции для расчета планет
@@ -378,30 +393,22 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       throw new Error(`Неверные координаты: lat=${birthData.latitude}, lon=${birthData.longitude}`);
     }
     
-    // Ограничиваем широту для Placidus (не работает за полярными кругами)
-    let latitude = birthData.latitude;
-    if (Math.abs(latitude) > 66.5) {
-      console.warn(`Широта ${latitude} близка к полярному кругу, используем ограничение`);
-      latitude = latitude > 0 ? 66.0 : -66.0;
-    }
+    const latitude = birthData.latitude;
+    // На высоких широтах (>66.5°) Placidus не сходится — пробуем Equal (E) первым
+    const systemsToTry = Math.abs(latitude) > 66.5 ? ['E', 'P', 'S', 'K', 'R'] : ['P', 'S', 'K', 'E', 'R'];
     
     console.log('Параметры для swe_houses:', {
       julianDay,
-      latitude,
+      latitude: birthData.latitude,
       longitude: birthData.longitude,
-      houseSystem: 'P'
+      systemsToTry
     });
-    
-    // Рассчитываем дома в ведической астрологии
-    // Для ведической астрологии используем Whole Sign Houses (целые знаки)
-    // Это наиболее распространенная система в Джйотиш
     
     // Сначала получаем асцендент (Лагну) через swe_houses
     let housesResult: any = null;
     let houseSystemUsed = 'W'; // Whole Sign Houses для ведической астрологии
     
     // Получаем асцендент через swe_houses (любая система даст нам асцендент)
-    const systemsToTry = ['P', 'S', 'K', 'E', 'R'];
     for (const system of systemsToTry) {
       try {
         housesResult = swisseph.swe_houses(
@@ -563,17 +570,17 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       const navamshaNumber = Math.floor(degreeInSign / navamshaSize) + 1;
       const navamshaNum = navamshaNumber > 9 ? 9 : navamshaNumber;
       
-      // Определяем начальный знак для навамши в зависимости от типа знака
+      // Определяем начальный знак для навамши (как на vedic-horo / стандарт Джйотиш)
       let startSign: number;
       if ([0, 3, 6, 9].includes(sign)) {
-        // Movable (Овен, Рак, Весы, Козерог) - начинаем с того же знака
+        // Movable (Овен, Рак, Весы, Козерог) — 1-я навамша = тот же знак
         startSign = sign;
       } else if ([1, 4, 7, 10].includes(sign)) {
-        // Fixed (Телец, Лев, Скорпион, Водолей) - начинаем с 9-го знака
+        // Fixed (Телец, Лев, Скорпион, Водолей) — с 9-го знака (Каприкорн и далее)
         startSign = (sign + 9) % 12;
       } else {
-        // Dual (Близнецы, Дева, Стрелец, Рыбы) - начинаем с 5-го знака
-        startSign = (sign + 5) % 12;
+        // Dual (Близнецы, Дева, Стрелец, Рыбы) — с 4-го знака вперёд, чтобы 9-я навамша = тот же знак
+        startSign = (sign + 4) % 12;
       }
       
       // Знак навамши = начальный знак + (номер навамши - 1)

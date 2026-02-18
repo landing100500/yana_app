@@ -146,9 +146,10 @@ function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: num
   const degreeInNakshatra = normalized % (360 / 27);
   const pada = Math.floor(degreeInNakshatra / (360 / 27 / 4)) + 1;
   
+  // 27 накшатр по порядку: 0=Ашвини … 13=Читра (26°40' Дева–13°20' Весов), 14=Свати …
   const nakshatraNames = [
     'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
-    'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
+    'Пурнавасу', 'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
     'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
     'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
     'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
@@ -195,10 +196,20 @@ function calculateKarakas(planets: Array<{ name: string; longitude: number }>): 
   return karakaMap;
 }
 
-// Форматирование градусов
+// Форматирование градусов (полная долгота 0–360°)
 function formatDegrees(longitude: number): string {
   const degrees = Math.floor(longitude);
   const minutesFloat = (longitude - degrees) * 60;
+  const minutes = Math.floor(minutesFloat);
+  const seconds = Math.round((minutesFloat - minutes) * 60);
+  return `${degrees}°${String(minutes).padStart(2, '0')}'${String(seconds).padStart(2, '0')}"`;
+}
+
+// Градусы в знаке (0–30°) — как на vedic-horo в колонке «Градусы»
+function formatDegreesInSign(longitude: number): string {
+  const degreeInSign = longitude % 30;
+  const degrees = Math.floor(degreeInSign);
+  const minutesFloat = (degreeInSign - degrees) * 60;
   const minutes = Math.floor(minutesFloat);
   const seconds = Math.round((minutesFloat - minutes) * 60);
   return `${degrees}°${String(minutes).padStart(2, '0')}'${String(seconds).padStart(2, '0')}"`;
@@ -274,6 +285,7 @@ export default function NatalChartVisualization({ chart }: Props) {
         karaka: karakas[planet.name] || '',
         house,
         formattedDegrees: formatDegrees(planet.longitude),
+        formattedDegreesInSign: formatDegreesInSign(planet.longitude),
         formattedDegreesShort: formatDegreesShort(planet.longitude)
       };
     });
@@ -581,7 +593,7 @@ export default function NatalChartVisualization({ chart }: Props) {
                   <tr>
                     <td>{PLANET_NAMES.ascendant}</td>
                     <td>-</td>
-                    <td>{formatDegrees(chart.ascendant)}</td>
+                    <td>{formatDegreesInSign(chart.ascendant)}</td>
                     <td>{RASHI_SIGN_NAMES[longitudeToSign(chart.ascendant).sign]}</td>
                     <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
                     <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada}, {longitudeToNakshatra(chart.ascendant).ruler})</td>
@@ -591,7 +603,7 @@ export default function NatalChartVisualization({ chart }: Props) {
                     <tr key={planet.name}>
                       <td>{PLANET_NAMES[planet.name] || planet.name}</td>
                       <td>{planet.karaka || '-'}</td>
-                      <td>{planet.formattedDegrees}</td>
+                      <td>{planet.formattedDegreesInSign ?? planet.formattedDegrees}</td>
                       <td>{RASHI_SIGN_NAMES[planet.sign]}</td>
                       <td>
                         {chart.navamsha && chart.navamsha[planet.name as keyof NavamshaData] 
