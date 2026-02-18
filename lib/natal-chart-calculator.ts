@@ -158,35 +158,56 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
   try {
     const swisseph = await getSwisseph();
     
-    // Конвертируем локальное время в UTC
-    const hourUTC = birthData.hour - birthData.timezone;
-    const dayUTC = birthData.day;
+    // Конвертируем локальное время в UTC (local = UTC + timezone => UTC = local - timezone)
+    let hourUTC = birthData.hour - birthData.timezone;
+    let dayUTC = birthData.day;
     let monthUTC = birthData.month;
     let yearUTC = birthData.year;
     
-    // Корректируем дату если час стал отрицательным
-    let adjustedHour = hourUTC;
-    if (adjustedHour < 0) {
-      adjustedHour += 24;
-      // Уменьшаем день
+    // Корректируем дату при переходе через полночь
+    if (hourUTC < 0) {
+      hourUTC += 24;
+      dayUTC -= 1;
+      if (dayUTC < 1) {
+        monthUTC -= 1;
+        if (monthUTC < 1) {
+          monthUTC = 12;
+          yearUTC -= 1;
+        }
+        const daysInMonth = new Date(yearUTC, monthUTC, 0).getDate();
+        dayUTC = daysInMonth;
+      }
+    } else if (hourUTC >= 24) {
+      hourUTC -= 24;
+      dayUTC += 1;
+      const daysInMonth = new Date(yearUTC, monthUTC, 0).getDate();
+      if (dayUTC > daysInMonth) {
+        dayUTC = 1;
+        monthUTC += 1;
+        if (monthUTC > 12) {
+          monthUTC = 1;
+          yearUTC += 1;
+        }
+      }
     }
     
-    // Вычисляем юлианский день
+    // Вычисляем юлианский день (UT)
     const julianDay = swisseph.swe_julday(
       yearUTC,
       monthUTC,
       dayUTC,
-      adjustedHour + birthData.minute / 60,
+      hourUTC + birthData.minute / 60,
       swisseph.SE_GREG_CAL
     );
     
     // Флаги для расчета в ведической астрологии (сидерический зодиак)
-    // SEFLG_SIDEREAL - используем сидерический зодиак
-    // SE_SIDM_LAHIRI - аянамша Лахири
     const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
     
-    // Устанавливаем аянамшу Лахири
-    const ayanamsa = swisseph.SE_SIDM_LAHIRI;
+    // Аянамша: по умолчанию Лахири; FAGAN_BRADLEY часто ближе к vedic-horo и др. ведическим сервисам
+    const ayanamsaEnv = (process.env.NATAL_CHART_AYANAMSA || 'LAHIRI').toUpperCase();
+    const ayanamsa = ayanamsaEnv === 'FAGAN_BRADLEY'
+      ? swisseph.SE_SIDM_FAGAN_BRADLEY
+      : swisseph.SE_SIDM_LAHIRI;
     swisseph.swe_set_sid_mode(ayanamsa, 0, 0);
     
     // Вспомогательные функции для расчета планет
@@ -421,6 +442,11 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       mcLongitude = ((ascSign + 9) % 12) * 30;
     }
     
+    // swe_houses возвращает тропические позиции; переводим в сидерические (Лахири)
+    const ayanamsaValue = swisseph.swe_get_ayanamsa(julianDay);
+    ascendantLongitude = (ascendantLongitude - ayanamsaValue + 360) % 360;
+    mcLongitude = (mcLongitude - ayanamsaValue + 360) % 360;
+    
     // Нормализуем долготу асцендента
     let ascNormalized = ascendantLongitude % 360;
     if (ascNormalized < 0) ascNormalized += 360;
@@ -494,8 +520,7 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       house7, house8, house9, house10, house11, house12
     };
     
-    // Пересчитываем планеты с учетом домов и дополнительных параметров
-    // Планеты
+    // Планеты (SE уже в сидерике по выбранной аянамше)
     const sunFull = calculatePlanet(swisseph.SE_SUN, housesObj);
     const moonFull = calculatePlanet(swisseph.SE_MOON, housesObj);
     const mercuryFull = calculatePlanet(swisseph.SE_MERCURY, housesObj);
@@ -506,8 +531,6 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     const uranusFull = calculatePlanet(swisseph.SE_URANUS, housesObj);
     const neptuneFull = calculatePlanet(swisseph.SE_NEPTUNE, housesObj);
     const plutoFull = calculatePlanet(swisseph.SE_PLUTO, housesObj);
-    
-    // Лунные узлы
     const northNodeFull = calculatePlanet(swisseph.SE_TRUE_NODE, housesObj);
     const southNodeFull = calculatePlanet(swisseph.SE_TRUE_NODE, housesObj);
     southNodeFull.longitude = (southNodeFull.longitude + 180) % 360;
@@ -520,9 +543,7 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // Сидерическое время (ARMC - Ascendant Right Ascension)
     const siderealTime = (ascmc[2] !== undefined && !isNaN(ascmc[2])) ? ascmc[2] : 0;
 
-    // Получаем значение аянамши
-    const ayanamsaValue = swisseph.swe_get_ayanamsa(julianDay);
-    const ayanamsaName = 'Лахири';
+    const ayanamsaName = ayanamsa === swisseph.SE_SIDM_FAGAN_BRADLEY ? 'Fagan-Bradley' : 'Лахири';
 
     // Рассчитываем навамшу (D9) - девятая варга
     // Навамша делит каждый знак на 9 частей по 3°20' (3.333... градуса)

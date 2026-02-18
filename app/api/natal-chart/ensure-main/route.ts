@@ -5,6 +5,7 @@ import { initDatabase } from '@/lib/initDb';
 import UserAnketa from '@/models/UserAnketa';
 import NatalChart from '@/models/NatalChart';
 import { getCityCoordinates } from '@/lib/geocoding';
+import { getHistoricalTimezoneOffset } from '@/lib/historical-timezone';
 import { calculateNatalChart, BirthData } from '@/lib/natal-chart-calculator';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
@@ -86,7 +87,16 @@ export async function POST(request: NextRequest) {
       const coords = await getCityCoordinates(anketa.birthCity);
       lat = coords.lat;
       lon = coords.lon;
-      timezone = coords.timezone;
+      const historicalOffset = getHistoricalTimezoneOffset(
+        lat,
+        lon,
+        year,
+        month,
+        day,
+        finalHour,
+        finalMinute
+      );
+      timezone = historicalOffset ?? coords.timezone;
     } catch (geocodingError: any) {
       return NextResponse.json(
         { error: geocodingError.message || 'Не удалось найти координаты города.' },

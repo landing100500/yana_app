@@ -5,6 +5,7 @@ import { initDatabase } from '@/lib/initDb';
 import UserAnketa from '@/models/UserAnketa';
 import NatalChart from '@/models/NatalChart';
 import { getCityCoordinates } from '@/lib/geocoding';
+import { getHistoricalTimezoneOffset } from '@/lib/historical-timezone';
 import { calculateNatalChart, BirthData } from '@/lib/natal-chart-calculator';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
@@ -100,8 +101,22 @@ export async function POST(request: NextRequest) {
       const coords = await getCityCoordinates(anketa.birthCity);
       lat = coords.lat;
       lon = coords.lon;
-      timezone = coords.timezone;
-      console.log('Координаты получены:', { lat, lon, timezone });
+      // Исторический часовой пояс на дату рождения (IANA + момент) для точного перевода в UTC
+      const historicalOffset = getHistoricalTimezoneOffset(
+        lat,
+        lon,
+        year,
+        month,
+        day,
+        finalHour,
+        finalMinute
+      );
+      timezone = historicalOffset ?? coords.timezone;
+      if (historicalOffset != null) {
+        console.log('Координаты и исторический часовой пояс:', { lat, lon, timezone });
+      } else {
+        console.log('Координаты получены (пояс по долготе):', { lat, lon, timezone });
+      }
     } catch (geocodingError: any) {
       console.error('Ошибка геокодинга:', geocodingError);
       return NextResponse.json(

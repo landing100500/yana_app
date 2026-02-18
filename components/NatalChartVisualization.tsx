@@ -83,6 +83,12 @@ const SIGN_ABBREVIATIONS = [
   'Ar', 'Ta', 'Ge', 'Cn', 'Le', 'Vi', 'Li', 'Sc', 'Sg', 'Cp', 'Aq', 'Pi'
 ];
 
+// Названия знаков для столбца Раши (зодиак по-русски)
+const RASHI_SIGN_NAMES = [
+  'Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева',
+  'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы'
+];
+
 const PLANET_ABBREVIATIONS: Record<string, string> = {
   sun: 'Su',
   moon: 'Mo',
@@ -562,6 +568,7 @@ export default function NatalChartVisualization({ chart }: Props) {
               <table className={styles.dataTable}>
                 <thead>
                   <tr>
+                    <th>Планеты</th>
                     <th>Карака</th>
                     <th>Градусы</th>
                     <th>Раши</th>
@@ -572,18 +579,20 @@ export default function NatalChartVisualization({ chart }: Props) {
                 </thead>
                 <tbody>
                   <tr>
+                    <td>{PLANET_NAMES.ascendant}</td>
                     <td>-</td>
                     <td>{formatDegrees(chart.ascendant)}</td>
-                    <td>{longitudeToSign(chart.ascendant).signName}</td>
+                    <td>{RASHI_SIGN_NAMES[longitudeToSign(chart.ascendant).sign]}</td>
                     <td>{chart.navamsha?.ascendant?.signName || '-'}</td>
                     <td>{longitudeToNakshatra(chart.ascendant).name} ({longitudeToNakshatra(chart.ascendant).pada}, {longitudeToNakshatra(chart.ascendant).ruler})</td>
                     <td>1</td>
                   </tr>
                   {planets.map((planet) => (
                     <tr key={planet.name}>
+                      <td>{PLANET_NAMES[planet.name] || planet.name}</td>
                       <td>{planet.karaka || '-'}</td>
                       <td>{planet.formattedDegrees}</td>
-                      <td>{planet.signName}</td>
+                      <td>{RASHI_SIGN_NAMES[planet.sign]}</td>
                       <td>
                         {chart.navamsha && chart.navamsha[planet.name as keyof NavamshaData] 
                           ? (chart.navamsha[planet.name as keyof NavamshaData] as any)?.signName 
