@@ -30,6 +30,9 @@ export default function AdminPage() {
   const [uploadProgressPercent, setUploadProgressPercent] = useState(0);
   const [deletingSection, setDeletingSection] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<AdminView>('training');
+  const [showTextUpload, setShowTextUpload] = useState(false);
+  const [textUploadContent, setTextUploadContent] = useState('');
+  const [textUploading, setTextUploading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -245,6 +248,46 @@ export default function AdminPage() {
     }
   };
 
+  const handleTextUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSection) {
+      setError('Выберите или создайте раздел');
+      return;
+    }
+    const text = textUploadContent.trim();
+    if (!text) {
+      setError('Введите текст');
+      return;
+    }
+    setTextUploading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/ingest-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionId: selectedSection, text }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || 'Ошибка при добавлении текста');
+        return;
+      }
+      loadSections();
+      setTextUploadContent('');
+      setShowTextUpload(false);
+      setUploadProgress(data.message || `Добавлено ${data.chunksCount} чанков.`);
+      setUploadProgressPercent(100);
+      setTimeout(() => {
+        setUploadProgress('');
+        setUploadProgressPercent(0);
+      }, 5000);
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при добавлении текста');
+    } finally {
+      setTextUploading(false);
+    }
+  };
+
   const handleDeleteSection = async (sectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем выбор раздела при клике на удаление
 
@@ -440,29 +483,73 @@ export default function AdminPage() {
         </div>
 
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Загрузка видео</h2>
+          <h2 className={styles.sectionTitle}>Загрузка видео или аудио</h2>
           {!selectedSection ? (
             <p className={styles.hint}>
-              Создайте или выберите раздел для загрузки видео
+              Создайте или выберите раздел для загрузки видео или аудио
             </p>
           ) : (
             <div className={styles.uploadArea}>
-              <input
-                type="file"
-                id="video-upload"
-                accept="video/*,audio/*"
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className={styles.fileInput}
-              />
-              <label
-                htmlFor="video-upload"
-                className={`${styles.uploadButton} ${
-                  uploading ? styles.disabled : ''
-                }`}
-              >
-                {uploading ? 'Обработка...' : 'Загрузить видео'}
-              </label>
+              <div className={styles.uploadButtonRow}>
+                <input
+                  type="file"
+                  id="video-upload"
+                  accept="video/*,audio/*"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className={styles.fileInput}
+                />
+                <label
+                  htmlFor="video-upload"
+                  className={`${styles.uploadButton} ${
+                    uploading ? styles.disabled : ''
+                  }`}
+                >
+                  {uploading ? 'Обработка...' : 'Загрузить видео или аудио'}
+                </label>
+                <button
+                  type="button"
+                  className={`${styles.uploadButton} ${styles.uploadButtonSecondary} ${
+                    textUploading ? styles.disabled : ''
+                  }`}
+                  disabled={uploading || textUploading}
+                  onClick={() => setShowTextUpload((v) => !v)}
+                >
+                  {textUploading ? 'Обработка...' : 'Загрузить текст'}
+                </button>
+              </div>
+              {showTextUpload && (
+                <form onSubmit={handleTextUpload} className={styles.textUploadForm}>
+                  <textarea
+                    placeholder="Вставьте текст для добавления в базу знаний..."
+                    value={textUploadContent}
+                    onChange={(e) => setTextUploadContent(e.target.value)}
+                    className={styles.input}
+                    rows={6}
+                    disabled={textUploading}
+                  />
+                  <div className={styles.buttonGroup}>
+                    <button
+                      type="submit"
+                      className={styles.button}
+                      disabled={textUploading || !textUploadContent.trim()}
+                    >
+                      {textUploading ? 'Обработка...' : 'Добавить в базу'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.buttonSecondary}
+                      disabled={textUploading}
+                      onClick={() => {
+                        setShowTextUpload(false);
+                        setTextUploadContent('');
+                      }}
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </form>
+              )}
               {uploadProgress && (
                 <div className={styles.progressContainer}>
                   <div className={styles.progressText}>{uploadProgress}</div>
