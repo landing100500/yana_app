@@ -2,12 +2,35 @@
  * Расчет натальной карты с использованием Swiss Ephemeris
  * Используем динамический импорт для избежания проблем с webpack
  */
+const path = require('path');
+
 async function getSwisseph() {
   // Динамический импорт только на сервере
   if (typeof window === 'undefined') {
     return require('swisseph');
   }
   throw new Error('Swiss Ephemeris can only be used on the server');
+}
+
+/** Выставить путь к папке ephe Swiss Ephemeris (на сервере cwd может быть не корнем проекта). */
+function setSwissephEphePath(swisseph: any) {
+  if (typeof swisseph.swe_set_ephe_path !== 'function') return;
+  const envPath = process.env.SWISSEPH_EPHE_PATH;
+  const candidates = envPath
+    ? [envPath]
+    : [
+        path.join(process.cwd(), 'node_modules', 'swisseph', 'ephe'),
+        path.join(process.cwd(), 'swisseph', 'ephe'),
+        path.join(__dirname, '..', 'node_modules', 'swisseph', 'ephe'),
+      ];
+  for (const ephePath of candidates) {
+    try {
+      swisseph.swe_set_ephe_path(ephePath);
+      return;
+    } catch (_) {
+      /* ignore */
+    }
+  }
 }
 
 export interface BirthData {
@@ -157,7 +180,8 @@ function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: num
 export async function calculateNatalChart(birthData: BirthData): Promise<NatalChartData> {
   try {
     const swisseph = await getSwisseph();
-    
+    setSwissephEphePath(swisseph);
+
     // Конвертируем локальное время в UTC (local = UTC + timezone => UTC = local - timezone)
     let hourUTC = birthData.hour - birthData.timezone;
     let dayUTC = birthData.day;
