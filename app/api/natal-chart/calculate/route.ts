@@ -140,6 +140,15 @@ export async function POST(request: NextRequest) {
       timezone
     };
 
+    // Диагностика: при расхождении сервер/локально сравните эту строку на обоих
+    console.log('NATAL_INPUT', JSON.stringify({
+      city: anketa.birthCity,
+      date: `${year}-${month}-${day}`,
+      time: `${finalHour}:${finalMinute}`,
+      lat,
+      lon,
+      timezone,
+    }));
     console.log('Начало расчета натальной карты...');
     const chartData = await calculateNatalChart(birthData);
     console.log('Расчет завершен успешно');

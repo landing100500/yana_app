@@ -223,7 +223,14 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       hourUTC + birthData.minute / 60,
       swisseph.SE_GREG_CAL
     );
-    
+
+    // Диагностика: при расхождении сервер/локально сравните NATAL_INPUT и NATAL_JD на обоих
+    console.log('NATAL_JD', JSON.stringify({
+      timezone: birthData.timezone,
+      utc: `${yearUTC}-${monthUTC}-${dayUTC} ${hourUTC}:${birthData.minute}`,
+      julianDay,
+    }));
+
     // Флаги для расчета в ведической астрологии (сидерический зодиак)
     const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
     
@@ -481,10 +488,17 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // Нормализуем долготу асцендента
     let ascNormalized = ascendantLongitude % 360;
     if (ascNormalized < 0) ascNormalized += 360;
-    
+
+    // Диагностика: сидерический асцендент (сравнить на сервере и локально)
+    console.log('NATAL_ASC', JSON.stringify({
+      ayanamsa: ayanamsaValue,
+      ascendantSidereal: ascNormalized,
+      signIndex: Math.floor(ascNormalized / 30) % 12,
+    }));
+
     // Определяем знак Лагны (восходящий знак)
     const lagnaSign = Math.floor(ascNormalized / 30) % 12;
-    
+
     console.log(`Лагна: ${ascNormalized.toFixed(2)}° (${SIGN_NAMES[lagnaSign]})`);
     console.log('Используем систему Whole Sign Houses (целые знаки)');
     
