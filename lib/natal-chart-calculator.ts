@@ -224,13 +224,6 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       swisseph.SE_GREG_CAL
     );
 
-    // Диагностика: при расхождении сервер/локально сравните NATAL_INPUT и NATAL_JD на обоих
-    console.log('NATAL_JD', JSON.stringify({
-      timezone: birthData.timezone,
-      utc: `${yearUTC}-${monthUTC}-${dayUTC} ${hourUTC}:${birthData.minute}`,
-      julianDay,
-    }));
-
     // Флаги для расчета в ведической астрологии (сидерический зодиак)
     const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
     
@@ -428,13 +421,6 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // На высоких широтах (>66.5°) Placidus не сходится — пробуем Equal (E) первым
     const systemsToTry = Math.abs(latitude) > 66.5 ? ['E', 'P', 'S', 'K', 'R'] : ['P', 'S', 'K', 'E', 'R'];
     
-    console.log('Параметры для swe_houses:', {
-      julianDay,
-      latitude: birthData.latitude,
-      longitude: birthData.longitude,
-      systemsToTry
-    });
-    
     // Сначала получаем асцендент (Лагну) через swe_houses
     let housesResult: any = null;
     let houseSystemUsed = 'W'; // Whole Sign Houses для ведической астрологии
@@ -489,18 +475,8 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     let ascNormalized = ascendantLongitude % 360;
     if (ascNormalized < 0) ascNormalized += 360;
 
-    // Диагностика: сидерический асцендент (сравнить на сервере и локально)
-    console.log('NATAL_ASC', JSON.stringify({
-      ayanamsa: ayanamsaValue,
-      ascendantSidereal: ascNormalized,
-      signIndex: Math.floor(ascNormalized / 30) % 12,
-    }));
-
     // Определяем знак Лагны (восходящий знак)
     const lagnaSign = Math.floor(ascNormalized / 30) % 12;
-
-    console.log(`Лагна: ${ascNormalized.toFixed(2)}° (${SIGN_NAMES[lagnaSign]})`);
-    console.log('Используем систему Whole Sign Houses (целые знаки)');
     
     // Функция для расчета дома в Whole Sign системе
     // В Whole Sign Houses каждый дом занимает целый знак (30°)

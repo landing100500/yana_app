@@ -86,22 +86,12 @@ export async function POST(request: NextRequest) {
     const chartDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const chartTime = `${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}${finalSecond > 0 ? `:${String(finalSecond).padStart(2, '0')}` : ''}`;
 
-    console.log('Создание новой карты с данными из анкеты:', {
-      name: chartName,
-      date: chartDate,
-      time: chartTime,
-      city: anketa.birthCity
-    });
-
-    // Получаем координаты города из анкеты
-    console.log('Получение координат города:', anketa.birthCity);
     let lat: number, lon: number, timezone: number;
-    
+
     try {
       const coords = await getCityCoordinates(anketa.birthCity);
       lat = coords.lat;
       lon = coords.lon;
-      // Исторический часовой пояс на дату рождения (IANA + момент) для точного перевода в UTC
       const historicalOffset = getHistoricalTimezoneOffset(
         lat,
         lon,
@@ -112,11 +102,6 @@ export async function POST(request: NextRequest) {
         finalMinute
       );
       timezone = historicalOffset ?? coords.timezone;
-      if (historicalOffset != null) {
-        console.log('Координаты и исторический часовой пояс:', { lat, lon, timezone });
-      } else {
-        console.log('Координаты получены (пояс по долготе):', { lat, lon, timezone });
-      }
     } catch (geocodingError: any) {
       console.error('Ошибка геокодинга:', geocodingError);
       return NextResponse.json(
@@ -140,18 +125,7 @@ export async function POST(request: NextRequest) {
       timezone
     };
 
-    // Диагностика: при расхождении сервер/локально сравните эту строку на обоих
-    console.log('NATAL_INPUT', JSON.stringify({
-      city: anketa.birthCity,
-      date: `${year}-${month}-${day}`,
-      time: `${finalHour}:${finalMinute}`,
-      lat,
-      lon,
-      timezone,
-    }));
-    console.log('Начало расчета натальной карты...');
     const chartData = await calculateNatalChart(birthData);
-    console.log('Расчет завершен успешно');
 
     // Сохраняем в базу данных
     const natalChart = await NatalChart.create({

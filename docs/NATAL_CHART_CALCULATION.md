@@ -127,11 +127,7 @@ Swiss Ephemeris даёт тропические позиции планет и �
    Задайте `SWISSEPH_EPHE_PATH` (абсолютный путь к `node_modules/swisseph/ephe`), если `process.cwd()` на сервере не корень проекта.
 
 2. **Часовой пояс и geo-tz**  
-   Библиотека **geo-tz** при загрузке ищет папку `data/` по `GEO_TZ_DATA_PATH` или по `__dirname`. В Next.js/PM2 на сервере `__dirname` может указывать в `.next/server/`, из‑за чего `find(lat, lon)` возвращает `[]` и исторический пояс не определяется.  
-   В коде это исправлено: при загрузке `lib/historical-timezone.ts` выставляется `GEO_TZ_DATA_PATH` на каталог `node_modules/geo-tz/data` через `require.resolve('geo-tz/package.json')`, так что путь к данным один и тот же локально и на VPS.  
-   Если на VPS по‑прежнему видите «Координаты получены (пояс по долготе)» вместо «исторический часовой пояс», задайте в окружении процесса вручную:  
-   `GEO_TZ_DATA_PATH=/var/www/yana_app/node_modules/geo-tz/data` (подставьте свой путь к проекту).  
-   Убедитесь, что при деплое в серверную копию проекта попадает папка `node_modules/geo-tz/data` (её не должно вырезать при сборке).
+   При загрузке `lib/historical-timezone.ts` выставляется `GEO_TZ_DATA_PATH` на `node_modules/geo-tz/data` через `require.resolve('geo-tz/package.json')`, чтобы geo-tz одинаково работал локально и на VPS. Если на VPS исторический пояс всё равно не определяется, задайте вручную: `GEO_TZ_DATA_PATH=/путь/к/проекту/node_modules/geo-tz/data`. Папка `node_modules/geo-tz/data` должна попадать в деплой.
 
 ---
 
