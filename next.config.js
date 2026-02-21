@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Увеличиваем лимит буферизации тела запроса при использовании прокси (Nginx)
-  // По умолчанию 10MB, что вызывает проблемы с большими файлами
   experimental: {
-    proxyClientMaxBodySize: '500mb',
     instrumentationHook: true,
     serverComponentsExternalPackages: ['mysql2', 'fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'swisseph'],
   },
