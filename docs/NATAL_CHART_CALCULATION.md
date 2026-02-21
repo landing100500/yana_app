@@ -127,7 +127,10 @@ Swiss Ephemeris даёт тропические позиции планет и �
    Задайте `SWISSEPH_EPHE_PATH` (абсолютный путь к `node_modules/swisseph/ephe`), если `process.cwd()` на сервере не корень проекта.
 
 2. **Часовой пояс и geo-tz**  
-   При загрузке `lib/historical-timezone.ts` выставляется `GEO_TZ_DATA_PATH` на `node_modules/geo-tz/data` через `require.resolve('geo-tz/package.json')`, чтобы geo-tz одинаково работал локально и на VPS. Если на VPS исторический пояс всё равно не определяется, задайте вручную: `GEO_TZ_DATA_PATH=/путь/к/проекту/node_modules/geo-tz/data`. Папка `node_modules/geo-tz/data` должна попадать в деплой.
+   Библиотека geo-tz при первом `require()` ищет папку `data/` по `GEO_TZ_DATA_PATH` или по `__dirname`. Чтобы на VPS путь был верным, **при старте Node** (до любого кода) в `instrumentation.ts` выставляется `GEO_TZ_DATA_PATH`: сначала `process.cwd() + '/node_modules/geo-tz/data'` (если папка есть), иначе через `require.resolve('geo-tz/package.json')`.  
+   **На VPS важно:** запускать приложение из корня проекта (чтобы `process.cwd()` был каталогом с `node_modules`). Если PM2/система стартует из другого каталога, задайте в окружении процесса:  
+   `GEO_TZ_DATA_PATH=/var/www/yana_app/node_modules/geo-tz/data` (подставьте свой путь).  
+   Папка `node_modules/geo-tz/data` должна быть на сервере (не удалять при деплое).
 
 ---
 

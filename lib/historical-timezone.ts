@@ -2,27 +2,29 @@
  * Исторический часовой пояс по координатам и дате (IANA + moment-timezone).
  * Опционально: местное среднее время (LMT) для совпадения с сервисами вроде vedic-horo.ru.
  *
- * Важно: geo-tz читает папку data/ с диска. В продакшене (Next.js, другой cwd, PM2)
- * __dirname внутри geo-tz может указывать не туда, и find() возвращает [].
- * Задаём GEO_TZ_DATA_PATH до первого require('geo-tz'), чтобы путь к data был верным везде.
+ * geo-tz читает папку data/ с диска. Задаём GEO_TZ_DATA_PATH до первого require('geo-tz'):
+ * сначала пробуем process.cwd() (надёжно на VPS), затем require.resolve.
  */
 const path = require('path') as typeof import('path');
+const fs = require('fs') as typeof import('fs');
 
 let geoFind: (lat: number, lon: number) => string[] | undefined;
 let momentTz: typeof import('moment-timezone') | null = null;
 
 function ensureGeoTzDataPath(): void {
   if (process.env.GEO_TZ_DATA_PATH) return;
+  const cwdData = path.join(process.cwd(), 'node_modules', 'geo-tz', 'data');
+  if (fs.existsSync(cwdData)) {
+    process.env.GEO_TZ_DATA_PATH = cwdData;
+    return;
+  }
   try {
     const pkgPath = require.resolve('geo-tz/package.json');
     const dataPath = path.join(path.dirname(pkgPath), 'data');
-    process.env.GEO_TZ_DATA_PATH = dataPath;
-  } catch (_) {
-    // geo-tz не установлен или путь не резолвится
-  }
+    if (fs.existsSync(dataPath)) process.env.GEO_TZ_DATA_PATH = dataPath;
+  } catch (_) {}
 }
 
-// Задать путь до первого require('geo-tz') в процессе (критично для VPS/Next.js)
 ensureGeoTzDataPath();
 
 function loadGeo(): (lat: number, lon: number) => string[] | undefined {
@@ -57,13 +59,8 @@ function getLmtOffsetHours(longitude: number): number {
 }
 
 /**
- * Возвращает смещение часового пояса в часах (положительное = восток от UTC)
- * для данной точки (lat, lon) на указанную дату/время.
- * Используется: UTC = local_time - offset_hours.
- * При ошибке возвращает null (используется запасной вариант по долготе).
- *
- * Если NATAL_CHART_USE_LMT=true — используется местное среднее время (LMT),
- * что часто совпадает с vedic-horo.ru и другими ведическими расчётами.
+ * Возвращает смещение часового пояса в часах (положительное = восток от UTC).
+ * Только geo-tz + moment-timezone; при ошибке — null (вызывающий код использует coords.timezone).
  */
 export function getHistoricalTimezoneOffset(
   lat: number,
