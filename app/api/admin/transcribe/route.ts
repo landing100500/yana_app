@@ -49,15 +49,16 @@ async function transcribeBufferWithWhisper(
   const maxRetries = 3;
   while (retryCount < maxRetries) {
     try {
-      const transcription = await openai.audio.transcriptions.create({
+      const raw = await openai.audio.transcriptions.create({
         file: file as any,
         model: 'whisper-1',
         language: 'ru',
         response_format: 'text',
       });
-      if (typeof transcription === 'string') return transcription;
-      if (transcription?.text) return transcription.text;
-      return String(transcription);
+      if (typeof raw === 'string') return raw;
+      const withText = raw as { text?: string };
+      if (withText?.text) return withText.text;
+      return String(raw);
     } catch (err: any) {
       const isConnectionError =
         err?.code === 'EPIPE' ||
