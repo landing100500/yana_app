@@ -4,6 +4,7 @@ import Session from '@/models/Session';
 import ChatTopic from '@/models/ChatTopic';
 import Message from '@/models/Message';
 import UserAnketa from '@/models/UserAnketa';
+import AdminNatalChart from '@/models/AdminNatalChart';
 
 export async function initDatabase() {
   try {

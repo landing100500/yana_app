@@ -56,6 +56,7 @@ export async function GET(
       chartTime: chart.chartTime,
       chartCity: chart.chartCity,
       createdAt: chart.createdAt,
+      createdByAdmin: !!chart.createdByAdmin,
     }));
 
     return NextResponse.json({ 

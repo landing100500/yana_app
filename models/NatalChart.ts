@@ -56,6 +56,8 @@ interface NatalChartAttributes {
   
   // Основная натальная карта (по данным анкеты, создаётся при первом заходе в чат)
   isMain: boolean;
+  // true — карта создана в админке; false — при входе пользователя в сервис
+  createdByAdmin: boolean;
   // Метаданные
   calculatedAt: Date;
   createdAt?: Date;
@@ -104,6 +106,7 @@ class NatalChart extends Model<NatalChartAttributes, NatalChartCreationAttribute
   public houseSystem!: string;
   public siderealTime!: number;
   public isMain!: boolean;
+  public createdByAdmin!: boolean;
   public calculatedAt!: Date;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -267,6 +270,11 @@ NatalChart.init(
       defaultValue: 'P',
     },
     isMain: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    createdByAdmin: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
