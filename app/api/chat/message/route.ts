@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
     // Создаем массив сообщений для OpenAI
     const messages = [
       systemMessage,
-      ...messageHistory.slice(-8), // Берем последние 8 сообщений из истории (чтобы не превысить лимит токенов)
+      ...messageHistory.slice(-10), // Последние 10 сообщений из истории диалога
       { role: 'user' as const, content: message },
     ];
 
