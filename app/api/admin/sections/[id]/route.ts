@@ -11,6 +11,43 @@ async function checkAdminAuth() {
   return adminAuth?.value === 'true';
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    if (!(await checkAdminAuth())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const sectionId = params.id;
+    if (!sectionId) {
+      return NextResponse.json({ error: 'ID раздела не указан' }, { status: 400 });
+    }
+    const body = await request.json().catch(() => ({}));
+    const enabledForAgent = body.enabled_for_agent;
+    if (typeof enabledForAgent !== 'boolean') {
+      return NextResponse.json(
+        { error: 'Нужно передать enabled_for_agent: true или false' },
+        { status: 400 }
+      );
+    }
+    const supabaseClient = getSupabaseAdmin();
+    const { data, error } = await supabaseClient
+      .from('ai_sections')
+      .update({ enabled_for_agent: enabledForAgent, updated_at: new Date().toISOString() })
+      .eq('id', sectionId)
+      .select()
+      .single();
+    if (error) throw error;
+    return NextResponse.json({ section: data });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Ошибка при обновлении раздела' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -51,6 +88,13 @@ export async function DELETE(
       return NextResponse.json(
         { error: 'Раздел не найден', details: sectionError?.message },
         { status: 404 }
+      );
+    }
+
+    if ((section as { enabled_for_agent?: boolean }).enabled_for_agent) {
+      return NextResponse.json(
+        { error: 'Нельзя удалить область памяти, подключённую к агенту. Сначала отключите её в блоке «Подключение к агенту».' },
+        { status: 400 }
       );
     }
 

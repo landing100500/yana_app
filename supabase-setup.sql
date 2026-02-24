@@ -155,4 +155,15 @@ BEGIN
   END IF;
 END $$;
 
+-- 10. Подключение областей памяти к агенту (enabled_for_agent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'ai_sections' AND column_name = 'enabled_for_agent'
+  ) THEN
+    ALTER TABLE ai_sections ADD COLUMN enabled_for_agent BOOLEAN DEFAULT false;
+  END IF;
+END $$;
+
 -- Готово! Теперь база данных настроена для работы с векторными данными

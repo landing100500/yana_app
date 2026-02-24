@@ -11,6 +11,7 @@ interface Section {
   description?: string | null;
   created_at: string;
   total_chunks?: number;
+  enabled_for_agent?: boolean;
 }
 
 type AdminView = 'training' | 'users-charts';
@@ -33,6 +34,8 @@ export default function AdminPage() {
   const [showTextUpload, setShowTextUpload] = useState(false);
   const [textUploadContent, setTextUploadContent] = useState('');
   const [textUploading, setTextUploading] = useState(false);
+  const [agentSectionToConnect, setAgentSectionToConnect] = useState('');
+  const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -288,6 +291,32 @@ export default function AdminPage() {
     }
   };
 
+  const handleConnectAgentSection = async (sectionId: string, enabled: boolean) => {
+    if (!sectionId) return;
+    setTogglingAgent(sectionId);
+    setError('');
+    try {
+      const response = await fetch(`/api/admin/sections/${sectionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled_for_agent: enabled }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setSections((prev) =>
+          prev.map((s) => (s.id === sectionId ? { ...s, enabled_for_agent: enabled } : s))
+        );
+        if (!enabled) setAgentSectionToConnect((prev) => (prev === sectionId ? '' : prev));
+      } else {
+        setError(data.error || 'Ошибка при обновлении');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Ошибка сети');
+    } finally {
+      setTogglingAgent(null);
+    }
+  };
+
   const handleDeleteSection = async (sectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем выбор раздела при клике на удаление
 
@@ -389,6 +418,52 @@ export default function AdminPage() {
               Карты пользователей
             </button>
           </nav>
+
+          <div className={styles.agentSections}>
+            <h3 className={styles.agentSectionsTitle}>Подключение к агенту</h3>
+            <p className={styles.agentSectionsHint}>
+              Подключённые области памяти доступны ИИ-агенту в чате.
+            </p>
+            <div className={styles.agentConnectRow}>
+              <select
+                value={agentSectionToConnect}
+                onChange={(e) => setAgentSectionToConnect(e.target.value)}
+                className={styles.select}
+                disabled={togglingAgent !== null}
+              >
+                <option value="">Выберите область...</option>
+                {sections.filter((s) => !s.enabled_for_agent).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={styles.buttonSmall}
+                disabled={!agentSectionToConnect || togglingAgent !== null}
+                onClick={() => agentSectionToConnect && handleConnectAgentSection(agentSectionToConnect, true)}
+              >
+                Подключить
+              </button>
+            </div>
+            <ul className={styles.agentConnectedList}>
+              {sections.filter((s) => s.enabled_for_agent).map((s) => (
+                <li key={s.id} className={styles.agentConnectedItem}>
+                  <span className={styles.agentConnectedName}>{s.name}</span>
+                  <button
+                    type="button"
+                    className={styles.buttonSmallDanger}
+                    disabled={togglingAgent !== null}
+                    onClick={() => handleConnectAgentSection(s.id, false)}
+                    title="Отключить от агента"
+                  >
+                    {togglingAgent === s.id ? '...' : 'Отключить'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         {/* Основной контент */}
@@ -470,9 +545,9 @@ export default function AdminPage() {
                   </div>
                   <button
                     onClick={(e) => handleDeleteSection(section.id, e)}
-                    disabled={deletingSection === section.id}
+                    disabled={deletingSection === section.id || section.enabled_for_agent}
                     className={styles.deleteButton}
-                    title="Удалить раздел"
+                    title={section.enabled_for_agent ? 'Сначала отключите область от агента' : 'Удалить раздел'}
                   >
                     {deletingSection === section.id ? '...' : '×'}
                   </button>

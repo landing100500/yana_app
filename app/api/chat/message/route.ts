@@ -7,7 +7,7 @@ import UserAnketa from '@/models/UserAnketa';
 import NatalChart from '@/models/NatalChart';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { searchRelevantChunks, getSectionStyleChunks, findSectionByName } from '@/lib/rag-search';
+import { searchRelevantChunks, getSectionStyleChunks, getEnabledSectionIds } from '@/lib/rag-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,21 +97,20 @@ export async function POST(request: NextRequest) {
       content: msg.content,
     }));
 
-    // Ищем релевантные чанки в базе знаний через RAG
-    // Всегда включаем раздел "Результат человека" для постоянной связи
-    const REQUIRED_SECTION_NAME = 'Результат человека';
+    // Ищем релевантные чанки только в подключённых к агенту областях памяти
     console.log('Searching relevant chunks for query:', message);
-    const relevantChunks = await searchRelevantChunks(message, 5, REQUIRED_SECTION_NAME);
+    const relevantChunks = await searchRelevantChunks(message, 5);
     console.log(`Found ${relevantChunks.length} relevant chunks`);
 
-    // Получаем стилистику из раздела "Результат человека"
+    // Стилистика только из подключённых областей памяти (первая подключённая)
     let styleContext = '';
-    const resultSection = await findSectionByName(REQUIRED_SECTION_NAME);
-    if (resultSection) {
-      const styleChunks = await getSectionStyleChunks(resultSection.id, 3);
+    const enabledIds = await getEnabledSectionIds();
+    if (enabledIds.length > 0) {
+      const styleChunks = await getSectionStyleChunks(enabledIds[0], 3);
       if (styleChunks.length > 0) {
+        const sectionLabel = styleChunks[0].sectionName || 'подключённая область памяти';
         styleContext = '\n\nВАЖНО - Стилистика и характер общения:\n';
-        styleContext += 'Ты должен общаться в том же стиле, тональности и характере, что и в следующих примерах из области памяти "Результат человека":\n';
+        styleContext += `Ты должен общаться в том же стиле, тональности и характере, что и в следующих примерах из области памяти "${sectionLabel}":\n`;
         styleChunks.forEach((chunk, index) => {
           styleContext += `\n[Пример стиля ${index + 1}]:\n${chunk.text}\n`;
         });
