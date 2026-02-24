@@ -94,7 +94,7 @@ export default function AdminUsersCharts() {
       setCharts([]);
       if (!selectedAdminChartId) setSelectedChart(null);
     }
-  }, [selectedUserId]);
+  }, [selectedUserId, selectedAdminChartId]);
 
   const loadUsers = async () => {
     try {

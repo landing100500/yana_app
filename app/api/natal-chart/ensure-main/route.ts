@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
       houseSystem: chartData.houseSystem,
       siderealTime: chartData.siderealTime,
       isMain: true,
+      createdByAdmin: false,
       calculatedAt: new Date(),
     });
 
