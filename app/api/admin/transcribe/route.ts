@@ -3,8 +3,14 @@ import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { openai } from '@/lib/openai';
 import { splitTextIntoChunks, createEmbeddings } from '@/lib/embeddings';
-import { extractAudioFromVideo, isVideoFile } from '@/lib/audio-extractor';
-import { readFile, unlink } from 'fs/promises';
+import {
+  extractAudioFromVideo,
+  isVideoFile,
+  getMediaDuration,
+  extractAudioSegment,
+  extractAudioFromVideoToFile,
+} from '@/lib/audio-extractor';
+import { readFile, unlink, stat, writeFile } from 'fs/promises';
 import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -13,8 +19,8 @@ import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 
-// Настройка для больших файлов (до 250MB)
-export const maxDuration = 1800; // 30 минут для обработки больших файлов
+// Настройка для больших файлов (до 2GB, сегментация по Whisper ≤25MB)
+export const maxDuration = 3600; // 60 минут для файлов до 2GB
 export const runtime = 'nodejs';
 
 async function checkAdminAuth() {
@@ -23,9 +29,50 @@ async function checkAdminAuth() {
   return adminAuth?.value === 'true';
 }
 
+const MAX_FILE_SIZE_MB = 2048;
+const WHISPER_MAX_SIZE_MB = 25;
+const SEGMENT_DURATION_SEC = 600; // 10 мин — сегмент ~10MB при 128kbps, под лимит Whisper 25MB
+
 function sendProgress(controller: ReadableStreamDefaultController, message: string, progress?: number) {
   const data = JSON.stringify({ type: 'progress', message, progress });
   controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+}
+
+async function transcribeBufferWithWhisper(
+  buffer: Buffer,
+  mimeType: string,
+  segmentName: string
+): Promise<string> {
+  const arr = new Uint8Array(buffer);
+  const file = new File([arr], segmentName, { type: mimeType });
+  let retryCount = 0;
+  const maxRetries = 3;
+  while (retryCount < maxRetries) {
+    try {
+      const transcription = await openai.audio.transcriptions.create({
+        file: file as any,
+        model: 'whisper-1',
+        language: 'ru',
+        response_format: 'text',
+      });
+      if (typeof transcription === 'string') return transcription;
+      if (transcription?.text) return transcription.text;
+      return String(transcription);
+    } catch (err: any) {
+      const isConnectionError =
+        err?.code === 'EPIPE' ||
+        err?.message?.includes('Connection error') ||
+        err?.message?.includes('fetch failed') ||
+        err?.cause?.code === 'EPIPE';
+      if (isConnectionError && retryCount < maxRetries - 1) {
+        retryCount++;
+        await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, retryCount - 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return '';
 }
 
 export async function POST(request: NextRequest) {
@@ -47,9 +94,12 @@ export async function POST(request: NextRequest) {
         const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
         const uploadFileSizeMB = contentLength / (1024 * 1024);
         const LARGE_FILE_THRESHOLD_MB = 10; // Для файлов >10MB используем потоковую обработку
-        
+        const KEEP_FILE_ON_DISK_OVER_MB = 50; // Файлы >50MB не грузим в память — обрабатываем по сегментам с диска
+
         let file: File | null = null;
         let sectionId: string = '';
+        let largeFileFileName = '';
+        let largeFileMimeType = '';
 
         // Для больших файлов используем busboy (потоковая обработка)
         // Для маленьких - стандартный formData (как раньше)
@@ -68,11 +118,11 @@ export async function POST(request: NextRequest) {
           
           await new Promise<void>((resolve, reject) => {
             console.log('[TRANSCRIBE] Creating busboy parser...');
-            const bb = busboy({ 
+            const bb = busboy({
               headers: Object.fromEntries(request.headers.entries()),
               limits: {
-                fileSize: 500 * 1024 * 1024 // 500MB лимит
-              }
+                fileSize: 2048 * 1024 * 1024, // 2GB
+              },
             });
             
             let fileStarted = false;
@@ -148,23 +198,26 @@ export async function POST(request: NextRequest) {
                 writeStream.on('finish', () => resolve());
                 writeStream.on('error', reject);
               });
-              
-              // Читаем файл с диска и создаем File объект
-              const fileBuffer = await readFile(tempFile);
-              file = new File([fileBuffer], fileName, { type: fileType });
-              sectionId = sectionIdValue;
-              
-              console.log(`[TRANSCRIBE] File saved to disk: ${tempFile}, size: ${fileBuffer.length}`);
-              
-              // Удаляем временный файл после чтения
-              try {
-                await unlink(tempFile);
-                tempFilePath = null; // Уже удален
-                console.log(`[TRANSCRIBE] Temporary file deleted: ${tempFile}`);
-              } catch (e) {
-                console.warn(`[TRANSCRIBE] Failed to delete temp file: ${e}`);
+
+              const uploadedSizeMB = contentLength / (1024 * 1024);
+              if (uploadedSizeMB > KEEP_FILE_ON_DISK_OVER_MB) {
+                // Не грузим в память — оставляем на диске, обработаем по сегментам
+                sectionId = sectionIdValue;
+                largeFileFileName = fileName;
+                largeFileMimeType = fileType;
+                console.log(`[TRANSCRIBE] Large file left on disk: ${tempFile}, ${uploadedSizeMB.toFixed(2)}MB`);
+              } else {
+                const fileBuffer = await readFile(tempFile);
+                file = new File([fileBuffer], fileName, { type: fileType });
+                sectionId = sectionIdValue;
+                console.log(`[TRANSCRIBE] File saved to disk and read to memory: ${tempFile}, size: ${fileBuffer.length}`);
+                try {
+                  await unlink(tempFile);
+                  tempFilePath = null;
+                } catch (e) {
+                  console.warn(`[TRANSCRIBE] Failed to delete temp file: ${e}`);
+                }
               }
-              
               resolve();
             });
             
@@ -224,7 +277,7 @@ export async function POST(request: NextRequest) {
           sectionId = formData.get('sectionId') as string;
         }
 
-        if (!file) {
+        if (!file && !tempFilePath) {
           const error = JSON.stringify({ type: 'error', error: 'Файл не загружен' });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
           controller.close();
@@ -238,8 +291,7 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // Сохраняем имя файла для использования в дальнейшем
-        const fileName = file.name;
+        const fileName = file ? file.name : largeFileFileName;
 
         sendProgress(controller, 'Проверка раздела...', 10);
 
@@ -259,285 +311,175 @@ export async function POST(request: NextRequest) {
 
         sendProgress(controller, 'Проверка размера файла...', 15);
 
-        // Проверяем размер файла (максимум 250MB)
-        const fileSizeMB = file.size / (1024 * 1024);
-        const MAX_FILE_SIZE_MB = 250;
-        
+        const fileSizeMB = file
+          ? file.size / (1024 * 1024)
+          : (await stat(tempFilePath!)).size / (1024 * 1024);
+
         if (fileSizeMB > MAX_FILE_SIZE_MB) {
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: `Файл слишком большой (${fileSizeMB.toFixed(2)}MB). Максимальный размер: ${MAX_FILE_SIZE_MB}MB` 
+          const error = JSON.stringify({
+            type: 'error',
+            error: `Файл слишком большой (${fileSizeMB.toFixed(2)}MB). Максимальный размер: ${MAX_FILE_SIZE_MB}MB`,
           });
           controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
           controller.close();
           return;
         }
-
-        sendProgress(controller, `Подготовка файла (${fileSizeMB.toFixed(2)}MB)...`, 18);
-
-        // Конвертируем файл в нужный формат для Whisper API
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
 
         const fileExtension = fileName.split('.').pop()?.toLowerCase();
-        let mimeType = file.type;
-        
-        // Если MIME тип не определен, определяем по расширению
+        const mimeTypes: Record<string, string> = {
+          mp3: 'audio/mpeg',
+          mp4: 'video/mp4',
+          mpeg: 'video/mpeg',
+          mpga: 'audio/mpeg',
+          m4a: 'audio/mp4',
+          wav: 'audio/wav',
+          webm: 'audio/webm',
+        };
+        let mimeType = file ? file.type : largeFileMimeType;
         if (!mimeType || mimeType === 'application/octet-stream') {
-          const mimeTypes: Record<string, string> = {
-            'mp3': 'audio/mpeg',
-            'mp4': 'video/mp4',
-            'mpeg': 'video/mpeg',
-            'mpga': 'audio/mpeg',
-            'm4a': 'audio/mp4',
-            'wav': 'audio/wav',
-            'webm': 'audio/webm',
-          };
           mimeType = mimeTypes[fileExtension || ''] || 'audio/mpeg';
         }
-
-        // Проверяем, является ли файл видео
         const isVideo = isVideoFile(mimeType, fileName);
-        let finalBuffer: Buffer = buffer;
-        let finalMimeType = mimeType;
-        let finalFileName = fileName;
-        let finalSizeMB = fileSizeMB;
 
-        // Если это видео файл, извлекаем аудио
-        if (isVideo) {
-          sendProgress(controller, 'Извлечение аудио из видео...', 20);
-          console.log(`Extracting audio from video file: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
-          
-          try {
-            sendProgress(controller, 'Обработка видео файла...', 22);
-            const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, fileName);
-            finalBuffer = Buffer.from(audioBuffer);
-            finalMimeType = 'audio/mpeg';
-            finalFileName = fileName.replace(/\.[^/.]+$/, '.mp3');
-            finalSizeMB = audioSizeMB;
-            
-            console.log(`Audio extracted successfully: ${finalSizeMB.toFixed(2)}MB (from ${fileSizeMB.toFixed(2)}MB video)`);
-            sendProgress(controller, `Аудио извлечено: ${finalSizeMB.toFixed(2)}MB`, 25);
-          } catch (extractionError: any) {
-            console.error('Audio extraction error:', extractionError);
-            console.error('Extraction error stack:', extractionError.stack);
-            const error = JSON.stringify({ 
-              type: 'error', 
-              error: 'Ошибка при извлечении аудио из видео',
-              details: extractionError.message || String(extractionError),
-              suggestion: 'Убедитесь, что ffmpeg установлен и файл является валидным видео файлом. Проверьте логи сервера для деталей.'
-            });
-            controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-            controller.close();
-            return;
-          }
-        }
-
-        sendProgress(controller, 'Транскрибация через Whisper API...', 30);
-
-        // Создаем File для OpenAI API
-        // Преобразуем Buffer в Uint8Array для совместимости с File/Blob конструкторами
-        const bufferArray = new Uint8Array(finalBuffer);
-        let whisperFile: File | Blob;
-        
-        try {
-          whisperFile = new File([bufferArray], finalFileName, { type: finalMimeType });
-          console.log('Using File for transcription');
-        } catch (e) {
-          // Если File не доступен, используем Blob
-          whisperFile = new Blob([bufferArray], { type: finalMimeType });
-          console.log('Fallback to Blob');
-        }
-
-        console.log(`Transcribing file: ${finalFileName}, size: ${finalSizeMB.toFixed(2)}MB, type: ${finalMimeType}`);
-
-        // Проверяем размер файла для Whisper API (лимит 25MB)
-        // Используем finalSizeMB после извлечения аудио (если это было видео)
-        const WHISPER_MAX_SIZE_MB = 25;
         let transcriptText: string;
 
-        // Если файл (после извлечения аудио) все еще больше лимита, возвращаем ошибку
-        if (finalSizeMB > WHISPER_MAX_SIZE_MB) {
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: `Аудио файл слишком большой (${finalSizeMB.toFixed(2)}MB). Whisper API поддерживает максимум ${WHISPER_MAX_SIZE_MB}MB.`,
-            suggestion: 'Попробуйте разбить файл на части по 25MB каждая или использовать файл меньшего размера.',
-            fileSize: `${finalSizeMB.toFixed(2)}MB`,
-            originalSize: isVideo ? `${fileSizeMB.toFixed(2)}MB` : undefined,
-            fileType: finalMimeType,
-            fileExtension: fileExtension,
-            maxSize: `${WHISPER_MAX_SIZE_MB}MB`
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
-        }
-
-        // Отправляем heartbeat чтобы клиент знал, что процесс идет
-        let heartbeatCount = 0;
-        const heartbeatInterval = setInterval(() => {
-          heartbeatCount++;
-          sendProgress(controller, `Транскрибация в процессе... (${heartbeatCount * 10} сек)`, undefined);
-          console.log(`Heartbeat ${heartbeatCount}: Transcription still in progress...`);
-        }, 10000); // Каждые 10 секунд
-
-        try {
-          console.log('Sending file to Whisper API...');
-          sendProgress(controller, 'Отправка файла в Whisper API...', 30);
-
-          // Транскрибируем через Whisper с retry логикой для обработки ошибок соединения
-          let transcription: any;
-          let retryCount = 0;
-          const maxRetries = 3;
-          
-          while (retryCount < maxRetries) {
-            try {
-              if (retryCount > 0) {
-                sendProgress(controller, `Повторная попытка отправки (${retryCount + 1}/${maxRetries})...`, 30);
-                console.log(`Retry ${retryCount + 1}/${maxRetries} after connection error...`);
-                // Ждем перед повтором (экспоненциальная задержка)
-                await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, retryCount - 1)));
-              }
-              
-              transcription = await openai.audio.transcriptions.create({
-                file: whisperFile as any,
-                model: 'whisper-1',
-                language: 'ru',
-                response_format: 'text',
-              });
-              
-              // Успешно получили ответ
-              break;
-            } catch (retryError: any) {
-              retryCount++;
-              
-              // Проверяем, является ли это ошибкой соединения
-              const isConnectionError = 
-                retryError.code === 'EPIPE' || 
-                retryError.message?.includes('Connection error') || 
-                retryError.message?.includes('fetch failed') ||
-                retryError.cause?.code === 'EPIPE';
-              
-              if (isConnectionError && retryCount < maxRetries) {
-                console.log(`Connection error on attempt ${retryCount}, retrying...`);
-                continue;
-              }
-              
-              // Если это не ошибка соединения или закончились попытки, пробрасываем ошибку
-              throw retryError;
-            }
-          }
-
-          clearInterval(heartbeatInterval);
-          console.log('Whisper API response received');
-
-          // Whisper возвращает строку напрямую при response_format: 'text'
-          if (typeof transcription === 'string') {
-            transcriptText = transcription;
-          } else if (transcription?.text) {
-            transcriptText = transcription.text;
+        if (tempFilePath) {
+          // Большой файл на диске: извлекаем аудио (если видео), режем на сегменты ≤25MB, транскрибируем по частям
+          let audioPath: string;
+          let durationSec: number;
+          if (isVideo) {
+            sendProgress(controller, 'Извлечение аудио из видео...', 20);
+            const audioTempPath = join(tmpdir(), `audio_${Date.now()}.mp3`);
+            const result = await extractAudioFromVideoToFile(tempFilePath, audioTempPath);
+            audioPath = audioTempPath;
+            durationSec = result.durationSec;
+            sendProgress(controller, `Аудио извлечено, сегментация...`, 25);
           } else {
-            transcriptText = String(transcription);
+            audioPath = tempFilePath;
+            durationSec = await getMediaDuration(tempFilePath);
           }
-
-          if (!transcriptText || transcriptText.trim().length === 0) {
-            const error = JSON.stringify({ 
-              type: 'error', 
-              error: 'Транскрибация вернула пустой результат. Возможно, файл не содержит аудио или формат не поддерживается.' 
+          const numSegments = Math.ceil(durationSec / SEGMENT_DURATION_SEC) || 1;
+          const parts: string[] = [];
+          for (let i = 0; i < numSegments; i++) {
+            const startSec = i * SEGMENT_DURATION_SEC;
+            const durSec = Math.min(SEGMENT_DURATION_SEC, durationSec - startSec);
+            sendProgress(
+              controller,
+              `Транскрибация сегмента ${i + 1}/${numSegments}...`,
+              30 + Math.floor((i / numSegments) * 20)
+            );
+            const segmentPath = join(tmpdir(), `seg_${Date.now()}_${i}.mp3`);
+            await extractAudioSegment(audioPath, startSec, durSec, segmentPath, false);
+            const segBuf = await readFile(segmentPath);
+            const text = await transcribeBufferWithWhisper(segBuf, 'audio/mpeg', `seg_${i}.mp3`);
+            if (text?.trim()) parts.push(text.trim());
+            await unlink(segmentPath).catch(() => {});
+          }
+          if (isVideo && audioPath) await unlink(audioPath).catch(() => {});
+          transcriptText = parts.join(' ');
+          if (!transcriptText?.trim()) {
+            const error = JSON.stringify({
+              type: 'error',
+              error: 'Транскрибация вернула пустой результат.',
             });
             controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
             controller.close();
             return;
           }
+        } else {
+          // Файл в памяти: как раньше, но при >25MB — пишем во временный файл и режем сегментами
+          sendProgress(controller, `Подготовка файла (${fileSizeMB.toFixed(2)}MB)...`, 18);
+          const arrayBuffer = await file!.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          let finalBuffer: Buffer = buffer;
+          let finalMimeType = mimeType;
+          let finalFileName = fileName;
+          let finalSizeMB = fileSizeMB;
 
-          console.log(`Transcription completed, length: ${transcriptText.length} characters`);
-
-        } catch (transcriptionError: any) {
-          clearInterval(heartbeatInterval);
-          console.error('Whisper API error:', transcriptionError);
-          console.error('Error details:', {
-            status: transcriptionError.status,
-            statusCode: transcriptionError.statusCode,
-            statusText: transcriptionError.statusText,
-            message: transcriptionError.message,
-            error: transcriptionError.error,
-            response: transcriptionError.response,
-            code: transcriptionError.code,
-            name: transcriptionError.name,
-          });
-
-          // Пытаемся извлечь детальную информацию об ошибке
-          let errorDetails = transcriptionError.message || String(transcriptionError);
-          let errorStatus = transcriptionError.status || transcriptionError.statusCode;
-          
-          if (transcriptionError.response) {
+          if (isVideo) {
+            sendProgress(controller, 'Извлечение аудио из видео...', 20);
             try {
-              const responseData = typeof transcriptionError.response === 'string' 
-                ? JSON.parse(transcriptionError.response)
-                : transcriptionError.response;
-              if (responseData.error) {
-                errorDetails = responseData.error.message || errorDetails;
-              }
-            } catch (e) {
-              // Игнорируем ошибки парсинга
+              const { audioBuffer, audioSizeMB } = await extractAudioFromVideo(buffer, fileName);
+              finalBuffer = Buffer.from(audioBuffer);
+              finalMimeType = 'audio/mpeg';
+              finalFileName = fileName.replace(/\.[^/.]+$/, '.mp3');
+              finalSizeMB = audioSizeMB;
+              sendProgress(controller, `Аудио извлечено: ${finalSizeMB.toFixed(2)}MB`, 25);
+            } catch (extractionError: any) {
+              const error = JSON.stringify({
+                type: 'error',
+                error: 'Ошибка при извлечении аудио из видео',
+                details: extractionError.message || String(extractionError),
+              });
+              controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+              controller.close();
+              return;
             }
           }
 
-          if (transcriptionError.error) {
-            if (typeof transcriptionError.error === 'string') {
-              errorDetails = transcriptionError.error;
-            } else if (transcriptionError.error.message) {
-              errorDetails = transcriptionError.error.message;
+          if (finalSizeMB > WHISPER_MAX_SIZE_MB) {
+            sendProgress(controller, 'Разбиение на сегменты для Whisper...', 28);
+            const audioTempPath = join(tmpdir(), `audio_${Date.now()}.mp3`);
+            await writeFile(audioTempPath, finalBuffer);
+            const durationSec = await getMediaDuration(audioTempPath);
+            const numSegments = Math.ceil(durationSec / SEGMENT_DURATION_SEC) || 1;
+            const parts: string[] = [];
+            for (let i = 0; i < numSegments; i++) {
+              const startSec = i * SEGMENT_DURATION_SEC;
+              const durSec = Math.min(SEGMENT_DURATION_SEC, durationSec - startSec);
+              sendProgress(
+                controller,
+                `Транскрибация сегмента ${i + 1}/${numSegments}...`,
+                30 + Math.floor((i / numSegments) * 20)
+              );
+              const segmentPath = join(tmpdir(), `seg_${Date.now()}_${i}.mp3`);
+              await extractAudioSegment(audioTempPath, startSec, durSec, segmentPath, false);
+              const segBuf = await readFile(segmentPath);
+              const text = await transcribeBufferWithWhisper(segBuf, 'audio/mpeg', `seg_${i}.mp3`);
+              if (text?.trim()) parts.push(text.trim());
+              await unlink(segmentPath).catch(() => {});
+            }
+            await unlink(audioTempPath).catch(() => {});
+            transcriptText = parts.join(' ');
+          } else {
+            sendProgress(controller, 'Транскрибация через Whisper API...', 30);
+            let heartbeatCount = 0;
+            const heartbeatInterval = setInterval(() => {
+              heartbeatCount++;
+              sendProgress(controller, `Транскрибация... (${heartbeatCount * 10} сек)`, undefined);
+            }, 10000);
+            try {
+              transcriptText = await transcribeBufferWithWhisper(
+                finalBuffer,
+                finalMimeType,
+                finalFileName
+              );
+              clearInterval(heartbeatInterval);
+            } catch (transcriptionError: any) {
+              clearInterval(heartbeatInterval);
+              const error = JSON.stringify({
+                type: 'error',
+                error: transcriptionError.message || 'Ошибка при транскрибации',
+                details: transcriptionError.message,
+              });
+              controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+              controller.close();
+              return;
             }
           }
-          
-          let errorMessage = 'Ошибка при транскрибации';
-          let suggestion = '';
 
-          // Проверяем размер файла - если больше 25MB, вероятно проблема в размере
-          if (finalSizeMB > 25) {
-            errorMessage = `Аудио файл слишком большой (${finalSizeMB.toFixed(2)}MB). Whisper API поддерживает максимум 25MB.`;
-            suggestion = isVideo 
-              ? `Аудио извлечено из видео (${fileSizeMB.toFixed(2)}MB → ${finalSizeMB.toFixed(2)}MB), но все еще слишком большое. Попробуйте разбить файл на части.`
-              : 'Попробуйте сжать файл или разбить его на части.';
-          } else if (errorStatus === 413 || transcriptionError.statusCode === 413) {
-            errorMessage = `Файл слишком большой (${finalSizeMB.toFixed(2)}MB). Whisper API поддерживает максимум 25MB.`;
-            suggestion = 'Попробуйте сжать файл или разбить его на части.';
-          } else if (errorStatus === 400 || transcriptionError.statusCode === 400) {
-            // Для больших файлов API может вернуть 400 вместо 413
-            if (finalSizeMB > 25) {
-              errorMessage = `Аудио файл слишком большой (${finalSizeMB.toFixed(2)}MB). Whisper API поддерживает максимум 25MB.`;
-              suggestion = 'Попробуйте разбить файл на части.';
-            } else {
-              errorMessage = `Неверный формат файла или ошибка обработки. Поддерживаются: mp3, mp4, mpeg, mpga, m4a, wav, webm. Детали: ${errorDetails}`;
-            }
-          } else if (transcriptionError.message) {
-            errorMessage = transcriptionError.message;
-          } else if (transcriptionError.error?.message) {
-            errorMessage = transcriptionError.error.message;
+          if (!transcriptText?.trim()) {
+            const error = JSON.stringify({
+              type: 'error',
+              error: 'Транскрибация вернула пустой результат.',
+            });
+            controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
+            controller.close();
+            return;
           }
-
-          // Проверяем, не таймаут ли это
-          if (transcriptionError.code === 'ECONNABORTED' || transcriptionError.message?.includes('timeout')) {
-            errorMessage = 'Таймаут при транскрибации. Файл слишком большой или сервер не отвечает.';
-            suggestion = 'Попробуйте файл меньшего размера или разбейте его на части.';
-          }
-
-          const error = JSON.stringify({ 
-            type: 'error', 
-            error: errorMessage,
-            suggestion: suggestion,
-            details: errorDetails,
-            fileSize: `${finalSizeMB.toFixed(2)}MB`,
-            originalSize: isVideo ? `${fileSizeMB.toFixed(2)}MB` : undefined,
-            fileType: finalMimeType,
-            fileExtension: fileExtension,
-            statusCode: errorStatus
-          });
-          controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-          controller.close();
-          return;
         }
+
+        console.log(`Transcription completed, length: ${transcriptText.length} characters`);
 
         sendProgress(controller, 'Разбиение текста на чанки и обработка...', 50);
 
@@ -651,15 +593,11 @@ export async function POST(request: NextRequest) {
             processedCount += batchRecords.length;
             const progress = 60 + Math.floor((processedCount / Math.max(estimatedChunks, 1)) * 30);
             sendProgress(controller, `Обработано ${processedCount} чанков...`, progress);
-            
-            // Очищаем батчи
+
             batchTexts.length = 0;
             batchIndices.length = 0;
-            batchEmbeddings.length = 0;
-            batchRecords.length = 0;
-            
-            // Задержка для сборки мусора
-            await new Promise(resolve => setTimeout(resolve, 100));
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
         }
         
@@ -698,49 +636,7 @@ export async function POST(request: NextRequest) {
           processedCount += batchRecords.length;
         }
 
-        // Очищаем transcriptText из памяти
         transcriptText = '';
-        
-        console.log(`Successfully processed and inserted ${processedCount} chunks into database`);
-        
-        // Обрабатываем оставшиеся чанки
-        if (batchTexts.length > 0) {
-          const batchEmbeddings = await createEmbeddings(batchTexts);
-          const batchRecords = batchTexts.map((text, batchIndex) => ({
-            section_id: sectionId,
-            content: text,
-            embedding: batchEmbeddings[batchIndex],
-            metadata: {
-              chunk_index: batchIndices[batchIndex],
-              total_chunks: chunkIndex,
-              file_name: fileName,
-              created_at: new Date().toISOString(),
-            },
-            created_at: new Date().toISOString(),
-          }));
-
-          const { error: insertError } = await supabase
-            .from('ai_vectors')
-            .insert(batchRecords);
-
-          if (insertError) {
-            console.error('Insert error:', insertError);
-            const error = JSON.stringify({ 
-              type: 'error', 
-              error: 'Ошибка при сохранении данных.',
-              details: insertError.message,
-            });
-            controller.enqueue(new TextEncoder().encode(`data: ${error}\n\n`));
-            controller.close();
-            return;
-          }
-
-          processedCount += batchRecords.length;
-        }
-
-        // Очищаем transcriptText из памяти
-        transcriptText = '';
-        
         console.log(`Successfully processed and inserted ${processedCount} chunks into database`);
 
         sendProgress(controller, 'Обновление статистики раздела...', 95);
@@ -767,6 +663,14 @@ export async function POST(request: NextRequest) {
           message: `Успешно обработано! Создано ${processedCount} чанков с эмбеддингами.`,
         });
         controller.enqueue(new TextEncoder().encode(`data: ${success}\n\n`));
+        if (tempFilePath) {
+          try {
+            await unlink(tempFilePath);
+            console.log('[TRANSCRIBE] Temporary upload file deleted after success:', tempFilePath);
+          } catch (e) {
+            console.warn('[TRANSCRIBE] Failed to delete temp file after success:', e);
+          }
+        }
         controller.close();
       } catch (error: any) {
         console.error('Transcription error:', error);

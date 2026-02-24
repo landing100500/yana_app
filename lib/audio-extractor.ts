@@ -1,5 +1,5 @@
-import { writeFile, unlink, readFile } from 'fs/promises';
-import { join } from 'path';
+import { writeFile, unlink, readFile, stat } from 'fs/promises';
+import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 
@@ -43,8 +43,11 @@ async function getFFmpeg() {
   }
   
   ffmpeg.setFfmpegPath(ffmpegPath);
+  const ffprobePath = join(dirname(ffmpegPath), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+  if (existsSync(ffprobePath)) {
+    ffmpeg.setFfprobePath(ffprobePath);
+  }
   console.log(`FFmpeg initialized at: ${ffmpegPath}`);
-  
   return ffmpeg;
 }
 
@@ -147,6 +150,79 @@ export async function extractAudioFromVideo(
       console.warn('Failed to delete temp output file:', e);
     }
   }
+}
+
+/** Длительность медиа в секундах (для сегментации под Whisper ≤25MB) */
+export async function getMediaDuration(filePath: string): Promise<number> {
+  const ffmpeg = await getFFmpeg();
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err: Error | null, data: { format?: { duration?: number } }) => {
+      if (err) return reject(err);
+      const duration = data?.format?.duration;
+      if (duration == null || duration <= 0) return reject(new Error('Could not get media duration'));
+      resolve(duration);
+    });
+  });
+}
+
+/**
+ * Извлекает сегмент аудио в MP3 (для отправки в Whisper).
+ * sourcePath — путь к видео или аудио файлу на диске.
+ */
+export async function extractAudioSegment(
+  sourcePath: string,
+  startTimeSec: number,
+  durationSec: number,
+  outputPath: string,
+  isVideo: boolean
+): Promise<void> {
+  const ffmpeg = await getFFmpeg();
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Segment extraction timeout (3 min)')), 3 * 60 * 1000);
+    const cmd = ffmpeg(sourcePath)
+      .setStartTime(startTimeSec)
+      .setDuration(durationSec)
+      .outputOptions([
+        ...(isVideo ? ['-vn'] : []),
+        '-acodec', 'libmp3lame',
+        '-ar', '22050',
+        '-ac', '1',
+        '-b:a', '128k',
+      ])
+      .output(outputPath)
+      .on('end', () => { clearTimeout(timeout); resolve(); })
+      .on('error', (err: Error) => { clearTimeout(timeout); reject(err); });
+    cmd.run();
+  });
+}
+
+/**
+ * Извлекает всё аудио из видео в файл на диске (без загрузки в память).
+ * Возвращает длительность в секундах.
+ */
+export async function extractAudioFromVideoToFile(
+  videoPath: string,
+  outputAudioPath: string
+): Promise<{ durationSec: number }> {
+  const ffmpeg = await getFFmpeg();
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Audio extraction timeout (15 minutes)')), 15 * 60 * 1000);
+    ffmpeg(videoPath)
+      .outputOptions([
+        '-vn',
+        '-acodec', 'libmp3lame',
+        '-ar', '22050',
+        '-ac', '1',
+        '-b:a', '128k',
+      ])
+      .output(outputAudioPath)
+      .on('end', () => { clearTimeout(timeout); resolve(); })
+      .on('error', (err: Error) => { clearTimeout(timeout); reject(err); })
+      .run();
+  });
+  if (!existsSync(outputAudioPath)) throw new Error('Extracted audio file was not created');
+  const durationSec = await getMediaDuration(outputAudioPath);
+  return { durationSec };
 }
 
 /**
