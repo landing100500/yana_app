@@ -32,7 +32,7 @@ export async function GET() {
       ],
     });
 
-    const topicIds = [...new Set(logs.map((l) => l.topicId))];
+    const topicIds = Array.from(new Set(logs.map((l) => l.topicId)));
     const messagesByTopic = new Map<number, { role: string; content: string; createdAt: Date }[]>();
 
     if (topicIds.length > 0) {
@@ -52,7 +52,7 @@ export async function GET() {
       });
     }
 
-    const userIds = [...new Set(logs.map((l) => l.userId))];
+    const userIds = Array.from(new Set(logs.map((l) => l.userId)));
     const anketas = await UserAnketa.findAll({
       where: { userId: userIds },
       attributes: ['userId', 'name'],
