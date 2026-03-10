@@ -115,7 +115,7 @@ export async function getTopicContext(
  */
 export async function appendUserMemory(userId: number, newFacts: string[]): Promise<void> {
   if (newFacts.length === 0) return;
-  const [row] = await UserMemory.findOrCreate({ where: { userId }, defaults: { facts: '' } });
+  const [row] = await UserMemory.findOrCreate({ where: { userId }, defaults: { userId, facts: '' } });
   const existing = row.facts ? row.facts.split('\n').filter(Boolean) : [];
   const combined = [...existing];
   for (const f of newFacts) {
