@@ -84,10 +84,12 @@ export async function getTopicContext(
     } else {
       const toSummarize = oldMessages.map((m) => ({ role: m.role, content: m.content }));
       const summaryText = await summarizeMessages(toSummarize);
-      await ChatTopicSummary.upsert(
-        { topicId, summary: summaryText, upToMessageId: lastOldId },
-        { updateOnDuplicate: ['summary', 'upToMessageId'] }
-      );
+      const row = await ChatTopicSummary.findOne({ where: { topicId } });
+      if (row) {
+        await row.update({ summary: summaryText, upToMessageId: lastOldId });
+      } else {
+        await ChatTopicSummary.create({ topicId, summary: summaryText, upToMessageId: lastOldId });
+      }
       summary = summaryText || null;
     }
   }
