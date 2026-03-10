@@ -9,9 +9,12 @@
     "lint": "next lint",
     "create-anketa": "tsx scripts/create-anketa-for-existing-users.ts",
     "migrate-natal-chart": "tsx scripts/run-natal-chart-migration.ts",
+    "migrate-chat-request-logs": "tsx scripts/run-chat-request-logs-migration.ts",
+    "migrate-user-memories": "tsx scripts/run-user-memories-migration.ts",
     "update-natal-charts": "tsx scripts/update-natal-charts-migration.ts",
     "fix-natal-charts": "tsx scripts/fix-natal-charts-columns.ts",
-    "remove-userid-unique": "tsx scripts/remove-userid-unique.ts"
+    "remove-userid-unique": "tsx scripts/remove-userid-unique.ts",
+    "delete-all-users": "tsx scripts/delete-all-users.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

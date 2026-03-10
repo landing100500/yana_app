@@ -69,6 +69,40 @@ BEGIN
 END;
 $$;
 
+-- 5b. Поиск по нескольким разделам (для агента: только enabled разделы). Поиск в БД по индексу — быстро при большом числе чанков.
+CREATE OR REPLACE FUNCTION match_vectors_multi(
+  query_embedding vector(1536),
+  section_ids UUID[],
+  match_threshold FLOAT DEFAULT 0.35,
+  match_count INT DEFAULT 10
+)
+RETURNS TABLE (
+  id UUID,
+  section_id UUID,
+  content TEXT,
+  section_name TEXT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    av.id,
+    av.section_id,
+    av.content,
+    s.name::TEXT AS section_name,
+    (1 - (av.embedding <=> query_embedding))::FLOAT AS similarity
+  FROM ai_vectors av
+  JOIN ai_sections s ON s.id = av.section_id
+  WHERE
+    av.section_id = ANY(section_ids)
+    AND (1 - (av.embedding <=> query_embedding)) > match_threshold
+  ORDER BY av.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
 -- 6. Создаем RLS (Row Level Security) политики (опционально, для безопасности)
 -- Включаем RLS
 ALTER TABLE ai_sections ENABLE ROW LEVEL SECURITY;

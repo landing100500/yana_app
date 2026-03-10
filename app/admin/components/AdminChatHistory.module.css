@@ -1,0 +1,172 @@
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2rem;
+}
+
+.loading,
+.error,
+.empty {
+  color: rgba(255, 255, 255, 0.9);
+  padding: 2rem;
+  text-align: center;
+}
+
+.error {
+  color: #ffcccc;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.table td {
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  vertical-align: top;
+}
+
+.row {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cellDate {
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.userName {
+  display: block;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.userPhone {
+  display: block;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cellTopic {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionList {
+  margin: 0;
+  padding-left: 1rem;
+  list-style: disc;
+}
+
+.sectionList li {
+  margin: 0.2rem 0;
+}
+
+.noSections {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.expandBtn {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+  width: 2rem;
+}
+
+.detailCell {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1.25rem 1.5rem !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.detailTitle {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.msgUser,
+.msgAssistant {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.msgUser {
+  background: rgba(155, 143, 184, 0.15);
+  border-color: rgba(155, 143, 184, 0.3);
+}
+
+.msgAssistant {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.msgRole {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.msgContent {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.msgTime {
+  display: block;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.35rem;
+}

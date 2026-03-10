@@ -5,6 +5,9 @@ import ChatTopic from '@/models/ChatTopic';
 import Message from '@/models/Message';
 import UserAnketa from '@/models/UserAnketa';
 import AdminNatalChart from '@/models/AdminNatalChart';
+import ChatRequestLog from '@/models/ChatRequestLog';
+import UserMemory from '@/models/UserMemory';
+import ChatTopicSummary from '@/models/ChatTopicSummary';
 
 export async function initDatabase() {
   try {

@@ -81,16 +81,17 @@ export async function getSectionStyleChunks(
 }
 
 /**
- * Поиск релевантных чанков в Supabase с использованием RAG
- * Учитываются только разделы, подключённые к агенту (enabled_for_agent = true).
- * Если ни один раздел не подключён, возвращается пустой массив.
+ * Поиск релевантных чанков через БД (RPC match_vectors_multi).
+ * Поиск по индексу в Supabase — быстро при большом числе чанков, без выгрузки векторов в Node.
  */
 export async function searchRelevantChunks(
   query: string,
   limit: number = 5,
-  requiredSectionName?: string
+  requiredSectionName?: string,
+  options?: { minSimilarity?: number }
 ): Promise<Array<{ text: string; sectionId: string; sectionName?: string }>> {
   let requiredChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
+  const minSimilarity = options?.minSimilarity ?? 0.35;
 
   try {
     const enabledIds = await getEnabledSectionIds();
@@ -115,52 +116,22 @@ export async function searchRelevantChunks(
 
     const supabase = getSupabaseAdmin();
 
-    // Поиск только по подключённым разделам (фильтр по section_id)
-    const { data: allVectors, error: vectorsError } = await supabase
-      .from('ai_vectors')
-      .select('id, content, section_id, embedding, ai_sections(name)')
-      .in('section_id', enabledIds)
-      .limit(1000);
+    const { data: rpcRows, error: rpcError } = await supabase.rpc('match_vectors_multi', {
+      query_embedding: queryEmbedding,
+      section_ids: enabledIds,
+      match_threshold: minSimilarity,
+      match_count: limit,
+    });
 
-    if (vectorsError || !allVectors) {
-      console.error('Error fetching vectors:', vectorsError);
+    if (rpcError) {
+      console.error('RAG RPC match_vectors_multi error:', rpcError);
       return requiredChunks;
     }
 
-    const similarities = allVectors
-      .map((vector: any) => {
-        if (!vector.embedding || !Array.isArray(vector.embedding)) return null;
-        const dotProduct = queryEmbedding.reduce(
-          (sum, val, i) => sum + val * (vector.embedding[i] || 0),
-          0
-        );
-        const queryMagnitude = Math.sqrt(queryEmbedding.reduce((sum, val) => sum + val * val, 0));
-        const vectorMagnitude = Math.sqrt(
-          vector.embedding.reduce((sum: number, val: number) => sum + val * val, 0)
-        );
-        if (vectorMagnitude === 0) return null;
-        return { ...vector, similarity: dotProduct / (queryMagnitude * vectorMagnitude) };
-      })
-      .filter((item: any) => item !== null && item.similarity >= 0.7)
-      .sort((a: any, b: any) => b.similarity - a.similarity)
-      .slice(0, limit);
-
-    const sectionIdsSet = new Set(similarities.map((item: any) => item.section_id));
-    const sectionMap: Record<string, string> = {};
-    if (sectionIdsSet.size > 0) {
-      const { data: sections } = await supabase
-        .from('ai_sections')
-        .select('id, name')
-        .in('id', Array.from(sectionIdsSet));
-      if (sections) {
-        (sections as { id: string; name: string }[]).forEach((s) => { sectionMap[s.id] = s.name; });
-      }
-    }
-
-    const generalChunks = similarities.map((item: any) => ({
-      text: item.content || '',
-      sectionId: item.section_id || '',
-      sectionName: sectionMap[item.section_id] || '',
+    const generalChunks = (rpcRows || []).map((row: { content?: string; section_id?: string; section_name?: string }) => ({
+      text: row.content || '',
+      sectionId: row.section_id || '',
+      sectionName: row.section_name ?? undefined,
     }));
 
     const allChunks = [...requiredChunks];
@@ -179,7 +150,7 @@ export async function searchRelevantChunks(
 }
 
 /**
- * Поиск релевантных чанков в конкретном разделе
+ * Поиск релевантных чанков в одном разделе — через RPC в БД (по индексу).
  */
 async function searchChunksInSection(
   query: string,
@@ -187,72 +158,49 @@ async function searchChunksInSection(
   limit: number = 5
 ): Promise<Array<{ text: string; sectionId: string; sectionName?: string }>> {
   try {
-    // Создаем эмбеддинг для запроса
     const embeddingResponse = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: query,
     });
-
     const queryEmbedding = embeddingResponse.data[0].embedding;
-
-    if (!queryEmbedding || queryEmbedding.length === 0) {
-      return [];
-    }
+    if (!queryEmbedding || queryEmbedding.length === 0) return [];
 
     const supabase = getSupabaseAdmin();
+    const { data: rpcRows, error: rpcError } = await supabase.rpc('match_vectors_multi', {
+      query_embedding: queryEmbedding,
+      section_ids: [sectionId],
+      match_threshold: 0.35,
+      match_count: limit,
+    });
 
-    // Получаем все векторы из указанного раздела
-    const { data: sectionVectors, error: vectorsError } = await supabase
-      .from('ai_vectors')
-      .select('id, content, section_id, embedding, ai_sections(name)')
-      .eq('section_id', sectionId)
-      .limit(500); // Ограничиваем для производительности
-
-    if (vectorsError || !sectionVectors || sectionVectors.length === 0) {
-      console.warn(`No vectors found in section ${sectionId}`);
+    if (rpcError || !rpcRows?.length) {
+      if (rpcError) console.warn('searchChunksInSection RPC error:', rpcError.message);
       return [];
     }
 
-    // Вычисляем cosine similarity для каждого вектора
-    const similarities = sectionVectors
-      .map((vector: any) => {
-        if (!vector.embedding || !Array.isArray(vector.embedding)) {
-          return null;
-        }
-
-        // Cosine similarity
-        const dotProduct = queryEmbedding.reduce(
-          (sum, val, i) => sum + val * (vector.embedding[i] || 0),
-          0
-        );
-        const queryMagnitude = Math.sqrt(
-          queryEmbedding.reduce((sum, val) => sum + val * val, 0)
-        );
-        const vectorMagnitude = Math.sqrt(
-          vector.embedding.reduce((sum: number, val: number) => sum + val * val, 0)
-        );
-
-        if (vectorMagnitude === 0) return null;
-
-        const similarity = dotProduct / (queryMagnitude * vectorMagnitude);
-        return {
-          ...vector,
-          similarity,
-        };
-      })
-      .filter((item: any) => item !== null && item.similarity >= 0.5) // Более низкий порог для обязательного раздела
-      .sort((a: any, b: any) => b.similarity - a.similarity)
-      .slice(0, limit);
-
-    const sectionName = sectionVectors[0]?.ai_sections?.name || '';
-
-    return similarities.map((item: any) => ({
-      text: item.content || '',
-      sectionId: item.section_id || '',
-      sectionName,
+    return (rpcRows as { content?: string; section_id?: string; section_name?: string }[]).map((row) => ({
+      text: row.content || '',
+      sectionId: row.section_id || '',
+      sectionName: row.section_name ?? undefined,
     }));
   } catch (error: any) {
     console.error('Error searching chunks in section:', error);
     return [];
   }
+}
+
+/**
+ * Получить релевантные чанки из раздела по его имени (только если раздел подключён к агенту).
+ * Нужно, чтобы при вопросах о натальной карте всегда подтягивать, например, "Интерпретация натальной карты".
+ */
+export async function getChunksFromSectionByName(
+  sectionName: string,
+  query: string,
+  limit: number = 5
+): Promise<Array<{ text: string; sectionId: string; sectionName?: string }>> {
+  const enabledIds = await getEnabledSectionIds();
+  if (enabledIds.length === 0) return [];
+  const section = await findSectionByName(sectionName);
+  if (!section || !enabledIds.includes(section.id)) return [];
+  return searchChunksInSection(query, section.id, limit);
 }

@@ -24,17 +24,30 @@ export async function PATCH(
       return NextResponse.json({ error: 'ID раздела не указан' }, { status: 400 });
     }
     const body = await request.json().catch(() => ({}));
-    const enabledForAgent = body.enabled_for_agent;
-    if (typeof enabledForAgent !== 'boolean') {
+    const supabaseClient = getSupabaseAdmin();
+
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    if (typeof body.enabled_for_agent === 'boolean') {
+      updates.enabled_for_agent = body.enabled_for_agent;
+    }
+    if (typeof body.name === 'string' && body.name.trim()) {
+      updates.name = body.name.trim();
+    }
+    if ('description' in body) {
+      updates.description = body.description === null || body.description === '' ? null : String(body.description).trim();
+    }
+
+    if (Object.keys(updates).length <= 1) {
       return NextResponse.json(
-        { error: 'Нужно передать enabled_for_agent: true или false' },
+        { error: 'Нужно передать хотя бы одно поле: enabled_for_agent, name или description' },
         { status: 400 }
       );
     }
-    const supabaseClient = getSupabaseAdmin();
+
     const { data, error } = await supabaseClient
       .from('ai_sections')
-      .update({ enabled_for_agent: enabledForAgent, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', sectionId)
       .select()
       .single();

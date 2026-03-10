@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import AdminUsersCharts from './components/AdminUsersCharts';
+import AdminChatHistory from './components/AdminChatHistory';
 
 interface Section {
   id: string;
@@ -14,7 +15,7 @@ interface Section {
   enabled_for_agent?: boolean;
 }
 
-type AdminView = 'training' | 'users-charts';
+type AdminView = 'training' | 'users-charts' | 'chat-history';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -36,6 +37,10 @@ export default function AdminPage() {
   const [textUploading, setTextUploading] = useState(false);
   const [agentSectionToConnect, setAgentSectionToConnect] = useState('');
   const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editSectionName, setEditSectionName] = useState('');
+  const [editSectionDescription, setEditSectionDescription] = useState('');
+  const [savingSection, setSavingSection] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -317,6 +322,52 @@ export default function AdminPage() {
     }
   };
 
+  const startEditSection = (section: Section) => {
+    setEditingSectionId(section.id);
+    setEditSectionName(section.name);
+    setEditSectionDescription(section.description ?? '');
+  };
+
+  const cancelEditSection = () => {
+    setEditingSectionId(null);
+    setEditSectionName('');
+    setEditSectionDescription('');
+  };
+
+  const handleSaveSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSectionId || !editSectionName.trim()) return;
+    setSavingSection(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/admin/sections/${editingSectionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editSectionName.trim(),
+          description: editSectionDescription.trim() || null,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setSections((prev) =>
+          prev.map((s) =>
+            s.id === editingSectionId
+              ? { ...s, name: data.section.name, description: data.section.description ?? null }
+              : s
+          )
+        );
+        cancelEditSection();
+      } else {
+        setError(data.error || 'Ошибка при сохранении');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Ошибка сети');
+    } finally {
+      setSavingSection(false);
+    }
+  };
+
   const handleDeleteSection = async (sectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем выбор раздела при клике на удаление
 
@@ -416,6 +467,12 @@ export default function AdminPage() {
               onClick={() => setCurrentView('users-charts')}
             >
               Карты пользователей
+            </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'chat-history' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('chat-history')}
+            >
+              История запросов
             </button>
           </nav>
 
@@ -527,30 +584,72 @@ export default function AdminPage() {
                   key={section.id}
                   className={`${styles.sectionItem} ${
                     selectedSection === section.id ? styles.selected : ''
-                  }`}
-                  onClick={() => setSelectedSection(section.id)}
+                  } ${editingSectionId === section.id ? styles.sectionItemEditing : ''}`}
+                  onClick={() => editingSectionId !== section.id && setSelectedSection(section.id)}
                 >
-                  <div className={styles.sectionInfo}>
-                    <div className={styles.sectionName}>{section.name}</div>
-                    {section.description && (
-                      <div className={styles.sectionDescription}>
-                        {section.description}
+                  {editingSectionId === section.id ? (
+                    <form onSubmit={handleSaveSection} className={styles.editSectionForm} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={editSectionName}
+                        onChange={(e) => setEditSectionName(e.target.value)}
+                        className={styles.input}
+                        placeholder="Название"
+                        disabled={savingSection}
+                        autoFocus
+                      />
+                      <textarea
+                        value={editSectionDescription}
+                        onChange={(e) => setEditSectionDescription(e.target.value)}
+                        className={styles.input}
+                        placeholder="Описание области памяти (необязательно)"
+                        rows={2}
+                        disabled={savingSection}
+                      />
+                      <div className={styles.buttonGroup}>
+                        <button type="submit" className={styles.button} disabled={savingSection || !editSectionName.trim()}>
+                          {savingSection ? '...' : 'Сохранить'}
+                        </button>
+                        <button type="button" className={styles.buttonSecondary} onClick={cancelEditSection} disabled={savingSection}>
+                          Отмена
+                        </button>
                       </div>
-                    )}
-                    {section.total_chunks !== undefined && (
-                      <div className={styles.sectionStats}>
-                        {section.total_chunks} чанков
+                    </form>
+                  ) : (
+                    <>
+                      <div className={styles.sectionInfo}>
+                        <div className={styles.sectionName}>{section.name}</div>
+                        {section.description && (
+                          <div className={styles.sectionDescription}>
+                            {section.description}
+                          </div>
+                        )}
+                        {section.total_chunks !== undefined && (
+                          <div className={styles.sectionStats}>
+                            {section.total_chunks} чанков
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => handleDeleteSection(section.id, e)}
-                    disabled={deletingSection === section.id || section.enabled_for_agent}
-                    className={styles.deleteButton}
-                    title={section.enabled_for_agent ? 'Сначала отключите область от агента' : 'Удалить раздел'}
-                  >
-                    {deletingSection === section.id ? '...' : '×'}
-                  </button>
+                      <div className={styles.sectionActions}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); startEditSection(section); }}
+                          className={styles.editButton}
+                          title="Редактировать описание"
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteSection(section.id, e)}
+                          disabled={deletingSection === section.id || section.enabled_for_agent}
+                          className={styles.deleteButton}
+                          title={section.enabled_for_agent ? 'Сначала отключите область от агента' : 'Удалить раздел'}
+                        >
+                          {deletingSection === section.id ? '...' : '×'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -644,8 +743,10 @@ export default function AdminPage() {
 
         {error && <div className={styles.error}>{error}</div>}
             </div>
-          ) : (
+          ) : currentView === 'users-charts' ? (
             <AdminUsersCharts />
+          ) : (
+            <AdminChatHistory />
           )}
         </div>
       </div>
