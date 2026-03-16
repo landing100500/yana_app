@@ -712,29 +712,54 @@ export default function ChatPage() {
               >
                 <div className={styles.messageContent}>
                   {message.content.split(/\n\n+/).map((paragraph, idx) => {
-                    const trimmed = paragraph.trim();
+                    let trimmed = paragraph.trim();
                     if (!trimmed) return null;
-                    
-                    // Проверяем, является ли параграф вопросом (начинается с **число.)
+
+                    // h3-заголовки вида "### Текст" — убираем ###, поддерживаем **жирный**
+                    const isH3 = /^#{3}\s+/.test(trimmed);
+                    if (isH3) {
+                      const html = trimmed
+                        .replace(/^#{3}\s+/, '')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\n/g, '<br>');
+                      return (
+                        <div key={idx}>
+                          <p
+                            className={styles.sectionTitle || styles.answerParagraph}
+                            dangerouslySetInnerHTML={{ __html: html }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    // Вопросы вида "**1. Текст"
                     const isQuestion = /^\*\*\d+\./.test(trimmed);
                     if (isQuestion) {
-                      // Форматируем вопрос - только текст внутри ** становится жирным
                       const formatted = trimmed
                         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                         .replace(/\n/g, '<br>');
                       return (
                         <div key={idx}>
-                          <p className={styles.questionParagraph} dangerouslySetInnerHTML={{ __html: formatted }} />
-                        </div>
-                      );
-                    } else {
-                      // Обычный параграф (ответ) - обычный текст, без жирного
-                      return (
-                        <div key={idx}>
-                          <p className={styles.answerParagraph} dangerouslySetInnerHTML={{ __html: trimmed.replace(/\n/g, '<br>') }} />
+                          <p
+                            className={styles.questionParagraph}
+                            dangerouslySetInnerHTML={{ __html: formatted }}
+                          />
                         </div>
                       );
                     }
+
+                    // Обычный параграф: тоже поддерживаем **жирный**
+                    const html = trimmed
+                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                      .replace(/\n/g, '<br>');
+                    return (
+                      <div key={idx}>
+                        <p
+                          className={styles.answerParagraph}
+                          dangerouslySetInnerHTML={{ __html: html }}
+                        />
+                      </div>
+                    );
                   })}
                 </div>
               </div>
