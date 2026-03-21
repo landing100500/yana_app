@@ -19,9 +19,18 @@ function ensureGeoTzDataPath(): void {
     return;
   }
   try {
-    const pkgPath = require.resolve('geo-tz/package.json');
-    const dataPath = path.join(path.dirname(pkgPath), 'data');
-    if (fs.existsSync(dataPath)) process.env.GEO_TZ_DATA_PATH = dataPath;
+    const mainPath = require.resolve('geo-tz');
+    const candidates = [
+      path.join(path.dirname(mainPath), 'data'),
+      path.join(path.dirname(mainPath), '..', 'data'),
+      path.join(path.dirname(mainPath), '..', '..', 'data'),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        process.env.GEO_TZ_DATA_PATH = p;
+        return;
+      }
+    }
   } catch (_) {}
 }
 

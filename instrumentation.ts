@@ -10,11 +10,4 @@ export async function register() {
   const cwd = process.cwd();
   const cwdData = cwd + '/node_modules/geo-tz/data';
   process.env.GEO_TZ_DATA_PATH = cwdData;
-
-  try {
-    const pkgPath = require.resolve('geo-tz/package.json');
-    process.env.GEO_TZ_DATA_PATH = pkgPath.replace(/package\.json$/i, 'data');
-  } catch (_) {
-    // остаётся cwdData
-  }
 }
