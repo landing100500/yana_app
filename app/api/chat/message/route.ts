@@ -28,16 +28,21 @@ function longitudeToSignName(lon: number): string {
 
 function buildChartSummary(chart: NatalChart): string {
   const s = (lon: number) => longitudeToSignName(lon);
+  const d = (lon: number) => `${(((lon % 360) + 360) % 360).toFixed(2)}°`;
+  const inSignDegree = (lon: number) => `${((((lon % 360) + 360) % 360) % 30).toFixed(2)}°`;
   return [
     `Дата и время: ${chart.chartDate} ${chart.chartTime}, место: ${chart.chartCity}.`,
-    `Асцендент: ${s(chart.ascendant)}.`,
-    `Солнце: ${s(chart.sun)}, Луна: ${s(chart.moon)}, Меркурий: ${s(chart.mercury)}, Венера: ${s(chart.venus)}, Марс: ${s(chart.mars)}, Юпитер: ${s(chart.jupiter)}, Сатурн: ${s(chart.saturn)}.`,
-    `Раху: ${s(chart.northNode)}, Кету: ${s(chart.southNode)}.`,
+    `Асцендент: ${s(chart.ascendant)} (${d(chart.ascendant)}).`,
+    `Солнце: ${s(chart.sun)} (${d(chart.sun)}), Луна: ${s(chart.moon)} (${d(chart.moon)}), Меркурий: ${s(chart.mercury)} (${d(chart.mercury)}), Венера: ${s(chart.venus)} (${d(chart.venus)}), Марс: ${s(chart.mars)} (${d(chart.mars)}), Юпитер: ${s(chart.jupiter)} (${d(chart.jupiter)}), Сатурн: ${s(chart.saturn)} (${d(chart.saturn)}).`,
+    `Раху: ${s(chart.northNode)} (${d(chart.northNode)}), Кету: ${s(chart.southNode)} (${d(chart.southNode)}).`,
+    `Градусы планет внутри знака (для расчёта Атмакараки): Солнце ${inSignDegree(chart.sun)}, Луна ${inSignDegree(chart.moon)}, Меркурий ${inSignDegree(chart.mercury)}, Венера ${inSignDegree(chart.venus)}, Марс ${inSignDegree(chart.mars)}, Юпитер ${inSignDegree(chart.jupiter)}, Сатурн ${inSignDegree(chart.saturn)}.`,
   ].join(' ');
 }
 
 /** Область памяти, которую обязательно использовать для трактовки натальной карты и любых вопросов о пользователе */
 const CHART_INTERPRETATION_SECTION = 'Как трактовать карту - 1 часть';
+/** Область памяти, которую обязательно использовать для вопросов по Атмакараке */
+const ATMAKARAKA_SECTION = 'Интерпретация натальной карты';
 
 const SYSTEM_PROMPT = `Ты умный агент по астропсихологии.
 
@@ -184,6 +189,7 @@ export async function POST(request: NextRequest) {
     if (relevantChunks.length === 0) {
       relevantChunks = await searchRelevantChunks(message, 10, undefined, { minSimilarity: 0.25 });
     }
+    const isAtmakarakaQuery = /атмакарак|атма-карак|atmakaraka|atma karaka/i.test(message);
     // Для трактовки карты и вопросов о пользователе жёстко подтягиваем область "Как трактовать карту - 1 часть"
     let chartInterpretationChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
     if (mainChart) {
@@ -193,6 +199,22 @@ export async function POST(request: NextRequest) {
       }
       const seen = new Set(relevantChunks.map((c) => c.text));
       for (const ch of chartInterpretationChunks) {
+        if (!seen.has(ch.text)) {
+          seen.add(ch.text);
+          relevantChunks.push(ch);
+        }
+      }
+    }
+
+    // Технический safeguard: для вопросов по Атмакараке принудительно подтягиваем область "Интерпретация натальной карты"
+    let atmakarakaChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
+    if (mainChart && isAtmakarakaQuery) {
+      atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, message, 10);
+      if (atmakarakaChunks.length === 0) {
+        atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, 'атмакарака расчет характеристика трактовка', 10);
+      }
+      const seen = new Set(relevantChunks.map((c) => c.text));
+      for (const ch of atmakarakaChunks) {
         if (!seen.has(ch.text)) {
           seen.add(ch.text);
           relevantChunks.push(ch);
@@ -226,6 +248,15 @@ export async function POST(request: NextRequest) {
       chartInterpretationBlock += '\n--- Конец блока "Как трактовать карту - 1 часть" ---\n';
     }
 
+    let atmakarakaBlock = '';
+    if (mainChart && isAtmakarakaQuery && atmakarakaChunks.length > 0) {
+      atmakarakaBlock = '\n\n--- Интерпретация натальной карты (ОБЯЗАТЕЛЬНО для вопросов по Атмакараке) ---\n';
+      atmakarakaChunks.forEach((chunk, index) => {
+        atmakarakaBlock += `\n[${index + 1}]\n${chunk.text}\n`;
+      });
+      atmakarakaBlock += '\n--- Конец блока "Интерпретация натальной карты" ---\n';
+    }
+
     // Остальная релевантная информация из областей памяти
     let contextText = '';
     if (relevantChunks.length > 0) {
@@ -248,6 +279,7 @@ export async function POST(request: NextRequest) {
         + topicSummaryBlock
         + (userContext ? `\n\n--- Данные пользователя и натальная карта (всегда смотри сюда для вопросов о пользователе; расшифровывай по правилам из блока ниже) ---\n${userContext}\n--- Конец данных пользователя ---` : '')
         + chartInterpretationBlock
+        + atmakarakaBlock
         + styleContext
         + (contextText ? contextText : ''),
     };
@@ -269,7 +301,9 @@ export async function POST(request: NextRequest) {
         userId,
         topicId: topic.id,
         usedChart: !!mainChart,
+        isAtmakarakaQuery,
         chartInterpretationChunks: chartInterpretationChunks.length,
+        atmakarakaChunks: atmakarakaChunks.length,
         otherMemoryChunks: relevantChunks.length - chartInterpretationChunks.length,
         hasUserMemory: !!userMemoryRow?.facts?.trim(),
         otherTopicsCount: otherTopicsFiltered.length,
