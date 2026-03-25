@@ -639,6 +639,8 @@
   gap: 0.6rem 0.75rem;
   max-width: 720px;
   width: 100%;
+  /* Чтобы последняя кнопка ("Ещё") не упиралась в нижнее динамическое поле */
+  margin-bottom: 0.6rem;
 }
 
 @keyframes questionChipAppear {
@@ -710,7 +712,7 @@
 .inputSuggestionChip {
   display: block;
   width: calc(100% - 4rem);
-  margin: 0 2rem 0.5rem 2rem;
+  margin: 0.6rem 2rem 0.5rem 2rem;
   padding: 0.6rem 1rem;
   background: rgba(155, 143, 184, 0.1);
   border: 1px solid rgba(155, 143, 184, 0.25);

@@ -735,7 +735,12 @@ export default function ChatPage() {
                     // Вопросы вида "**1. Текст"
                     const isQuestion = /^\*\*\d+\./.test(trimmed);
                     if (isQuestion) {
-                      const formatted = trimmed
+                      // Удаляем подсказки в скобках из текста вопроса, чтобы пользователь их не видел
+                      const trimmedNoHints = trimmed
+                        .replace(/\s*\([^)]*\)/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                      const formatted = trimmedNoHints
                         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                         .replace(/\n/g, '<br>');
                       return (
