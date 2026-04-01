@@ -107,66 +107,49 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.usersList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.userCard {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  padding: 1.5rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.userCard:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(155, 143, 184, 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+.usersTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 920px;
 }
 
-.userCardHeader {
-  margin-bottom: 1rem;
-}
-
-.userCardName {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0 0 0.5rem 0;
-}
-
-.userCardPhone {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.userCardStats {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.userCardStat {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.userCardStatLabel {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.userCardStatValue {
-  font-size: 0.9rem;
+.usersTable th,
+.usersTable td {
+  padding: 0.9rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
-  font-weight: 500;
+  font-size: 0.92rem;
+}
+
+.usersTable th {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.usersTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.linkButton {
+  background: transparent;
+  border: none;
+  color: #c4b5fd;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.linkButton:hover {
+  color: #ddd6fe;
 }
 
 .chartsList {
@@ -401,7 +384,6 @@
 }
 
 @media (max-width: 768px) {
-  .usersList,
   .chartsList {
     grid-template-columns: 1fr;
   }

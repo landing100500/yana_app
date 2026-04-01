@@ -3,7 +3,8 @@ import { cookies } from 'next/headers';
 import { initDatabase } from '@/lib/initDb';
 import User from '@/models/User';
 import NatalChart from '@/models/NatalChart';
-import { Op } from 'sequelize';
+import Session from '@/models/Session';
+import { col, fn } from 'sequelize';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function GET() {
 
     // Получаем всех пользователей с количеством карт
     const users = await User.findAll({
-      attributes: ['id', 'phone', 'name', 'createdAt'],
+      attributes: ['id', 'phone', 'email', 'name', 'createdAt'],
       include: [
         {
           model: NatalChart,
@@ -37,12 +38,28 @@ export async function GET() {
       ],
     });
 
+    const sessions = await Session.findAll({
+      attributes: ['userId', [fn('MAX', col('updatedAt')), 'lastVisitAt']],
+      group: ['userId'],
+      raw: true,
+    });
+
+    const lastVisitByUserId = new Map<number, string>();
+    for (const session of sessions as Array<{ userId: number; lastVisitAt: string }>) {
+      if (session?.userId && session?.lastVisitAt) {
+        lastVisitByUserId.set(session.userId, session.lastVisitAt);
+      }
+    }
+
     const usersWithChartCount = users.map((user: any) => ({
       id: user.id,
+      email: user.email || null,
       phone: user.phone,
-      name: user.name || user.phone,
+      name: user.name || user.email || user.phone || `User #${user.id}`,
+      tariff: 'Базовый',
       createdAt: user.createdAt,
       chartCount: user.natalCharts?.length || 0,
+      lastVisitAt: lastVisitByUserId.get(user.id) || null,
     }));
 
     return NextResponse.json({ users: usersWithChartCount });

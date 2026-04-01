@@ -6,10 +6,13 @@ import NatalChartVisualization from '@/components/NatalChartVisualization';
 
 interface User {
   id: number;
-  phone: string;
+  email?: string | null;
+  phone?: string | null;
   name: string;
+  tariff: string;
   createdAt: string;
   chartCount: number;
+  lastVisitAt?: string | null;
 }
 
 interface Chart {
@@ -284,7 +287,7 @@ export default function AdminUsersCharts() {
             ← Назад к списку пользователей
           </button>
           <h1 className={styles.title}>
-            Карты пользователя: {selectedUser.name} ({selectedUser.phone})
+            Карты пользователя: {selectedUser.name} ({selectedUser.email || selectedUser.phone || 'без контакта'})
           </h1>
         </div>
         {loadingCharts ? (
@@ -345,7 +348,7 @@ export default function AdminUsersCharts() {
   return (
     <div className={styles.container}>
       <div className={styles.titleRow}>
-        <h1 className={styles.title}>Карты пользователей</h1>
+        <h1 className={styles.title}>Пользователи</h1>
         <button type="button" className={styles.primaryButton} onClick={() => setModalOpen(true)}>
           Рассчитать карту
         </button>
@@ -399,31 +402,39 @@ export default function AdminUsersCharts() {
       {users.length === 0 ? (
         <div className={styles.empty}>Пользователей не найдено</div>
       ) : (
-        <div className={styles.usersList}>
-          {users.map((user) => (
-            <div
-              key={user.id}
-              className={styles.userCard}
-              onClick={() => handleUserClick(user.id)}
-            >
-              <div className={styles.userCardHeader}>
-                <h3 className={styles.userCardName}>{user.name}</h3>
-                <div className={styles.userCardPhone}>{user.phone}</div>
-              </div>
-              <div className={styles.userCardStats}>
-                <div className={styles.userCardStat}>
-                  <span className={styles.userCardStatLabel}>Карт:</span>
-                  <span className={styles.userCardStatValue}>{user.chartCount}</span>
-                </div>
-                <div className={styles.userCardStat}>
-                  <span className={styles.userCardStatLabel}>Регистрация:</span>
-                  <span className={styles.userCardStatValue}>
-                    {new Date(user.createdAt).toLocaleDateString('ru-RU')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className={styles.tableWrap}>
+          <table className={styles.usersTable}>
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>Контакт</th>
+                <th>Тариф</th>
+                <th>Карты пользователя</th>
+                <th>Дата регистрации</th>
+                <th>Последнее посещение</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.name}</td>
+                  <td>{user.email || user.phone || '—'}</td>
+                  <td>{user.tariff || 'Базовый'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      onClick={() => handleUserClick(user.id)}
+                    >
+                      {user.chartCount}
+                    </button>
+                  </td>
+                  <td>{new Date(user.createdAt).toLocaleString('ru-RU')}</td>
+                  <td>{user.lastVisitAt ? new Date(user.lastVisitAt).toLocaleString('ru-RU') : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

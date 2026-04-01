@@ -466,7 +466,7 @@ export default function AdminPage() {
               className={`${styles.sidebarItem} ${currentView === 'users-charts' ? styles.sidebarItemActive : ''}`}
               onClick={() => setCurrentView('users-charts')}
             >
-              Карты пользователей
+              Пользователи
             </button>
             <button
               className={`${styles.sidebarItem} ${currentView === 'chat-history' ? styles.sidebarItemActive : ''}`}

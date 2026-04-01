@@ -62,8 +62,9 @@ export async function GET(
     return NextResponse.json({ 
       user: {
         id: user.id,
+        email: user.email,
         phone: user.phone,
-        name: user.name || user.phone,
+        name: user.name || user.email || user.phone || `User #${user.id}`,
       },
       charts: chartsData 
     });
