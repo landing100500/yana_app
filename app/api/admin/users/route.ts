@@ -38,14 +38,14 @@ export async function GET() {
       ],
     });
 
-    const sessions = await Session.findAll({
+    const sessions = (await Session.findAll({
       attributes: ['userId', [fn('MAX', col('updatedAt')), 'lastVisitAt']],
       group: ['userId'],
       raw: true,
-    });
+    }) as unknown) as Array<{ userId: number; lastVisitAt: string | null }>;
 
     const lastVisitByUserId = new Map<number, string>();
-    for (const session of sessions as Array<{ userId: number; lastVisitAt: string }>) {
+    for (const session of sessions) {
       if (session?.userId && session?.lastVisitAt) {
         lastVisitByUserId.set(session.userId, session.lastVisitAt);
       }
