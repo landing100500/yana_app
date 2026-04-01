@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 import styles from './page.module.css';
 
 export default function Home() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,21 +30,14 @@ export default function Home() {
     e.preventDefault();
     setError('');
 
-    if (!phone) {
-      setError('Введите номер телефона');
+    const cleanEmail = normalizeEmail(email);
+    if (!isValidEmail(cleanEmail)) {
+      setError('Введите корректный email');
       return;
     }
 
     if (!agreed) {
       setError('Необходимо согласие с политикой конфиденциальности');
-      return;
-    }
-
-    const phoneRegex = /^[+]?[0-9]{10,15}$/;
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    if (!phoneRegex.test(cleanPhone)) {
-      setError('Введите корректный номер телефона');
       return;
     }
 
@@ -54,13 +48,13 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone: cleanPhone }),
+        body: JSON.stringify({ email: cleanEmail }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('tempPhone', cleanPhone);
+        localStorage.setItem('tempEmail', cleanEmail);
         router.push('/verify');
       } else {
         setError(data.error || 'Произошла ошибка');
@@ -118,20 +112,20 @@ export default function Home() {
 
       <div className={styles.authCard}>
         <h1 className={styles.title}>Добро пожаловать</h1>
-        <p className={styles.subtitle}>Введите номер телефона для входа</p>
+        <p className={styles.subtitle}>Введите email для входа</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
             <input
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              name="phone"
-              placeholder="+7 (999) 123-45-67"
-              value={phone ?? ''}
-              onChange={(e) => setPhone(e.target.value)}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              name="email"
+              placeholder="you@example.com"
+              value={email ?? ''}
+              onChange={(e) => setEmail(e.target.value)}
               className={styles.input}
-              aria-label="Номер телефона"
+              aria-label="Email"
             />
           </div>
 

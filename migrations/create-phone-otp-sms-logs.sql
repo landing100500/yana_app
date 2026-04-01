@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS phone_otps (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  phone VARCHAR(20) NOT NULL,
+  codeHash VARCHAR(255) NOT NULL,
+  expiresAt DATETIME NOT NULL,
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  createdAt DATETIME NOT NULL,
+  updatedAt DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sms_send_logs (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  phone VARCHAR(20) NOT NULL,
+  createdAt DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY sms_send_logs_phone_created_at (phone, createdAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

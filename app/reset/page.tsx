@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 import styles from './page.module.css';
 
 export default function ResetPage() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
 
@@ -25,10 +25,10 @@ export default function ResetPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess(false);
 
-    if (!phone) {
-      setError('Введите номер телефона');
+    const cleanEmail = normalizeEmail(email);
+    if (!isValidEmail(cleanEmail)) {
+      setError('Введите корректный email');
       return;
     }
 
@@ -38,16 +38,15 @@ export default function ResetPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email: cleanEmail }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess(true);
-        setTimeout(() => {
-          router.push('/login');
-        }, 2000);
+        localStorage.setItem('tempEmail', cleanEmail);
+        sessionStorage.setItem('authResetPin', '1');
+        router.push('/verify');
       } else {
         setError(data.error || 'Произошла ошибка');
       }
@@ -86,38 +85,32 @@ export default function ResetPage() {
       </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Сброс пароля</h1>
-        <p className={styles.subtitle}>Введите номер телефона для восстановления</p>
+        <p className={styles.subtitle}>Введите email для восстановления</p>
 
-        {success ? (
-          <div className={styles.success}>
-            <p>Инструкции по восстановлению пароля отправлены на ваш телефон</p>
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.inputGroup}>
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              name="email"
+              placeholder="you@example.com"
+              value={email ?? ''}
+              onChange={(e) => setEmail(e.target.value)}
+              className={styles.input}
+              aria-label="Email"
+            />
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className={styles.form}>
-            <div className={styles.inputGroup}>
-              <input
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                name="phone"
-                placeholder="+7 (999) 123-45-67"
-                value={phone ?? ''}
-                onChange={(e) => setPhone(e.target.value)}
-                className={styles.input}
-                aria-label="Номер телефона"
-              />
-            </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+          {error && <div className={styles.error}>{error}</div>}
 
-            <button type="submit" className={styles.button}>
-              Отправить
-            </button>
-          </form>
-        )}
+          <button type="submit" className={styles.button}>
+            Отправить код на email
+          </button>
+        </form>
 
         <div className={styles.links}>
-          <a href="/" className={styles.link}>Вход по SMS</a>
+          <a href="/" className={styles.link}>Вход по email</a>
           <span className={styles.separator}>•</span>
           <a href="/login" className={styles.link}>Вход по паролю</a>
         </div>

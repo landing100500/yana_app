@@ -8,6 +8,7 @@ export default function VerifyPage() {
   const [code, setCode] = useState(['', '', '', '']);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
 
@@ -23,20 +24,19 @@ export default function VerifyPage() {
   }, []);
 
   useEffect(() => {
-    const storedPhone = localStorage.getItem('tempPhone');
-    if (!storedPhone) {
+    const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
+    if (!storedEmail) {
       router.push('/');
     }
   }, [router]);
 
   const handleChange = (index: number, value: string) => {
-    if (value.length > 1) return;
-    
+    const digit = value.replace(/\D/g, '').slice(0, 1);
     const newCode = [...code];
-    newCode[index] = value;
+    newCode[index] = digit;
     setCode(newCode);
 
-    if (value && index < 3) {
+    if (digit && index < 3) {
       const nextInput = document.getElementById(`code-${index + 1}`);
       nextInput?.focus();
     }
@@ -46,6 +46,31 @@ export default function VerifyPage() {
     if (e.key === 'Backspace' && !code[index] && index > 0) {
       const prevInput = document.getElementById(`code-${index - 1}`);
       prevInput?.focus();
+    }
+  };
+
+  const handleResend = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setError('');
+    const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
+    if (!storedEmail || resendBusy) return;
+    setResendBusy(true);
+    try {
+      const resetPin = sessionStorage.getItem('authResetPin') === '1';
+      const endpoint = resetPin ? '/api/auth/reset' : '/api/auth/phone';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: storedEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось отправить письмо');
+      }
+    } catch {
+      setError('Произошла ошибка');
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -61,33 +86,41 @@ export default function VerifyPage() {
 
     setIsLoading(true);
     try {
-      const storedPhone = localStorage.getItem('tempPhone');
-      if (!storedPhone) {
+      const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
+      if (!storedEmail) {
         setError('Сессия истекла. Пожалуйста, начните заново.');
         setIsLoading(false);
         router.push('/');
         return;
       }
 
+      const resetPin = typeof window !== 'undefined' && sessionStorage.getItem('authResetPin') === '1';
+
       const response = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code: fullCode, phone: storedPhone }),
+        body: JSON.stringify({ code: fullCode, email: storedEmail, resetPin }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
+        localStorage.removeItem('tempEmail');
         localStorage.removeItem('tempPhone');
-        // Сохраняем токен в localStorage как резерв
+        sessionStorage.removeItem('authResetPin');
+
+        if (data.needsPinSetup && data.pinSetupToken) {
+          sessionStorage.setItem('pinSetupToken', data.pinSetupToken);
+          window.location.href = '/setup-pin';
+          return;
+        }
+
         if (data.token) {
           localStorage.setItem('auth_token_backup', data.token);
         }
-        // Небольшая задержка для установки cookie
         await new Promise(resolve => setTimeout(resolve, 100));
-        // Используем window.location для полной перезагрузки с cookie
         window.location.href = '/chat';
       } else {
         setError(data.error || 'Неверный код');
@@ -129,7 +162,7 @@ export default function VerifyPage() {
       </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Подтверждение</h1>
-        <p className={styles.subtitle}>Введите код из SMS</p>
+        <p className={styles.subtitle}>Введите код из письма</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.codeInputs}>
@@ -165,7 +198,10 @@ export default function VerifyPage() {
         </form>
 
         <p className={styles.resend}>
-          Не получили код? <a href="#" className={styles.resendLink}>Отправить снова</a>
+          Не получили код?{' '}
+          <a href="#" className={styles.resendLink} onClick={handleResend}>
+            {resendBusy ? 'Отправка…' : 'Отправить снова'}
+          </a>
         </p>
       </div>
     </div>

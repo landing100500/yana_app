@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import sequelize from '@/lib/db';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import { initDatabase } from '@/lib/initDb';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,20 +15,25 @@ export async function POST(request: NextRequest) {
   try {
     await initDatabase();
 
-    const { phone, password } = await request.json();
+    const { email: rawEmail, password } = await request.json();
+    const email = normalizeEmail(rawEmail);
 
-    if (!phone || !password) {
+    if (!email || !password) {
       return NextResponse.json(
         { error: 'Заполните все поля' },
         { status: 400 }
       );
     }
 
-    const user = await User.findOne({ where: { phone } });
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Введите корректный email' }, { status: 400 });
+    }
+
+    const user = await User.findOne({ where: { email } });
 
     if (!user || !user.password) {
       return NextResponse.json(
-        { error: 'Неверный телефон или пароль' },
+        { error: 'Неверный email или пароль' },
         { status: 401 }
       );
     }
@@ -37,13 +42,13 @@ export async function POST(request: NextRequest) {
 
     if (!isPasswordValid) {
       return NextResponse.json(
-        { error: 'Неверный телефон или пароль' },
+        { error: 'Неверный email или пароль' },
         { status: 401 }
       );
     }
 
     const token = jwt.sign(
-      { userId: user.id, phone: user.phone },
+      { userId: user.id, email: user.email },
       JWT_SECRET,
       { expiresIn: '30d' }
     );

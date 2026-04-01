@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 import styles from './page.module.css';
 
 export default function LoginPage() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
@@ -26,7 +27,8 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
 
-    if (!phone || !password) {
+    const cleanEmail = normalizeEmail(email);
+    if (!isValidEmail(cleanEmail) || !password) {
       setError('Заполните все поля');
       return;
     }
@@ -37,7 +39,7 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ email: cleanEmail, password }),
       });
 
       const data = await response.json();
@@ -45,7 +47,7 @@ export default function LoginPage() {
       if (response.ok) {
         router.push('/chat');
       } else {
-        setError(data.error || 'Неверный телефон или пароль');
+        setError(data.error || 'Неверный email или пароль');
       }
     } catch (err) {
       setError('Произошла ошибка при входе');
@@ -82,33 +84,35 @@ export default function LoginPage() {
       </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Вход</h1>
-        <p className={styles.subtitle}>Введите телефон и пароль</p>
+        <p className={styles.subtitle}>Email и 4-значный код доступа</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
             <input
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              name="phone"
-              placeholder="+7 (999) 123-45-67"
-              value={phone ?? ''}
-              onChange={(e) => setPhone(e.target.value)}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              name="email"
+              placeholder="you@example.com"
+              value={email ?? ''}
+              onChange={(e) => setEmail(e.target.value)}
               className={styles.input}
-              aria-label="Номер телефона"
+              aria-label="Email"
             />
           </div>
 
           <div className={styles.inputGroup}>
             <input
               type="password"
+              inputMode="numeric"
               autoComplete="current-password"
               name="password"
-              placeholder="Пароль"
+              placeholder="4 цифры"
+              maxLength={4}
               value={password ?? ''}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
               className={styles.input}
-              aria-label="Пароль"
+              aria-label="Код из 4 цифр"
             />
           </div>
 
@@ -120,7 +124,7 @@ export default function LoginPage() {
         </form>
 
         <div className={styles.links}>
-          <a href="/" className={styles.link}>Вход по SMS</a>
+          <a href="/" className={styles.link}>Вход по email</a>
           <span className={styles.separator}>•</span>
           <a href="/reset" className={styles.link}>Забыли пароль?</a>
         </div>

@@ -1,52 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sequelize from '@/lib/db';
-import User from '@/models/User';
-import UserAnketa from '@/models/UserAnketa';
 import { initDatabase } from '@/lib/initDb';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { sendEmailOtp } from '@/lib/send-email-otp';
+// import { normalizeRuPhoneDigits } from '@/lib/phone';
+// import { sendPhoneSmsOtp } from '@/lib/send-phone-sms-otp';
 
 export async function POST(request: NextRequest) {
   try {
     await initDatabase();
 
-    const { phone } = await request.json();
+    const { email: rawEmail } = await request.json();
 
-    if (!phone) {
-      return NextResponse.json(
-        { error: 'Номер телефона обязателен' },
-        { status: 400 }
-      );
+    if (!rawEmail) {
+      return NextResponse.json({ error: 'Email обязателен' }, { status: 400 });
     }
 
-    let user = await User.findOne({ where: { phone } });
+    const email = normalizeEmail(rawEmail);
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Введите корректный email' }, { status: 400 });
+    }
 
-    if (!user) {
-      user = await User.create({ phone });
-      
-      // Создаем пустую анкету для нового пользователя
-      await UserAnketa.create({
-        userId: user.id,
-        gender: null,
-        birthDate: null,
-        birthCity: null,
-        birthTime: null,
-        name: null,
-        motherJob: null,
-        fatherJob: null,
-        hasMoved: null,
-        lifeDifficulties: null,
-      });
+    const result = await sendEmailOtp(email, { requireExistingUser: false });
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Код отправлен (мнимая авторизация - любой номер работает)',
+      message: 'Код отправлен на email',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Phone auth error:', error);
-    return NextResponse.json(
-      { error: 'Произошла ошибка при обработке запроса' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Произошла ошибка при обработке запроса' }, { status: 500 });
   }
 }
-

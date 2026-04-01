@@ -1,42 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import sequelize from '@/lib/db';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import UserAnketa from '@/models/UserAnketa';
+import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
-import jwt from 'jsonwebtoken';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
+const MAX_OTP_ATTEMPTS = 5;
+
+function setAuthCookie(response: NextResponse, token: string) {
+  response.cookies.set('auth_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60,
+    path: '/',
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     await initDatabase();
 
-    const { code, phone } = await request.json();
+    const { code, email: rawEmail, resetPin } = await request.json();
 
-    if (!code || code.length !== 4) {
+    if (!code || String(code).length !== 4) {
+      return NextResponse.json({ error: 'Введите 4-значный код из письма' }, { status: 400 });
+    }
+
+    const email = normalizeEmail(String(rawEmail || ''));
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Email не найден' }, { status: 400 });
+    }
+
+    const otp = await EmailOtp.findOne({ where: { email } });
+
+    if (!otp || otp.expiresAt.getTime() < Date.now()) {
       return NextResponse.json(
-        { error: 'Введите код' },
+        { error: 'Код устарел или не запрашивался. Запросите новый.' },
         { status: 400 }
       );
     }
 
-    if (!phone) {
+    if (otp.attempts >= MAX_OTP_ATTEMPTS) {
+      await EmailOtp.destroy({ where: { email } });
       return NextResponse.json(
-        { error: 'Номер телефона не найден' },
+        { error: 'Слишком много неверных попыток. Запросите новый код.' },
         { status: 400 }
       );
     }
 
-    let user = await User.findOne({ where: { phone } });
+    const ok = await bcrypt.compare(String(code), otp.codeHash);
+    if (!ok) {
+      await otp.update({ attempts: otp.attempts + 1 });
+      return NextResponse.json({ error: 'Неверный код' }, { status: 400 });
+    }
+
+    await EmailOtp.destroy({ where: { email } });
+
+    let user = await User.findOne({ where: { email } });
+
+    if (resetPin) {
+      if (!user) {
+        return NextResponse.json({ error: 'Пользователь с таким email не найден' }, { status: 404 });
+      }
+      user.set('password', null);
+      await user.save();
+      const pinSetupToken = jwt.sign(
+        { userId: user.id, email: user.email, purpose: 'pin_setup' },
+        JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+      return NextResponse.json({
+        success: true,
+        needsPinSetup: true,
+        pinSetupToken,
+      });
+    }
 
     if (!user) {
-      user = await User.create({ phone });
-      
-      // Создаем пустую анкету для нового пользователя
+      user = await User.create({ email });
       await UserAnketa.create({
         userId: user.id,
         gender: null,
@@ -51,11 +101,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, phone: user.phone },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
+    const hasPin = Boolean(user.password && user.password.length > 0);
+
+    if (!hasPin) {
+      const pinSetupToken = jwt.sign(
+        { userId: user.id, email: user.email, purpose: 'pin_setup' },
+        JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+
+      return NextResponse.json({
+        success: true,
+        needsPinSetup: true,
+        pinSetupToken,
+      });
+    }
+
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
@@ -66,6 +128,14 @@ export async function POST(request: NextRequest) {
       expiresAt,
     });
 
+    const response = NextResponse.json({
+      success: true,
+      needsPinSetup: false,
+      token,
+    });
+
+    setAuthCookie(response, token);
+
     const cookieStore = await cookies();
     cookieStore.set('auth_token', token, {
       httpOnly: true,
@@ -75,27 +145,9 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
 
-    const response = NextResponse.json({
-      success: true,
-      token,
-    });
-
-    // Также устанавливаем cookie в response headers
-    response.cookies.set('auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60,
-      path: '/',
-    });
-
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Verify error:', error);
-    return NextResponse.json(
-      { error: 'Произошла ошибка при проверке кода' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Произошла ошибка при проверке кода' }, { status: 500 });
   }
 }
-

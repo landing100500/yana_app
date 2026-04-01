@@ -1,29 +1,30 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/lib/db';
 
-interface UserAttributes {
+interface PhoneOtpAttributes {
   id: number;
-  phone?: string | null;
-  email?: string | null;
-  password?: string | null;
-  name?: string;
+  phone: string;
+  codeHash: string;
+  expiresAt: Date;
+  attempts: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'createdAt' | 'updatedAt'> {}
+interface PhoneOtpCreationAttributes
+  extends Optional<PhoneOtpAttributes, 'id' | 'attempts' | 'createdAt' | 'updatedAt'> {}
 
-class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
+class PhoneOtp extends Model<PhoneOtpAttributes, PhoneOtpCreationAttributes> implements PhoneOtpAttributes {
   public id!: number;
-  public phone?: string | null;
-  public email?: string | null;
-  public password?: string | null;
-  public name?: string;
+  public phone!: string;
+  public codeHash!: string;
+  public expiresAt!: Date;
+  public attempts!: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
 
-User.init(
+PhoneOtp.init(
   {
     id: {
       type: DataTypes.INTEGER.UNSIGNED,
@@ -32,21 +33,21 @@ User.init(
     },
     phone: {
       type: DataTypes.STRING(20),
-      allowNull: true,
+      allowNull: false,
       unique: true,
     },
-    email: {
+    codeHash: {
       type: DataTypes.STRING(255),
-      allowNull: true,
-      unique: true,
+      allowNull: false,
     },
-    password: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
+    expiresAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
     },
-    name: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
+    attempts: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 0,
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -61,10 +62,9 @@ User.init(
   },
   {
     sequelize,
-    tableName: 'users',
+    tableName: 'phone_otps',
     timestamps: true,
   }
 );
 
-export default User;
-
+export default PhoneOtp;
