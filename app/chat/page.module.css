@@ -985,10 +985,10 @@
 }
 
 .micButtonActive {
-  background: rgba(212, 165, 165, 0.25);
-  border-color: var(--rose);
-  color: var(--rose);
-  animation: micPulse 0.9s ease-in-out infinite;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  border-color: rgba(0, 0, 0, 0);
+  color: var(--white);
+  animation: none;
 }
 
 @keyframes micPulse {
@@ -996,45 +996,72 @@
   50% { opacity: 0.7; }
 }
 
-.micWaveform {
+.micActivity {
   position: absolute;
-  left: 50%;
-  bottom: 7px;
-  transform: translateX(-50%);
-  width: 18px;
-  height: 12px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 2px;
+  inset: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.12s ease;
   pointer-events: none;
 }
 
-.micButtonActive .micWaveform {
+.micButtonActive .micActivity {
   opacity: 1;
 }
 
-.micWaveBar {
-  width: 2px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--rose), rgba(212, 165, 165, 0.6));
-  transform-origin: bottom;
-  filter: drop-shadow(0 2px 4px rgba(212, 165, 165, 0.2));
-  animation: micWave 0.7s ease-in-out infinite;
-  animation-delay: var(--d, 0s);
+.micRadar {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 20deg,
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 255, 255, 0.9) 35deg,
+    rgba(255, 255, 255, 0) 80deg
+  );
+  filter: blur(0.2px) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+  transform: rotate(0deg);
+  animation: micRadarSpin 0.9s linear infinite;
+  /* Show only a ring, not the full disk */
+  -webkit-mask: radial-gradient(circle, transparent 56%, black 58%);
+  mask: radial-gradient(circle, transparent 56%, black 58%);
 }
 
-@keyframes micWave {
-  0%, 100% { transform: scaleY(0.25); opacity: 0.7; }
-  50% { transform: scaleY(1); opacity: 1; }
+@keyframes micRadarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.micHalo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+}
+
+.micCore {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, rgba(255, 255, 255, 0.6) 35%, rgba(212, 165, 165, 0.2) 70%);
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
 }
 
 .micIcon {
   flex-shrink: 0;
   position: relative;
   z-index: 2;
+}
+
+.micButtonActive .micIcon {
+  opacity: 0;
 }
 
 @media (max-width: 768px) {

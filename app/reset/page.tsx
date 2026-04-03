@@ -8,6 +8,7 @@ import styles from './page.module.css';
 export default function ResetPage() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
 
@@ -25,10 +26,12 @@ export default function ResetPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
     const cleanEmail = normalizeEmail(email);
     if (!isValidEmail(cleanEmail)) {
       setError('Введите корректный email');
+      setIsLoading(false);
       return;
     }
 
@@ -47,11 +50,14 @@ export default function ResetPage() {
         localStorage.setItem('tempEmail', cleanEmail);
         sessionStorage.setItem('authResetPin', '1');
         router.push('/verify');
+        return;
       } else {
         setError(data.error || 'Произошла ошибка');
+        setIsLoading(false);
       }
     } catch (err) {
       setError('Произошла ошибка при отправке запроса');
+      setIsLoading(false);
     }
   };
 
@@ -104,8 +110,16 @@ export default function ResetPage() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" className={styles.button}>
-            Отправить код на email
+          <button type="submit" className={styles.button} disabled={isLoading}>
+            {isLoading ? (
+              <span className={styles.buttonLoader}>
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            ) : (
+              'Отправить код на email'
+            )}
           </button>
         </form>
 

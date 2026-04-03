@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
   const router = useRouter();
 
@@ -26,10 +27,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
     const cleanEmail = normalizeEmail(email);
     if (!isValidEmail(cleanEmail) || !password) {
       setError('Заполните все поля');
+      setIsLoading(false);
       return;
     }
 
@@ -46,11 +49,14 @@ export default function LoginPage() {
 
       if (response.ok) {
         router.push('/chat');
+        return;
       } else {
         setError(data.error || 'Неверный email или пароль');
+        setIsLoading(false);
       }
     } catch (err) {
       setError('Произошла ошибка при входе');
+      setIsLoading(false);
     }
   };
 
@@ -118,8 +124,16 @@ export default function LoginPage() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" className={styles.button}>
-            Войти
+          <button type="submit" className={styles.button} disabled={isLoading}>
+            {isLoading ? (
+              <span className={styles.buttonLoader}>
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            ) : (
+              'Войти'
+            )}
           </button>
         </form>
 

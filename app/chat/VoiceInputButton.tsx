@@ -94,9 +94,10 @@ export default function VoiceInputButton({ setInput, disabled, hidden }: Props) 
       const emitted = final || interim;
       const emittedLen = emitted.trim().length;
       if (emittedLen > 0) {
-        const normalized = Math.min(1, emittedLen / 18);
-        // Keep it visibly non-zero even for short utterances.
-        setMicLevel(Math.max(0.15, normalized));
+        // Raise sensitivity: even short phrases should visibly "kick" the waveform.
+        const normalized = Math.min(1, Math.pow(emittedLen / 10, 0.65));
+        // Keep it non-zero, then scale up to make motion more obvious.
+        setMicLevel(0.35 + 0.65 * normalized);
         lastActivityAtRef.current = Date.now();
       }
     };
@@ -141,7 +142,8 @@ export default function VoiceInputButton({ setInput, disabled, hidden }: Props) 
         setMicLevel(0);
         return;
       }
-      setMicLevel((prev) => Math.max(0, prev * 0.82));
+      // Slower decay = longer visible waveform after speech.
+      setMicLevel((prev) => Math.max(0, prev * 0.9));
     }, 90);
 
     return () => window.clearInterval(t);
@@ -191,21 +193,22 @@ export default function VoiceInputButton({ setInput, disabled, hidden }: Props) 
       aria-label={listening ? 'Остановить запись' : 'Голосовой ввод'}
       title={listening ? 'Остановить запись' : 'Голосовой ввод'}
     >
-      <div className={styles.micWaveform} aria-hidden="true">
-        {Array.from({ length: 5 }).map((_, i) => {
-          const factor = 0.6 + i * 0.12;
-          const barMax = 12 * factor;
-          const h = 2 + micLevel * barMax;
-          return (
-            <div
-              key={i}
-              className={styles.micWaveBar}
-              style={{
-                height: `${h}px`,
-              }}
-            />
-          );
-        })}
+      <div className={styles.micActivity} aria-hidden="true">
+        <div className={styles.micRadar} />
+        <div
+          className={styles.micHalo}
+          style={{
+            opacity: 0.25 + micLevel * 0.75,
+            transform: `translate(-50%, -50%) scale(${0.85 + micLevel * 0.35})`,
+          }}
+        />
+        <div
+          className={styles.micCore}
+          style={{
+            opacity: 0.15 + micLevel * 0.85,
+            transform: `translate(-50%, -50%) scale(${0.85 + micLevel * 0.25})`,
+          }}
+        />
       </div>
       <svg
         width="18"
