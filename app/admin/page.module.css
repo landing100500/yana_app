@@ -441,6 +441,25 @@
   line-height: 1.3;
 }
 
+.algorithmCheckboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.algorithmCheckboxRow input {
+  margin-top: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 .agentConnectRow {
   display: flex;
   gap: 0.5rem;

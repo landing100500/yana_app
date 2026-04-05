@@ -15,6 +15,11 @@ import {
   appendUserMemory,
   extractUserFacts,
 } from '@/lib/chat-memory';
+import { getPersonalityReadingAlgorithmEnabled } from '@/lib/app-settings';
+import {
+  buildPersonalityReadingAlgorithmBlock,
+  shouldRunPersonalityReadingAlgorithm,
+} from '@/lib/personality-reading-algorithm';
 
 export const dynamic = 'force-dynamic';
 
@@ -269,6 +274,33 @@ export async function POST(request: NextRequest) {
       contextText = '\n\n--- Релевантная информация из областей памяти не найдена. Если вопрос о пользователе или его карте — используй блок "Как трактовать карту - 1 часть" и данные карты выше. ---\n';
     }
 
+    const userTurnsInTopic = messageHistory.filter((m) => m.role === 'user').length;
+    const personalityAlgoEnabled = await getPersonalityReadingAlgorithmEnabled();
+    const runPersonalityAlgo =
+      personalityAlgoEnabled &&
+      mainChart &&
+      shouldRunPersonalityReadingAlgorithm(message, userTurnsInTopic);
+
+    let personalityReadingBlock = '';
+    if (runPersonalityAlgo && mainChart) {
+      const alreadyUsedChunkTexts = new Set<string>();
+      for (const ch of chartInterpretationChunks) {
+        if (ch.text) alreadyUsedChunkTexts.add(ch.text);
+      }
+      for (const ch of atmakarakaChunks) {
+        if (ch.text) alreadyUsedChunkTexts.add(ch.text);
+      }
+      for (const ch of relevantChunks) {
+        if (ch.text) alreadyUsedChunkTexts.add(ch.text);
+      }
+      personalityReadingBlock = await buildPersonalityReadingAlgorithmBlock({
+        userMessage: message,
+        chart: mainChart,
+        userMessageCountInTopic: userTurnsInTopic,
+        alreadyUsedChunkTexts,
+      });
+    }
+
     // Формируем системный промпт: память + другие диалоги + резюме + данные пользователя и карты + блок трактовки карты + остальные области памяти
     const systemMessage = {
       role: 'system' as const,
@@ -280,6 +312,7 @@ export async function POST(request: NextRequest) {
         + (userContext ? `\n\n--- Данные пользователя и натальная карта (всегда смотри сюда для вопросов о пользователе; расшифровывай по правилам из блока ниже) ---\n${userContext}\n--- Конец данных пользователя ---` : '')
         + chartInterpretationBlock
         + atmakarakaBlock
+        + personalityReadingBlock
         + styleContext
         + (contextText ? contextText : ''),
     };
@@ -308,6 +341,7 @@ export async function POST(request: NextRequest) {
         hasUserMemory: !!userMemoryRow?.facts?.trim(),
         otherTopicsCount: otherTopicsFiltered.length,
         hasTopicSummary: !!topicSummary,
+        personalityReadingAlgorithm: !!personalityReadingBlock,
       });
     } catch (openaiError: any) {
       console.error('OpenAI API error:', openaiError);

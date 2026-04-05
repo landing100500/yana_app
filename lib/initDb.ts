@@ -13,6 +13,7 @@ import PhoneOtp from '@/models/PhoneOtp';
 import SmsSendLog from '@/models/SmsSendLog';
 import EmailOtp from '@/models/EmailOtp';
 import EmailSendLog from '@/models/EmailSendLog';
+import '@/models/AppSetting';
 
 async function ensureAuthSchema() {
   const queryInterface = sequelize.getQueryInterface();

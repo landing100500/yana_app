@@ -15,7 +15,7 @@ interface Section {
   enabled_for_agent?: boolean;
 }
 
-type AdminView = 'training' | 'users-charts' | 'chat-history';
+type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -41,6 +41,9 @@ export default function AdminPage() {
   const [editSectionName, setEditSectionName] = useState('');
   const [editSectionDescription, setEditSectionDescription] = useState('');
   const [savingSection, setSavingSection] = useState(false);
+  const [personalityReadingAlgorithm, setPersonalityReadingAlgorithm] = useState(false);
+  const [algorithmsLoading, setAlgorithmsLoading] = useState(false);
+  const [algorithmsSaving, setAlgorithmsSaving] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function AdminPage() {
       if (data.authenticated) {
         setAuthenticated(true);
         loadSections();
+        loadAlgorithmSettings();
       } else {
         setAuthenticated(false);
       }
@@ -72,6 +76,43 @@ export default function AdminPage() {
       }
     } catch (err) {
       console.error('Error loading sections:', err);
+    }
+  };
+
+  const loadAlgorithmSettings = async () => {
+    setAlgorithmsLoading(true);
+    try {
+      const response = await fetch('/api/admin/settings');
+      const data = await response.json();
+      if (response.ok && typeof data.personalityReadingAlgorithm === 'boolean') {
+        setPersonalityReadingAlgorithm(data.personalityReadingAlgorithm);
+      }
+    } catch (err) {
+      console.error('Error loading algorithm settings:', err);
+    } finally {
+      setAlgorithmsLoading(false);
+    }
+  };
+
+  const savePersonalityReadingAlgorithm = async (enabled: boolean) => {
+    setAlgorithmsSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personalityReadingAlgorithm: enabled }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setPersonalityReadingAlgorithm(!!data.personalityReadingAlgorithm);
+      } else {
+        setError(data.error || 'Не удалось сохранить настройку');
+      }
+    } catch (err) {
+      setError('Ошибка при сохранении');
+    } finally {
+      setAlgorithmsSaving(false);
     }
   };
 
@@ -93,6 +134,7 @@ export default function AdminPage() {
       if (response.ok) {
         setAuthenticated(true);
         loadSections();
+        loadAlgorithmSettings();
       } else {
         setError(data.error || 'Неверный логин или пароль');
       }
@@ -474,6 +516,15 @@ export default function AdminPage() {
             >
               История запросов
             </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'algorithms' ? styles.sidebarItemActive : ''}`}
+              onClick={() => {
+                setCurrentView('algorithms');
+                loadAlgorithmSettings();
+              }}
+            >
+              Алгоритмы
+            </button>
           </nav>
 
           <div className={styles.agentSections}>
@@ -745,8 +796,38 @@ export default function AdminPage() {
             </div>
           ) : currentView === 'users-charts' ? (
             <AdminUsersCharts />
-          ) : (
+          ) : currentView === 'chat-history' ? (
             <AdminChatHistory />
+          ) : (
+            <div className={styles.adminPanel}>
+              <h1 className={styles.title}>Алгоритмы</h1>
+              <p className={styles.subtitle}>
+                Дополнительные сценарии для чат-агента. Выкл — поведение как раньше, без расширенного блока.
+              </p>
+              <div className={styles.section}>
+                <label className={styles.algorithmCheckboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={personalityReadingAlgorithm}
+                    disabled={algorithmsLoading || algorithmsSaving}
+                    onChange={(e) => savePersonalityReadingAlgorithm(e.target.checked)}
+                  />
+                  <span>Алгоритм считывания личности человека</span>
+                </label>
+                <p className={styles.agentSectionsHint}>
+                  Если включено: для подходящих запросов (о себе, личности, карте, начало диалога и т.п.) в системный
+                  промпт добавляется отдельный блок с пошаговым алгоритмом и выборкой из областей памяти: книга по
+                  знаку асцендента, «Интерпретация натальной карты», «Как трактовать карту — часть 1», «Сила и
+                  поражение планет», «51 опора», «12 основ счастья…», планеты по сфере запроса, при необходимости —
+                  сексуальный сценарий при подавленности; в начале диалога — «Пример расчета чаракарок». Названия
+                  разделов в базе должны совпадать с заданными в коде, разделы — быть подключены к агенту.
+                </p>
+                {(algorithmsLoading || algorithmsSaving) && (
+                  <p className={styles.hint}>{algorithmsSaving ? 'Сохранение…' : 'Загрузка…'}</p>
+                )}
+              </div>
+              {error && currentView === 'algorithms' && <div className={styles.error}>{error}</div>}
+            </div>
           )}
         </div>
       </div>
