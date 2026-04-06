@@ -22,7 +22,7 @@ interface ChatTopic {
 }
 
 interface UserProfile {
-  phone: string;
+  email: string | null;
   name?: string;
 }
 
@@ -219,7 +219,29 @@ export default function ChatPage() {
 
   const loadUserProfile = async () => {
     try {
-      const response = await fetch('/api/auth/profile');
+      let response = await fetch('/api/auth/profile', {
+        credentials: 'include',
+      });
+
+      // Если сессия в cookie потерялась, восстанавливаем ее из backup-токена и повторяем запрос.
+      if (response.status === 401) {
+        const backupToken = localStorage.getItem('auth_token_backup');
+        if (backupToken) {
+          const restoreResponse = await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: backupToken }),
+            credentials: 'include',
+          });
+
+          if (restoreResponse.ok) {
+            response = await fetch('/api/auth/profile', {
+              credentials: 'include',
+            });
+          }
+        }
+      }
+
       if (response.ok) {
         const data = await response.json();
         setUserProfile(data);
@@ -635,7 +657,7 @@ export default function ChatPage() {
                 <div className={styles.profileDropdown}>
                   <div className={styles.profileInfo}>
                     <div className={styles.profilePhone}>
-                      {userProfile?.phone || 'Загрузка...'}
+                      {userProfile?.email || 'Загрузка...'}
                     </div>
                     {userProfile?.name && (
                       <div className={styles.profileName}>{userProfile.name}</div>

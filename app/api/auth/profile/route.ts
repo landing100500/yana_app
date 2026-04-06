@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json({
-        phone: user.phone,
+        email: user.email || null,
         name: user.name || null,
       });
     } catch (jwtError) {

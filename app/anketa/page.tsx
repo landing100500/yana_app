@@ -139,16 +139,41 @@ export default function AnketaPage() {
         hasMoved: anketaData.hasMoved,
       };
 
-      const response = await fetch('/api/anketa/save', {
+      let response = await fetch('/api/anketa/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(submitData),
       });
 
+      if (response.status === 401) {
+        const backupToken = localStorage.getItem('auth_token_backup');
+        if (backupToken) {
+          const restoreResponse = await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: backupToken }),
+            credentials: 'include',
+          });
+
+          if (restoreResponse.ok) {
+            response = await fetch('/api/anketa/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify(submitData),
+            });
+          }
+        }
+      }
+
       if (!response.ok) {
-        throw new Error('Ошибка при сохранении анкеты');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Ошибка при сохранении анкеты');
       }
 
       router.push('/chat');
