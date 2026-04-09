@@ -54,6 +54,13 @@ export async function DELETE(
       );
     }
 
+    if ((chart as any).isMain) {
+      return NextResponse.json(
+        { error: 'Основную карту удалить нельзя' },
+        { status: 400 }
+      );
+    }
+
     // Удаляем карту (все связанные записи удалятся автоматически благодаря CASCADE)
     await chart.destroy();
 

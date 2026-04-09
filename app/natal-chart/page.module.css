@@ -196,9 +196,7 @@
 }
 
 .listHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: block;
   margin-bottom: 1.5rem;
 }
 
@@ -231,6 +229,13 @@
   cursor: not-allowed;
 }
 
+.actionsRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
 .chartsListItems {
   display: flex;
   flex-direction: column;
@@ -248,6 +253,12 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 0.5rem;
+}
+
+.chartListItem.frozen {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-style: dashed;
 }
 
 .chartListItem:hover {
@@ -281,6 +292,12 @@
 .chartListItemContent {
   flex: 1;
   min-width: 0;
+}
+
+.chartFrozenHint {
+  margin-top: 0.35rem;
+  color: #ffd2d2;
+  font-size: 0.78rem;
 }
 
 .deleteButton {
@@ -320,6 +337,81 @@
   width: 100%;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  background: rgba(32, 26, 46, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.modalTitle {
+  margin: 0 0 1rem 0;
+}
+
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modalRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.modalLabel {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.modalInput {
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--white);
+  padding: 0 0.75rem;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.modalCancel,
+.modalSubmit {
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+.modalCancel {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--white);
+}
+
+.modalSubmit {
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  color: var(--white);
+}
+
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
@@ -342,7 +434,16 @@
     flex: 1;
     width: 100%;
     max-width: 100%;
-    max-height: 300px;
+    max-height: none;
+  }
+
+  .chartsListItems {
+    width: 100%;
+  }
+
+  .chartListItem {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .chartInfo {

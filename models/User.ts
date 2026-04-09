@@ -7,6 +7,11 @@ interface UserAttributes {
   email?: string | null;
   password?: string | null;
   name?: string;
+  planCode?: string;
+  planAssignedAt?: Date | null;
+  planExpiresAt?: Date | null;
+  freeWindowStartedAt?: Date | null;
+  freeMinutesUsed?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -19,6 +24,11 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public email?: string | null;
   public password?: string | null;
   public name?: string;
+  public planCode?: string;
+  public planAssignedAt?: Date | null;
+  public planExpiresAt?: Date | null;
+  public freeWindowStartedAt?: Date | null;
+  public freeMinutesUsed?: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -47,6 +57,28 @@ User.init(
     name: {
       type: DataTypes.STRING(100),
       allowNull: true,
+    },
+    planCode: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'free',
+    },
+    planAssignedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    planExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    freeWindowStartedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    freeMinutesUsed: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 0,
     },
     createdAt: {
       type: DataTypes.DATE,

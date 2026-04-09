@@ -7,6 +7,7 @@ import ChatRequestLog from '@/models/ChatRequestLog';
 import UserAnketa from '@/models/UserAnketa';
 import NatalChart from '@/models/NatalChart';
 import UserMemory from '@/models/UserMemory';
+import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
 import { searchRelevantChunks, getSectionStyleChunks, getEnabledSectionIds, getChunksFromSectionByName } from '@/lib/rag-search';
@@ -20,6 +21,7 @@ import {
   buildPersonalityReadingAlgorithmBlock,
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
+import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +45,21 @@ function buildChartSummary(chart: NatalChart): string {
     `Градусы планет внутри знака (для расчёта Атмакараки): Солнце ${inSignDegree(chart.sun)}, Луна ${inSignDegree(chart.moon)}, Меркурий ${inSignDegree(chart.mercury)}, Венера ${inSignDegree(chart.venus)}, Марс ${inSignDegree(chart.mars)}, Юпитер ${inSignDegree(chart.jupiter)}, Сатурн ${inSignDegree(chart.saturn)}.`,
   ].join(' ');
 }
+
+const ASCENDANT_BOOK_SECTION: Record<string, string> = {
+  Меша: 'Овен книга про тип характера',
+  Вришабха: 'Телец книга',
+  Митхуна: 'Близнецы книга',
+  Карка: 'Рак книга',
+  Симха: 'Лев книга',
+  Канья: 'Дева книга',
+  Тула: 'Весы книга',
+  Вришчика: 'Скорпион книга',
+  Дхану: 'Стрелец книга',
+  Макара: 'Козерог книга',
+  Кумбха: 'Водолей книга',
+  Мина: 'Рыбы книга',
+};
 
 /** Область памяти, которую обязательно использовать для трактовки натальной карты и любых вопросов о пользователе */
 const CHART_INTERPRETATION_SECTION = 'Как трактовать карту - 1 часть';
@@ -99,7 +116,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message, topicId } = await request.json();
+    const currentUser = await User.findByPk(userId);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
+    await ensureFreePlanWindow(currentUser);
+    const planBefore = getUserPlanSnapshot(currentUser);
+    if (!planBefore.hasUnlimitedTime && (planBefore.remainingSeconds ?? 0) <= 0) {
+      return NextResponse.json(
+        { error: 'Лимит времени по вашему тарифу исчерпан. Попробуйте позже или обновите тариф.' },
+        { status: 403 }
+      );
+    }
+
+    const { message, topicId, comparisonMode } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -150,6 +180,75 @@ export async function POST(request: NextRequest) {
       userContextParts.push('Основная натальная карта пользователя ещё не рассчитана.');
     }
     const userContext = userContextParts.join(' ');
+
+    let comparisonBlock = '';
+    if (comparisonMode?.chartAId && comparisonMode?.chartBId) {
+      if (!planBefore.chartComparison) {
+        return NextResponse.json(
+          { error: 'Режим сравнения карт недоступен на вашем тарифе.' },
+          { status: 403 }
+        );
+      }
+      const [chartA, chartB] = await Promise.all([
+        NatalChart.findOne({ where: { id: Number(comparisonMode.chartAId), userId } }),
+        NatalChart.findOne({ where: { id: Number(comparisonMode.chartBId), userId } }),
+      ]);
+      if (!chartA || !chartB) {
+        return NextResponse.json(
+          { error: 'Не удалось загрузить выбранные карты для сравнения. Выберите карты заново.' },
+          { status: 400 }
+        );
+      }
+      if (chartA.id === chartB.id) {
+        return NextResponse.json(
+          { error: 'Для сравнения нужно выбрать две разные карты.' },
+          { status: 400 }
+        );
+      }
+      const allCharts = await NatalChart.findAll({ where: { userId }, attributes: ['id', 'isMain', 'createdAt'] });
+      const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
+      if (frozenIds.has(chartA.id) || frozenIds.has(chartB.id)) {
+        return NextResponse.json(
+          { error: 'Одна из выбранных карт сейчас заморожена вашим тарифом. Выберите доступные карты.' },
+          { status: 403 }
+        );
+      }
+      const ascA = longitudeToSignName(chartA.ascendant);
+      const ascB = longitudeToSignName(chartB.ascendant);
+      const sectionA = ASCENDANT_BOOK_SECTION[ascA] || `${ascA} книга`;
+      const sectionB = ASCENDANT_BOOK_SECTION[ascB] || `${ascB} книга`;
+      const q = `${message}\nСравнение карт: ${chartA.name} и ${chartB.name}`;
+      const [compat, ascAChunks, ascBChunks, opora, trakt, interp, planets] = await Promise.all([
+        getChunksFromSectionByName('Совместимость в отношениях', q, 8),
+        getChunksFromSectionByName(sectionA, q, 2),
+        getChunksFromSectionByName(sectionB, q, 2),
+        getChunksFromSectionByName('51 опора', `${q} накшатры сферы`, 6),
+        getChunksFromSectionByName('Как трактовать карту - 1 часть', q, 3),
+        getChunksFromSectionByName('Интерпретация натальной карты', q, 2),
+        getChunksFromSectionByName(
+          'Интерпретация натальной карты',
+          `${q} Венера Раху Кету Сатурн Меркурий Юпитер Солнце Луна Марс`,
+          4
+        ),
+      ]);
+      const chunksToText = (arr: Array<{ text: string }>, label: string) =>
+        arr.map((c, i) => `\n[${label} ${i + 1}]\n${c.text}\n`).join('');
+      comparisonBlock =
+        '\n\n--- Режим сравнения карт (ОБЯЗАТЕЛЕН) ---\n' +
+        `Сейчас активен режим совместимости. Строго отвечай на основе СРАВНЕНИЯ двух карт, а не одной.\n` +
+        `Карта A: ${chartA.name}. ${buildChartSummary(chartA)}\n` +
+        `Карта B: ${chartB.name}. ${buildChartSummary(chartB)}\n` +
+        `Вес анализа: 1) Совместимость в отношениях 50%; 2) Книги асцендентов 5%; 3) 51 опора 30%; 4) Как трактовать карту 4%; 5) Интерпретация карты 1%; 6) Сферы по планетам 10%.\n` +
+        'Запрещено просить пользователя заново прислать данные второй карты — они уже переданы выше.\n' +
+        chunksToText(compat, 'Совместимость') +
+        chunksToText(ascAChunks, `Асцендент ${chartA.name}`) +
+        chunksToText(ascBChunks, `Асцендент ${chartB.name}`) +
+        chunksToText(opora, '51 опора') +
+        chunksToText(trakt, 'Как трактовать') +
+        chunksToText(interp, 'Интерпретация') +
+        chunksToText(planets, 'Планеты') +
+        '\n--- Конец режима сравнения карт ---\n';
+    }
 
     // Память о пользователе (факты из прошлых диалогов)
     const userMemoryRow = await UserMemory.findOne({ where: { userId } });
@@ -313,6 +412,7 @@ export async function POST(request: NextRequest) {
         + chartInterpretationBlock
         + atmakarakaBlock
         + personalityReadingBlock
+        + comparisonBlock
         + styleContext
         + (contextText ? contextText : ''),
     };

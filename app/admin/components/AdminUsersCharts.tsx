@@ -10,6 +10,8 @@ interface User {
   phone?: string | null;
   name: string;
   tariff: string;
+  planCode?: 'free' | 'optimal' | 'professional';
+  planExpiresAt?: string | null;
   createdAt: string;
   chartCount: number;
   lastVisitAt?: string | null;
@@ -84,6 +86,7 @@ export default function AdminUsersCharts() {
   const [adminCharts, setAdminCharts] = useState<Chart[]>([]);
   const [loadingAdminCharts, setLoadingAdminCharts] = useState(false);
   const [selectedAdminChartId, setSelectedAdminChartId] = useState<number | null>(null);
+  const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -214,6 +217,27 @@ export default function AdminUsersCharts() {
       setSelectedUserId(null);
       setSelectedUser(null);
       setCharts([]);
+    }
+  };
+
+  const handlePlanChange = async (userId: number, planCode: 'free' | 'optimal' | 'professional') => {
+    try {
+      setUpdatingPlanUserId(userId);
+      const response = await fetch(`/api/admin/users/${userId}/plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planCode }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        alert(data.error || 'Не удалось обновить тариф');
+        return;
+      }
+      await loadUsers();
+    } catch (err) {
+      alert('Ошибка сети при обновлении тарифа');
+    } finally {
+      setUpdatingPlanUserId(null);
     }
   };
 
@@ -419,7 +443,23 @@ export default function AdminUsersCharts() {
                 <tr key={user.id}>
                   <td>{user.name}</td>
                   <td>{user.email || user.phone || '—'}</td>
-                  <td>{user.tariff || 'Базовый'}</td>
+                  <td>
+                    <select
+                      value={user.planCode || 'free'}
+                      className={styles.modalInput}
+                      disabled={updatingPlanUserId === user.id}
+                      onChange={(e) => handlePlanChange(user.id, e.target.value as 'free' | 'optimal' | 'professional')}
+                    >
+                      <option value="free">Бесплатный</option>
+                      <option value="optimal">Оптимальный</option>
+                      <option value="professional">Профессиональный</option>
+                    </select>
+                    {user.planExpiresAt && (
+                      <div className={styles.chartCardValue}>
+                        до {new Date(user.planExpiresAt).toLocaleDateString('ru-RU')}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <button
                       type="button"

@@ -4,9 +4,11 @@ import jwt from 'jsonwebtoken';
 import { initDatabase } from '@/lib/initDb';
 import UserAnketa from '@/models/UserAnketa';
 import NatalChart from '@/models/NatalChart';
+import User from '@/models/User';
 import { getCityCoordinates } from '@/lib/geocoding';
 import { getHistoricalTimezoneOffset } from '@/lib/historical-timezone';
 import { calculateNatalChart, BirthData } from '@/lib/natal-chart-calculator';
+import { canCreateMoreCharts, ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
@@ -35,17 +37,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Получаем данные из анкеты
-    const anketa = await UserAnketa.findOne({ where: { userId } });
-    if (!anketa || !anketa.birthCity || !anketa.birthDate || !anketa.birthTime) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
+    await ensureFreePlanWindow(user);
+    const plan = getUserPlanSnapshot(user);
+    const existingCustomChartsCount = await NatalChart.count({ where: { userId, isMain: false } });
+    if (!canCreateMoreCharts(plan, existingCustomChartsCount)) {
+      return NextResponse.json(
+        { error: 'Лимит карт по вашему тарифу исчерпан. Выберите другой тариф, чтобы создавать больше карт.' },
+        { status: 403 }
+      );
+    }
+    if (plan.code === 'free') {
+      return NextResponse.json(
+        { error: 'На бесплатном тарифе нельзя создавать дополнительные карты.' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const customBirthDate = typeof body.birthDate === 'string' ? body.birthDate.trim() : '';
+    const customBirthTime = typeof body.birthTime === 'string' ? body.birthTime.trim() : '';
+    const customBirthCity = typeof body.birthPlace === 'string' ? body.birthPlace.trim() : '';
+    const customName = typeof body.name === 'string' ? body.name.trim() : '';
+    const hasCustomPayload = !!(customBirthDate && customBirthTime && customBirthCity);
+
+    // Получаем данные из анкеты (fallback)
+    const anketa = hasCustomPayload ? null : await UserAnketa.findOne({ where: { userId } });
+    if (!hasCustomPayload && (!anketa || !anketa.birthCity || !anketa.birthDate || !anketa.birthTime)) {
       return NextResponse.json(
         { error: 'Анкета не заполнена. Заполните дату рождения, время и город рождения в анкете.' },
         { status: 400 }
       );
     }
 
+    const birthDateRaw = hasCustomPayload ? customBirthDate : String(anketa!.birthDate);
+    const birthTimeRaw = hasCustomPayload ? customBirthTime : String(anketa!.birthTime);
+    const birthCityRaw = hasCustomPayload ? customBirthCity : String(anketa!.birthCity);
+
     // Парсим дату рождения из анкеты (формат: YYYY-MM-DD)
-    const birthDateParts = anketa.birthDate.split('-');
+    const birthDateParts = birthDateRaw.split('-');
     if (birthDateParts.length !== 3) {
       return NextResponse.json(
         { error: 'Неверный формат даты рождения в анкете. Ожидается формат YYYY-MM-DD.' },
@@ -58,7 +91,7 @@ export async function POST(request: NextRequest) {
     const day = parseInt(birthDateParts[2], 10);
 
     // Парсим время рождения из анкеты (формат: HH:MM или HH:MM:SS)
-    const birthTimeParts = anketa.birthTime.split(':');
+    const birthTimeParts = birthTimeRaw.split(':');
     if (birthTimeParts.length < 2) {
       return NextResponse.json(
         { error: 'Неверный формат времени рождения в анкете. Ожидается формат HH:MM.' },
@@ -81,7 +114,7 @@ export async function POST(request: NextRequest) {
     // Формируем название карты: используем имя из анкеты или дату рождения
     const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
                         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-    const chartName = anketa.name || `${monthNames[month - 1]} ${year}`;
+    const chartName = customName || (anketa?.name || `${monthNames[month - 1]} ${year}`);
     
     const chartDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const chartTime = `${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}${finalSecond > 0 ? `:${String(finalSecond).padStart(2, '0')}` : ''}`;
@@ -89,7 +122,7 @@ export async function POST(request: NextRequest) {
     let lat: number, lon: number, timezone: number;
 
     try {
-      const coords = await getCityCoordinates(anketa.birthCity);
+      const coords = await getCityCoordinates(birthCityRaw);
       lat = coords.lat;
       lon = coords.lon;
       const historicalOffset = getHistoricalTimezoneOffset(
@@ -133,7 +166,7 @@ export async function POST(request: NextRequest) {
       name: chartName,
       chartDate,
       chartTime,
-      chartCity: anketa.birthCity,
+      chartCity: birthCityRaw,
       chartLatitude: lat,
       chartLongitude: lon,
       timezone,
@@ -201,14 +234,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
+    await ensureFreePlanWindow(user);
+    const planCode = getUserPlanSnapshot(user).code;
     // Получаем все карты пользователя, отсортированные по дате создания
     const charts = await NatalChart.findAll({ 
       where: { userId },
       order: [['createdAt', 'DESC']]
     });
+    const frozenIds = getFrozenChartIdsForPlan(planCode, charts as any);
     
     return NextResponse.json({
-      charts: charts || []
+      charts: (charts || []).map((chart: any) => ({
+        ...chart.toJSON(),
+        isFrozen: frozenIds.has(chart.id),
+      }))
     });
   } catch (error: any) {
     console.error('Get natal charts error:', error);

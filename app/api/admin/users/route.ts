@@ -5,6 +5,7 @@ import User from '@/models/User';
 import NatalChart from '@/models/NatalChart';
 import Session from '@/models/Session';
 import { col, fn } from 'sequelize';
+import { getUserPlanSnapshot } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export async function GET() {
 
     // Получаем всех пользователей с количеством карт
     const users = await User.findAll({
-      attributes: ['id', 'phone', 'email', 'name', 'createdAt'],
+      attributes: ['id', 'phone', 'email', 'name', 'createdAt', 'planCode', 'planExpiresAt', 'freeMinutesUsed', 'freeWindowStartedAt'],
       include: [
         {
           model: NatalChart,
@@ -51,16 +52,21 @@ export async function GET() {
       }
     }
 
-    const usersWithChartCount = users.map((user: any) => ({
+    const usersWithChartCount = users.map((user: any) => {
+      const plan = getUserPlanSnapshot(user);
+      return {
       id: user.id,
       email: user.email || null,
       phone: user.phone,
       name: user.name || user.email || user.phone || `User #${user.id}`,
-      tariff: 'Базовый',
+      tariff: plan.title,
+      planCode: plan.code,
+      planExpiresAt: plan.expiresAt,
       createdAt: user.createdAt,
       chartCount: user.natalCharts?.length || 0,
       lastVisitAt: lastVisitByUserId.get(user.id) || null,
-    }));
+      };
+    });
 
     return NextResponse.json({ users: usersWithChartCount });
   } catch (error: any) {

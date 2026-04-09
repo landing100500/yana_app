@@ -34,6 +34,39 @@ async function ensureAuthSchema() {
         allowNull: true,
       });
     }
+
+    if (!usersTable.planCode) {
+      await queryInterface.addColumn('users', 'planCode', {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: 'free',
+      });
+    }
+    if (!usersTable.planAssignedAt) {
+      await queryInterface.addColumn('users', 'planAssignedAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!usersTable.planExpiresAt) {
+      await queryInterface.addColumn('users', 'planExpiresAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!usersTable.freeWindowStartedAt) {
+      await queryInterface.addColumn('users', 'freeWindowStartedAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!usersTable.freeMinutesUsed) {
+      await queryInterface.addColumn('users', 'freeMinutesUsed', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0,
+      });
+    }
   } catch (error) {
     console.error('Failed to ensure auth schema:', error);
     throw error;

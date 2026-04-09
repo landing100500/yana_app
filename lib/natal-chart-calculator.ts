@@ -625,7 +625,8 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     };
 
     // Рассчитываем караки (только для 7 планет: Солнце, Луна, Марс, Меркурий, Юпитер, Венера, Сатурн)
-    // Караки определяются по долготе планет (от наибольшей к наименьшей)
+    // Караки определяются по градусу планеты ВНУТРИ знака (0°..29°59'), от наибольшего к наименьшему.
+    // Это устраняет неверные случаи, когда сравнение по полной долготе 0..360 дает неправильную AK.
     // Порядок карак: AK (Атмакарака - наибольшая), АмК, БК, MK, ПК, ΓΚ, ДК (Дарикарака - наименьшая)
     const planetsForKaraka = [
       { name: 'sun', longitude: sunFull.longitude, planetName: 'Солнце' },
@@ -637,13 +638,11 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       { name: 'saturn', longitude: saturnFull.longitude, planetName: 'Сатурн' },
     ];
     
-    // Сортируем по долготе (от наибольшей к наименьшей)
-    // Важно: нормализуем долготы для правильного сравнения
+    // Сортируем по градусу внутри знака (от наибольшего к наименьшему)
     const sortedPlanets = [...planetsForKaraka].sort((a, b) => {
-      const aNorm = a.longitude % 360;
-      const bNorm = b.longitude % 360;
-      // Сортируем от наибольшей к наименьшей
-      return bNorm - aNorm;
+      const aInSign = (((a.longitude % 360) + 360) % 360) % 30;
+      const bInSign = (((b.longitude % 360) + 360) % 360) % 30;
+      return bInSign - aInSign;
     });
     
     // Назначаем караки в порядке от наибольшей долготы (AK) к наименьшей (ДК)

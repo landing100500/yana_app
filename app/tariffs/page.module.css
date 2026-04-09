@@ -1,0 +1,75 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1625 0%, #2d1f3d 50%, #1a1625 100%);
+  padding: 2rem;
+  color: var(--white);
+}
+
+.inner {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.backButton {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: var(--white);
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.currentPlanLine {
+  margin: 0 0 1.25rem 0;
+}
+
+.currentPlanLabel {
+  color: #d4c7e8;
+  font-weight: 600;
+}
+
+.currentPlanValue {
+  color: #f2b6cf;
+  font-weight: 700;
+}
+
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: calc(1rem + 20px);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.price {
+  font-weight: 700;
+  font-size: 1.2rem;
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  color: var(--white);
+  cursor: pointer;
+  margin-top: 40px;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+}

@@ -2,6 +2,26 @@
   display: flex;
   height: 100vh;
   background: var(--light-beige);
+  position: relative;
+}
+
+.planTimerBadge {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--beige);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(6px);
+  font-size: 0.8rem;
+  color: var(--dark-purple);
 }
 
 .sidebar {
@@ -452,6 +472,29 @@
   font-weight: 300;
 }
 
+.planLink {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: var(--purple);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.planChooseLink {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0.1rem 0 0 0;
+  color: var(--rose);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .menuItem {
   width: 100%;
   padding: 0.75rem 1.5rem;
@@ -498,6 +541,29 @@
   flex-direction: column;
   gap: 1.5rem;
   margin-top: 0;
+}
+
+.comparisonBanner {
+  align-self: center;
+  background: rgba(155, 143, 184, 0.12);
+  border: 1px solid rgba(155, 143, 184, 0.35);
+  color: var(--dark-purple);
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.comparisonExitButton {
+  border: none;
+  background: var(--white);
+  color: var(--dark-purple);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  font-size: 0.75rem;
 }
 
 @media (max-width: 768px) {

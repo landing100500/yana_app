@@ -3,7 +3,9 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
+import User from '@/models/User';
 import { openai } from '@/lib/openai';
+import { ensureFreePlanWindow, getUserPlanSnapshot } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +72,12 @@ function getNakshatra(longitude: number): string {
   return nakshatras[nakshatraIndex % 27] || 'Неизвестно';
 }
 
-// Функция для определения Атмакараки (планета с наибольшей долготой)
+function normalizeInSignDegrees(longitude: number): number {
+  const normalized = ((longitude % 360) + 360) % 360;
+  return normalized % 30;
+}
+
+// Функция для определения Атмакараки (планета с наибольшим градусом ВНУТРИ знака)
 function getAtmakaraka(planets: {
   sun: number;
   moon: number;
@@ -81,23 +88,23 @@ function getAtmakaraka(planets: {
   saturn: number;
 }): { planet: string; longitude: number } {
   const planetData = [
-    { name: 'Солнце', value: planets.sun },
-    { name: 'Луна', value: planets.moon },
-    { name: 'Меркурий', value: planets.mercury },
-    { name: 'Венера', value: planets.venus },
-    { name: 'Марс', value: planets.mars },
-    { name: 'Юпитер', value: planets.jupiter },
-    { name: 'Сатурн', value: planets.saturn },
+    { name: 'Солнце', value: planets.sun, inSign: normalizeInSignDegrees(planets.sun) },
+    { name: 'Луна', value: planets.moon, inSign: normalizeInSignDegrees(planets.moon) },
+    { name: 'Меркурий', value: planets.mercury, inSign: normalizeInSignDegrees(planets.mercury) },
+    { name: 'Венера', value: planets.venus, inSign: normalizeInSignDegrees(planets.venus) },
+    { name: 'Марс', value: planets.mars, inSign: normalizeInSignDegrees(planets.mars) },
+    { name: 'Юпитер', value: planets.jupiter, inSign: normalizeInSignDegrees(planets.jupiter) },
+    { name: 'Сатурн', value: planets.saturn, inSign: normalizeInSignDegrees(planets.saturn) },
   ];
 
   const maxPlanet = planetData.reduce((max, planet) => 
-    planet.value > max.value ? planet : max
+    planet.inSign > max.inSign ? planet : max
   );
 
   return { planet: maxPlanet.name, longitude: maxPlanet.value };
 }
 
-// Функция для определения Аматьякараки (планета со второй по величине долготой)
+// Функция для определения Аматьякараки (планета со вторым по величине градусом ВНУТРИ знака)
 function getAmatyakaraka(planets: {
   sun: number;
   moon: number;
@@ -108,16 +115,16 @@ function getAmatyakaraka(planets: {
   saturn: number;
 }): { planet: string; longitude: number } {
   const planetData = [
-    { name: 'Солнце', value: planets.sun },
-    { name: 'Луна', value: planets.moon },
-    { name: 'Меркурий', value: planets.mercury },
-    { name: 'Венера', value: planets.venus },
-    { name: 'Марс', value: planets.mars },
-    { name: 'Юпитер', value: planets.jupiter },
-    { name: 'Сатурн', value: planets.saturn },
+    { name: 'Солнце', value: planets.sun, inSign: normalizeInSignDegrees(planets.sun) },
+    { name: 'Луна', value: planets.moon, inSign: normalizeInSignDegrees(planets.moon) },
+    { name: 'Меркурий', value: planets.mercury, inSign: normalizeInSignDegrees(planets.mercury) },
+    { name: 'Венера', value: planets.venus, inSign: normalizeInSignDegrees(planets.venus) },
+    { name: 'Марс', value: planets.mars, inSign: normalizeInSignDegrees(planets.mars) },
+    { name: 'Юпитер', value: planets.jupiter, inSign: normalizeInSignDegrees(planets.jupiter) },
+    { name: 'Сатурн', value: planets.saturn, inSign: normalizeInSignDegrees(planets.saturn) },
   ];
 
-  const sorted = planetData.sort((a, b) => b.value - a.value);
+  const sorted = planetData.sort((a, b) => b.inSign - a.inSign);
   return { planet: sorted[1].name, longitude: sorted[1].value };
 }
 
@@ -130,6 +137,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Не авторизован' },
         { status: 401 }
+      );
+    }
+
+    const currentUser = await User.findByPk(userId);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
+    await ensureFreePlanWindow(currentUser);
+    const planBefore = getUserPlanSnapshot(currentUser);
+    if (!planBefore.hasUnlimitedTime && (planBefore.remainingSeconds ?? 0) <= 0) {
+      return NextResponse.json(
+        { error: 'Лимит времени по вашему тарифу исчерпан. Попробуйте позже или обновите тариф.' },
+        { status: 403 }
       );
     }
 
@@ -316,7 +336,7 @@ ${questions}
 
 ${singleQuestionInstruction}
 
-Если для некоторых вопросов требуется расчет транзитов или Вимшоттари даши, которые не были предоставлены, объясни это пользователю и дай общий ответ на основе имеющихся данных карты.
+Для вопросов про периоды и транзиты не уходи в отказ: делай ориентировочную трактовку по данным карты и текущему времени, явно помечая уровень точности как предварительный.
 `;
 
     // Создаем потоковый ответ

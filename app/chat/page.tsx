@@ -24,6 +24,14 @@ interface ChatTopic {
 interface UserProfile {
   email: string | null;
   name?: string;
+  plan?: {
+    code: 'free' | 'optimal' | 'professional';
+    title: string;
+    expiresAt: string | null;
+    hasUnlimitedTime: boolean;
+    remainingSeconds: number | null;
+    chartComparison: boolean;
+  };
 }
 
 interface ChatContext {
@@ -48,6 +56,9 @@ export default function ChatPage() {
   const [questionsVisibleCount, setQuestionsVisibleCount] = useState(6);
   const [rotatingQuestionIndex, setRotatingQuestionIndex] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
+  const [nowTs, setNowTs] = useState<number>(Date.now());
+  const [comparisonMode, setComparisonMode] = useState<{ chartAId: number; chartAName: string; chartBId: number; chartBName: string } | null>(null);
+  const [planRemainingSeconds, setPlanRemainingSeconds] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -135,6 +146,41 @@ export default function ChatPage() {
       loadChatContext();
     }
   }, [isAuthChecked]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (userProfile?.plan?.hasUnlimitedTime) return;
+    if (planRemainingSeconds === null) return;
+    const id = window.setInterval(() => {
+      setPlanRemainingSeconds((prev) => {
+        if (prev === null) return prev;
+        return prev > 0 ? prev - 1 : 0;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [userProfile?.plan?.hasUnlimitedTime, planRemainingSeconds]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('chart_comparison_mode');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.chartAId && parsed?.chartBId && parsed?.chartAName && parsed?.chartBName) {
+        setComparisonMode({
+          chartAId: Number(parsed.chartAId),
+          chartAName: String(parsed.chartAName),
+          chartBId: Number(parsed.chartBId),
+          chartBName: String(parsed.chartBName),
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const loadChatContext = async () => {
     try {
@@ -245,6 +291,11 @@ export default function ChatPage() {
       if (response.ok) {
         const data = await response.json();
         setUserProfile(data);
+        if (data?.plan && !data.plan.hasUnlimitedTime) {
+          setPlanRemainingSeconds(typeof data.plan.remainingSeconds === 'number' ? data.plan.remainingSeconds : 0);
+        } else {
+          setPlanRemainingSeconds(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load user profile');
@@ -298,6 +349,18 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
+      const fallbackComparison = (() => {
+        try {
+          const raw = localStorage.getItem('chart_comparison_mode');
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (parsed?.chartAId && parsed?.chartBId && parsed?.chartAName && parsed?.chartBName) return parsed;
+        } catch {
+          return null;
+        }
+        return null;
+      })();
+      const activeComparison = comparisonMode ?? fallbackComparison;
       const response = await fetch('/api/chat/message', {
         method: 'POST',
         headers: {
@@ -306,6 +369,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMessage.content,
           topicId: currentTopicId,
+          comparisonMode: activeComparison,
         }),
       });
 
@@ -326,11 +390,13 @@ export default function ChatPage() {
           setCurrentTopicId(data.topicId);
           loadTopics();
         }
+        loadUserProfile();
       } else {
+        const errorText = data?.error || 'Произошла ошибка при отправке сообщения';
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Произошла ошибка при отправке сообщения',
+          content: errorText,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errorMessage]);
@@ -494,6 +560,22 @@ export default function ChatPage() {
     }
   };
 
+  const formatTimer = () => {
+    const plan = userProfile?.plan;
+    if (!plan) return '';
+    if (plan.hasUnlimitedTime) {
+      if (plan.expiresAt) {
+        return `Доступ до ${new Date(plan.expiresAt).toLocaleDateString('ru-RU')}`;
+      }
+      return 'Безлимитный доступ';
+    }
+    const sec = Math.max(0, (planRemainingSeconds ?? plan.remainingSeconds ?? 0));
+    const hh = Math.floor(sec / 3600);
+    const mm = Math.floor((sec % 3600) / 60);
+    const ss = sec % 60;
+    return `Осталось: ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  };
+
   if (!isAuthChecked) {
     return (
       <div className={styles.loadingScreen}>
@@ -508,6 +590,12 @@ export default function ChatPage() {
 
   return (
     <div className={styles.container}>
+      {userProfile?.plan && (
+        <div className={styles.planTimerBadge} key={`${userProfile.plan.code}-${nowTs}`}>
+          <strong>{userProfile.plan.title}</strong>
+          <span>{formatTimer()}</span>
+        </div>
+      )}
       {natalChartModal.show && (
         <div className={styles.modalOverlay}>
           <div className={styles.modalContent}>
@@ -659,6 +747,28 @@ export default function ChatPage() {
                     <div className={styles.profilePhone}>
                       {userProfile?.email || 'Загрузка...'}
                     </div>
+                    {userProfile?.plan && (
+                      <>
+                        <button
+                          className={styles.planLink}
+                          onClick={() => {
+                            router.push('/tariffs');
+                            setIsMenuOpen(false);
+                          }}
+                        >
+                          Тариф: {userProfile.plan.title}
+                        </button>
+                        <button
+                          className={styles.planChooseLink}
+                          onClick={() => {
+                            router.push('/tariffs');
+                            setIsMenuOpen(false);
+                          }}
+                        >
+                          Выбрать тариф
+                        </button>
+                      </>
+                    )}
                     {userProfile?.name && (
                       <div className={styles.profileName}>{userProfile.name}</div>
                     )}
@@ -672,6 +782,17 @@ export default function ChatPage() {
                   >
                     Мои карты
                   </button>
+                  {userProfile?.plan?.chartComparison && (
+                    <button
+                      className={styles.menuItem}
+                      onClick={() => {
+                        router.push('/chart-comparison');
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      Сравнение карт
+                    </button>
+                  )}
                   <button
                     className={styles.logoutButton}
                     onClick={handleLogout}
@@ -684,7 +805,22 @@ export default function ChatPage() {
           </div>
         </header>
         <div className={styles.messages}>
-          {messages.length === 0 ? (
+          {comparisonMode && (
+            <div className={styles.comparisonBanner}>
+              Режим сравнения: {comparisonMode.chartAName} vs {comparisonMode.chartBName}
+              <button
+                className={styles.comparisonExitButton}
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('chart_comparison_mode');
+                  setComparisonMode(null);
+                }}
+              >
+                Выйти из режима
+              </button>
+            </div>
+          )}
+          {messages.length === 0 && !comparisonMode ? (
             <div className={styles.welcome}>
               <Image
                 src="/logo/logo_big.png"
@@ -806,7 +942,7 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {messages.length === 0 && questions.length > 0 && questions[rotatingQuestionIndex] && (
+        {messages.length === 0 && !comparisonMode && questions.length > 0 && questions[rotatingQuestionIndex] && (
           <button
             type="button"
             className={styles.inputSuggestionChip}

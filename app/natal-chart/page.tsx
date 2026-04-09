@@ -58,6 +58,15 @@ interface ChartData {
   createdAt: string;
   navamsha?: NavamshaData;
   dashas?: DashaData[];
+  isMain?: boolean;
+  isFrozen?: boolean;
+}
+
+interface PlanInfo {
+  code: 'free' | 'optimal' | 'professional';
+  title: string;
+  maxCharts: number | null;
+  chartComparison: boolean;
 }
 
 export default function NatalChartPage() {
@@ -69,6 +78,14 @@ export default function NatalChartPage() {
   const [calculationProgress, setCalculationProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [deletingChartId, setDeletingChartId] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    birthDate: '',
+    birthTime: '',
+    birthPlace: '',
+  });
 
   useEffect(() => {
     loadCharts();
@@ -85,10 +102,16 @@ export default function NatalChartPage() {
         setCharts(data.charts);
         // Выбираем последнюю созданную карту
         if (data.charts.length > 0 && !selectedChart) {
-          setSelectedChart(data.charts[0]);
+          const firstAvailable = data.charts.find((c: ChartData) => !c.isFrozen) || data.charts[0];
+          setSelectedChart(firstAvailable);
         }
       } else if (data.error) {
         setError(data.error);
+      }
+      const profileRes = await fetch('/api/auth/profile', { credentials: 'include' });
+      const profileData = await profileRes.json().catch(() => ({}));
+      if (profileRes.ok && profileData?.plan) {
+        setPlan(profileData.plan);
       }
     } catch (err: any) {
       setError('Ошибка при загрузке натальных карт');
@@ -98,59 +121,29 @@ export default function NatalChartPage() {
     }
   };
 
-  const handleCalculate = async () => {
+  const handleCreateOtherPersonChart = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
       setIsCalculating(true);
       setError(null);
-      setCalculationProgress('Получение данных из анкеты...');
-      
+      setCalculationProgress('Расчет натальной карты...');
       const response = await fetch('/api/natal-chart/calculate', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: createForm.name.trim(),
+          birthDate: createForm.birthDate,
+          birthTime: createForm.birthTime,
+          birthPlace: createForm.birthPlace.trim(),
+        }),
       });
-      
-      setCalculationProgress('Расчет натальной карты...');
-      
-      // Проверяем статус перед чтением тела
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Ошибка при расчете' }));
-        throw new Error(errorData.error || 'Ошибка при расчете');
-      }
-      
-      const data = await response.json();
-
-      if (data.chart) {
-        setCalculationProgress('Сохранение результатов...');
-        // Обновляем список карт
-        await loadCharts();
-        
-        // Если есть полные данные с навамшей и дашами, добавляем их к карте
-        const chartWithData = {
-          ...data.chart,
-          navamsha: data.chartData?.navamsha,
-          dashas: data.chartData?.dashas,
-        };
-        
-        // Обновляем список карт с новыми данными
-        setCharts(prev => {
-          const updated = prev.map(ch => 
-            ch.id === chartWithData.id ? chartWithData : ch
-          );
-          // Если карты еще нет в списке, добавляем
-          if (!updated.find(ch => ch.id === chartWithData.id)) {
-            return [chartWithData, ...updated];
-          }
-          return updated;
-        });
-        
-        // Выбираем новую карту
-        setSelectedChart(chartWithData);
-        setCalculationProgress('');
-      } else {
-        setError(data.error || 'Ошибка при расчете натальной карты');
-      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Ошибка при создании карты');
+      await loadCharts();
+      setCreateForm({ name: '', birthDate: '', birthTime: '', birthPlace: '' });
+      setIsCreateModalOpen(false);
     } catch (err: any) {
-      setError(err.message || 'Ошибка при расчете натальной карты');
-      console.error(err);
+      setError(err.message || 'Ошибка при создании карты');
     } finally {
       setIsCalculating(false);
       setCalculationProgress('');
@@ -233,13 +226,25 @@ export default function NatalChartPage() {
         <div className={styles.chartsList}>
           <div className={styles.listHeader}>
             <h2>Мои карты</h2>
-            <button 
+          </div>
+          {plan && (
+            <div className={styles.chartListItemDate}>
+              Тариф: {plan.title}
+            </div>
+          )}
+          <div className={styles.actionsRow}>
+            <button
               className={styles.newChartButton}
-              onClick={handleCalculate}
-              disabled={isCalculating}
+              onClick={() => setIsCreateModalOpen(true)}
+              disabled={isCalculating || plan?.code === 'free'}
             >
-              {isCalculating ? 'Расчет...' : '+ Новая карта'}
+              + Карта другого человека
             </button>
+            {plan?.chartComparison && (
+              <button className={styles.newChartButton} onClick={() => router.push('/chart-comparison')}>
+                Сравнение карт
+              </button>
+            )}
           </div>
           
           {isCalculating && (
@@ -256,13 +261,6 @@ export default function NatalChartPage() {
           {charts.length === 0 && !isLoading && (
             <div className={styles.emptyState}>
               <p>Карты еще не созданы</p>
-              <button 
-                className={styles.calculateButton}
-                onClick={handleCalculate}
-                disabled={isCalculating}
-              >
-                {isCalculating ? 'Расчет...' : 'Создать первую карту'}
-              </button>
             </div>
           )}
 
@@ -271,24 +269,30 @@ export default function NatalChartPage() {
               {charts.map((chart) => (
                 <div
                   key={chart.id}
-                  className={`${styles.chartListItem} ${selectedChart?.id === chart.id ? styles.selected : ''}`}
-                  onClick={() => setSelectedChart(chart)}
+                  className={`${styles.chartListItem} ${selectedChart?.id === chart.id ? styles.selected : ''} ${chart.isFrozen ? styles.frozen : ''}`}
+                  onClick={() => {
+                    if (!chart.isFrozen) setSelectedChart(chart);
+                  }}
                 >
                   <div className={styles.chartListItemContent}>
                     <div className={styles.chartListItemName}>{chart.name}</div>
+                    {chart.isMain && <div className={styles.chartListItemDate}>Основная карта (по анкете)</div>}
                     <div className={styles.chartListItemDate}>
                       {chart.chartDate} {chart.chartTime}
                     </div>
                     <div className={styles.chartListItemCity}>{chart.chartCity}</div>
+                    {chart.isFrozen && <div className={styles.chartFrozenHint}>Карта заморожена текущим тарифом</div>}
                   </div>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={(e) => handleDelete(chart.id, e)}
-                    disabled={deletingChartId === chart.id}
-                    title="Удалить карту"
-                  >
-                    {deletingChartId === chart.id ? '...' : '×'}
-                  </button>
+                  {!chart.isMain && (
+                    <button
+                      className={styles.deleteButton}
+                      onClick={(e) => handleDelete(chart.id, e)}
+                      disabled={deletingChartId === chart.id}
+                      title="Удалить карту"
+                    >
+                      {deletingChartId === chart.id ? '...' : '×'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -296,7 +300,7 @@ export default function NatalChartPage() {
         </div>
 
         {/* Отображение выбранной карты */}
-        {selectedChart && (
+        {selectedChart && !selectedChart.isFrozen && (
           <div className={styles.chartContainer}>
             <div className={styles.chartInfo}>
               <div className={styles.infoItem}>
@@ -321,6 +325,63 @@ export default function NatalChartPage() {
           </div>
         )}
       </div>
+      {isCreateModalOpen && (
+        <div className={styles.modalOverlay} onClick={() => !isCalculating && setIsCreateModalOpen(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>Карта другого человека</h2>
+            <form onSubmit={handleCreateOtherPersonChart} className={styles.modalForm}>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Имя</label>
+                <input
+                  className={styles.modalInput}
+                  type="text"
+                  required
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Дата рождения</label>
+                <input
+                  className={styles.modalInput}
+                  type="date"
+                  required
+                  value={createForm.birthDate}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, birthDate: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Время рождения</label>
+                <input
+                  className={styles.modalInput}
+                  type="time"
+                  required
+                  value={createForm.birthTime}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, birthTime: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Город рождения</label>
+                <input
+                  className={styles.modalInput}
+                  type="text"
+                  required
+                  value={createForm.birthPlace}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, birthPlace: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.modalCancel} onClick={() => setIsCreateModalOpen(false)} disabled={isCalculating}>
+                  Отмена
+                </button>
+                <button type="submit" className={styles.modalSubmit} disabled={isCalculating}>
+                  {isCalculating ? 'Расчет...' : 'Рассчитать'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
