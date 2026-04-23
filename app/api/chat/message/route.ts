@@ -22,6 +22,7 @@ import {
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
 import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
+import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 
 export const dynamic = 'force-dynamic';
 
@@ -404,7 +405,8 @@ export async function POST(request: NextRequest) {
     const systemMessage = {
       role: 'system' as const,
       content:
-        SYSTEM_PROMPT
+        getPromptServerNowBlock()
+        + SYSTEM_PROMPT
         + userMemoryBlock
         + otherTopicsBlock
         + topicSummaryBlock

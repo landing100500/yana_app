@@ -1,4 +1,5 @@
 import { openai } from './openai';
+import { getPromptServerNowBlock } from './prompt-datetime';
 import Message from '@/models/Message';
 import ChatTopicSummary from '@/models/ChatTopicSummary';
 import UserMemory from '@/models/UserMemory';
@@ -21,7 +22,8 @@ export async function summarizeMessages(messages: { role: string; content: strin
       {
         role: 'system',
         content:
-          'Ты суммаризатор. Кратко перескажи диалог между пользователем и астрологом в 5–10 предложений. Сохрани важные факты о пользователе, темы и выводы. Пиши на русском.',
+          getPromptServerNowBlock()
+          + 'Ты суммаризатор. Кратко перескажи диалог между пользователем и астрологом в 5–10 предложений. Сохрани важные факты о пользователе, темы и выводы. Пиши на русском.',
       },
       { role: 'user', content: text },
     ],
@@ -41,7 +43,8 @@ export async function extractUserFacts(userMessage: string, assistantMessage: st
       {
         role: 'system',
         content:
-          'Из диалога извлеки 1–3 коротких факта о пользователе (имя, ситуация, предпочтения, что сказал о себе). Каждый факт — одна строка. Если нет новых фактов — ответь пустым сообщением. Только факты, без предисловий.',
+          getPromptServerNowBlock()
+          + 'Из диалога извлеки 1–3 коротких факта о пользователе (имя, ситуация, предпочтения, что сказал о себе). Каждый факт — одна строка. Если нет новых фактов — ответь пустым сообщением. Только факты, без предисловий.',
       },
       {
         role: 'user',

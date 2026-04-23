@@ -6,6 +6,7 @@ import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 import { openai } from '@/lib/openai';
 import { ensureFreePlanWindow, getUserPlanSnapshot } from '@/lib/subscription';
+import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 
 export const dynamic = 'force-dynamic';
 
@@ -346,7 +347,7 @@ ${singleQuestionInstruction}
           const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'system', content: getPromptServerNowBlock() + SYSTEM_PROMPT },
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.7,

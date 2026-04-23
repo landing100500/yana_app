@@ -106,7 +106,7 @@ export default function Home() {
             className={styles.logoImage}
             priority
           />
-          <div className={styles.logoSubtitle}>Астрология • Натальные карты</div>
+          <div className={styles.logoSubtitle}>ИИ • Психолог-предсказатель</div>
         </div>
       </div>
 

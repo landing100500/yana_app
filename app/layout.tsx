@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ЯСНА - Астрология и натальные карты',
-  description: 'Консультации по астрологии, натальным картам и эзотерике',
+  title: 'ЯСНА - ИИ Психолог-предсказатель',
+  description:
+    'Ясность и решение любой ситуации, твои 60 минут в подарок. Ведическая карта + подсознание',
 }
 
 export default function RootLayout({
