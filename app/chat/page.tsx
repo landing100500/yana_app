@@ -7,6 +7,7 @@ import Image from 'next/image';
 import styles from './page.module.css';
 
 const VoiceInputButton = dynamic(() => import('./VoiceInputButton'), { ssr: false });
+const ACTIVE_CHART_STORAGE_KEY = 'active_natal_chart_id';
 
 interface Message {
   id: string;
@@ -40,6 +41,16 @@ interface ChatContext {
   selfKnowledgeQuestions: string[];
 }
 
+interface NatalChartOption {
+  id: number;
+  name: string;
+  chartDate: string;
+  chartTime: string;
+  chartCity: string;
+  isMain?: boolean;
+  isFrozen?: boolean;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -59,6 +70,9 @@ export default function ChatPage() {
   const [nowTs, setNowTs] = useState<number>(Date.now());
   const [comparisonMode, setComparisonMode] = useState<{ chartAId: number; chartAName: string; chartBId: number; chartBName: string } | null>(null);
   const [planRemainingSeconds, setPlanRemainingSeconds] = useState<number | null>(null);
+  const [natalCharts, setNatalCharts] = useState<NatalChartOption[]>([]);
+  const [selectedChartId, setSelectedChartId] = useState<number | null>(null);
+  const [isChartBadgeCollapsed, setIsChartBadgeCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -144,6 +158,7 @@ export default function ChatPage() {
       loadTopics();
       loadUserProfile();
       loadChatContext();
+      loadAvailableCharts();
     }
   }, [isAuthChecked]);
 
@@ -195,6 +210,35 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error('Failed to load chat context', err);
+    }
+  };
+
+  const loadAvailableCharts = async () => {
+    try {
+      const res = await fetch('/api/natal-chart/calculate', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const allCharts: NatalChartOption[] = Array.isArray(data.charts) ? data.charts : [];
+      const availableCharts = allCharts.filter((chart) => !chart.isFrozen);
+      setNatalCharts(availableCharts);
+
+      if (availableCharts.length === 0) {
+        setSelectedChartId(null);
+        return;
+      }
+
+      const storedRaw = localStorage.getItem(ACTIVE_CHART_STORAGE_KEY);
+      const storedId = storedRaw ? Number(storedRaw) : null;
+      const currentStillExists = selectedChartId && availableCharts.some((chart) => chart.id === selectedChartId);
+      if (currentStillExists) return;
+      if (storedId && availableCharts.some((chart) => chart.id === storedId)) {
+        setSelectedChartId(storedId);
+        return;
+      }
+      const mainChart = availableCharts.find((chart) => chart.isMain);
+      setSelectedChartId(mainChart?.id ?? availableCharts[0].id);
+    } catch (err) {
+      console.error('Failed to load available charts', err);
     }
   };
 
@@ -370,6 +414,7 @@ export default function ChatPage() {
           message: userMessage.content,
           topicId: currentTopicId,
           comparisonMode: activeComparison,
+          selectedChartId: activeComparison ? undefined : selectedChartId,
         }),
       });
 
@@ -576,6 +621,18 @@ export default function ChatPage() {
     return `Осталось: ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (selectedChartId) {
+      localStorage.setItem(ACTIVE_CHART_STORAGE_KEY, String(selectedChartId));
+    }
+  }, [selectedChartId]);
+
+  useEffect(() => {
+    if (selectedChartId) {
+      setIsChartBadgeCollapsed(false);
+    }
+  }, [selectedChartId]);
+
   if (!isAuthChecked) {
     return (
       <div className={styles.loadingScreen}>
@@ -615,6 +672,7 @@ export default function ChatPage() {
                   onClick={() => {
                     setNatalChartModal((m) => ({ ...m, show: false }));
                     loadChatContext();
+                    loadAvailableCharts();
                   }}
                 >
                   Продолжить
@@ -803,7 +861,48 @@ export default function ChatPage() {
               )}
             </div>
           </div>
+          {userProfile?.plan && (
+            <div className={styles.mobilePlanTimerBadge}>
+              <strong>{userProfile.plan.title}</strong>
+              <span>{formatTimer()}</span>
+            </div>
+          )}
         </header>
+        {!comparisonMode && !isChartBadgeCollapsed && (
+          <div className={styles.activeChartFloatingBadge}>
+            <span className={styles.activeChartLabel}>ЯСНА отвечает по карте:</span>
+            <select
+              className={styles.activeChartSelect}
+              value={selectedChartId ?? ''}
+              onChange={(e) => setSelectedChartId(e.target.value ? Number(e.target.value) : null)}
+            >
+              {natalCharts.map((chart) => (
+                <option key={chart.id} value={chart.id}>
+                  {chart.name} ({chart.chartDate} {chart.chartTime}, {chart.chartCity})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={styles.activeChartClose}
+              onClick={() => setIsChartBadgeCollapsed(true)}
+              aria-label="Свернуть выбор карты"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {!comparisonMode && isChartBadgeCollapsed && (
+          <button
+            type="button"
+            className={styles.activeChartCollapsedButton}
+            onClick={() => setIsChartBadgeCollapsed(false)}
+            aria-label="Развернуть выбор карты"
+            title="Показать выбор карты"
+          >
+            !
+          </button>
+        )}
         <div className={styles.messages}>
           {comparisonMode && (
             <div className={styles.comparisonBanner}>

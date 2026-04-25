@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message, topicId, comparisonMode } = await request.json();
+    const { message, topicId, comparisonMode, selectedChartId } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -162,11 +162,35 @@ export async function POST(request: NextRequest) {
       content: message,
     });
 
-    // Контекст пользователя: анкета + полные данные натальной карты (чтобы ИИ мог интерпретировать по областям памяти)
-    const [anketa, mainChart] = await Promise.all([
-      UserAnketa.findOne({ where: { userId } }),
-      NatalChart.findOne({ where: { userId, isMain: true } }),
-    ]);
+    // Контекст пользователя: анкета + полные данные выбранной натальной карты (или основной по умолчанию)
+    const anketa = await UserAnketa.findOne({ where: { userId } });
+    let activeChart: NatalChart | null = null;
+    if (selectedChartId !== undefined && selectedChartId !== null && selectedChartId !== '') {
+      const parsedSelectedChartId = Number(selectedChartId);
+      if (!Number.isInteger(parsedSelectedChartId) || parsedSelectedChartId <= 0) {
+        return NextResponse.json(
+          { error: 'Неверная выбранная карта' },
+          { status: 400 }
+        );
+      }
+      activeChart = await NatalChart.findOne({ where: { id: parsedSelectedChartId, userId } });
+      if (!activeChart) {
+        return NextResponse.json(
+          { error: 'Выбранная карта не найдена. Обновите страницу и выберите карту снова.' },
+          { status: 400 }
+        );
+      }
+      const allCharts = await NatalChart.findAll({ where: { userId }, attributes: ['id', 'isMain', 'createdAt'] });
+      const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
+      if (frozenIds.has(activeChart.id)) {
+        return NextResponse.json(
+          { error: 'Выбранная карта сейчас заморожена вашим тарифом. Выберите другую карту.' },
+          { status: 403 }
+        );
+      }
+    } else {
+      activeChart = await NatalChart.findOne({ where: { userId, isMain: true } });
+    }
     const userName = anketa?.name?.trim() || null;
     const userContextParts: string[] = [];
     if (userName) userContextParts.push(`Имя (как обращаться): ${userName}.`);
@@ -174,11 +198,11 @@ export async function POST(request: NextRequest) {
     if (anketa?.birthDate) userContextParts.push(`Дата рождения: ${anketa.birthDate}.`);
     if (anketa?.birthCity) userContextParts.push(`Город рождения: ${anketa.birthCity}.`);
     if (anketa?.birthTime) userContextParts.push(`Время рождения: ${anketa.birthTime}.`);
-    if (mainChart) {
-      userContextParts.push('Натальная карта пользователя (основная, по анкете):');
-      userContextParts.push(buildChartSummary(mainChart));
+    if (activeChart) {
+      userContextParts.push(`Натальная карта пользователя (активная для текущего ответа: ${activeChart.name}):`);
+      userContextParts.push(buildChartSummary(activeChart));
     } else {
-      userContextParts.push('Основная натальная карта пользователя ещё не рассчитана.');
+      userContextParts.push('Натальная карта пользователя ещё не рассчитана.');
     }
     const userContext = userContextParts.join(' ');
 
@@ -297,7 +321,7 @@ export async function POST(request: NextRequest) {
     const isAtmakarakaQuery = /атмакарак|атма-карак|atmakaraka|atma karaka/i.test(message);
     // Для трактовки карты и вопросов о пользователе жёстко подтягиваем область "Как трактовать карту - 1 часть"
     let chartInterpretationChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
-    if (mainChart) {
+    if (activeChart) {
       chartInterpretationChunks = await getChunksFromSectionByName(CHART_INTERPRETATION_SECTION, message, 10);
       if (chartInterpretationChunks.length === 0) {
         chartInterpretationChunks = await getChunksFromSectionByName(CHART_INTERPRETATION_SECTION, 'натальная карта трактовка расшифровка', 10);
@@ -313,7 +337,7 @@ export async function POST(request: NextRequest) {
 
     // Технический safeguard: для вопросов по Атмакараке принудительно подтягиваем область "Интерпретация натальной карты"
     let atmakarakaChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
-    if (mainChart && isAtmakarakaQuery) {
+    if (activeChart && isAtmakarakaQuery) {
       atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, message, 10);
       if (atmakarakaChunks.length === 0) {
         atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, 'атмакарака расчет характеристика трактовка', 10);
@@ -345,7 +369,7 @@ export async function POST(request: NextRequest) {
 
     // Блок "Как трактовать карту - 1 часть" — единственный источник правил трактовки (всегда в начале, если есть карта)
     let chartInterpretationBlock = '';
-    if (mainChart && chartInterpretationChunks.length > 0) {
+    if (activeChart && chartInterpretationChunks.length > 0) {
       chartInterpretationBlock = '\n\n--- Как трактовать карту - 1 часть (ЕДИНСТВЕННЫЙ ИСТОЧНИК для трактовки и расшифровки натальной карты пользователя — используй ТОЛЬКО эти правила) ---\n';
       chartInterpretationChunks.forEach((chunk, index) => {
         chartInterpretationBlock += `\n[${index + 1}]\n${chunk.text}\n`;
@@ -354,7 +378,7 @@ export async function POST(request: NextRequest) {
     }
 
     let atmakarakaBlock = '';
-    if (mainChart && isAtmakarakaQuery && atmakarakaChunks.length > 0) {
+    if (activeChart && isAtmakarakaQuery && atmakarakaChunks.length > 0) {
       atmakarakaBlock = '\n\n--- Интерпретация натальной карты (ОБЯЗАТЕЛЬНО для вопросов по Атмакараке) ---\n';
       atmakarakaChunks.forEach((chunk, index) => {
         atmakarakaBlock += `\n[${index + 1}]\n${chunk.text}\n`;
@@ -378,11 +402,11 @@ export async function POST(request: NextRequest) {
     const personalityAlgoEnabled = await getPersonalityReadingAlgorithmEnabled();
     const runPersonalityAlgo =
       personalityAlgoEnabled &&
-      mainChart &&
+      activeChart &&
       shouldRunPersonalityReadingAlgorithm(message, userTurnsInTopic);
 
     let personalityReadingBlock = '';
-    if (runPersonalityAlgo && mainChart) {
+    if (runPersonalityAlgo && activeChart) {
       const alreadyUsedChunkTexts = new Set<string>();
       for (const ch of chartInterpretationChunks) {
         if (ch.text) alreadyUsedChunkTexts.add(ch.text);
@@ -395,7 +419,7 @@ export async function POST(request: NextRequest) {
       }
       personalityReadingBlock = await buildPersonalityReadingAlgorithmBlock({
         userMessage: message,
-        chart: mainChart,
+        chart: activeChart,
         userMessageCountInTopic: userTurnsInTopic,
         alreadyUsedChunkTexts,
       });
@@ -435,7 +459,7 @@ export async function POST(request: NextRequest) {
       console.log('AI answer metadata:', {
         userId,
         topicId: topic.id,
-        usedChart: !!mainChart,
+        usedChart: !!activeChart,
         isAtmakarakaQuery,
         chartInterpretationChunks: chartInterpretationChunks.length,
         atmakarakaChunks: atmakarakaChunks.length,

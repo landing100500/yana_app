@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
+const ACTIVE_CHART_STORAGE_KEY = 'active_natal_chart_id';
 
 interface NavamshaData {
   sun?: { longitude: number; sign: number; signName: string; degree: number };
@@ -79,6 +80,7 @@ export default function NatalChartPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingChartId, setDeletingChartId] = useState<number | null>(null);
   const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [activeChartId, setActiveChartId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -100,11 +102,17 @@ export default function NatalChartPage() {
 
       if (response.ok && data.charts) {
         setCharts(data.charts);
-        // Выбираем последнюю созданную карту
-        if (data.charts.length > 0 && !selectedChart) {
-          const firstAvailable = data.charts.find((c: ChartData) => !c.isFrozen) || data.charts[0];
-          setSelectedChart(firstAvailable);
-        }
+        const availableCharts = data.charts.filter((c: ChartData) => !c.isFrozen);
+        const storedRaw = typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_CHART_STORAGE_KEY) : null;
+        const storedId = storedRaw ? Number(storedRaw) : null;
+        const defaultChart =
+          (storedId && availableCharts.find((c: ChartData) => c.id === storedId))
+          || availableCharts.find((c: ChartData) => c.isMain)
+          || availableCharts[0]
+          || data.charts[0]
+          || null;
+        setSelectedChart(defaultChart);
+        setActiveChartId(defaultChart?.id ?? null);
       } else if (data.error) {
         setError(data.error);
       }
@@ -171,6 +179,15 @@ export default function NatalChartPage() {
       // Удаляем карту из списка
       setCharts(prev => {
         const remainingCharts = prev.filter(chart => chart.id !== chartId);
+        if (activeChartId === chartId) {
+          const nextActive = remainingCharts.find((c) => !c.isFrozen) || null;
+          setActiveChartId(nextActive?.id ?? null);
+          if (nextActive?.id) {
+            localStorage.setItem(ACTIVE_CHART_STORAGE_KEY, String(nextActive.id));
+          } else {
+            localStorage.removeItem(ACTIVE_CHART_STORAGE_KEY);
+          }
+        }
         
         // Если удаленная карта была выбрана, выбираем другую или очищаем выбор
         if (selectedChart?.id === chartId) {
@@ -271,12 +288,17 @@ export default function NatalChartPage() {
                   key={chart.id}
                   className={`${styles.chartListItem} ${selectedChart?.id === chart.id ? styles.selected : ''} ${chart.isFrozen ? styles.frozen : ''}`}
                   onClick={() => {
-                    if (!chart.isFrozen) setSelectedChart(chart);
+                    if (!chart.isFrozen) {
+                      setSelectedChart(chart);
+                      setActiveChartId(chart.id);
+                      localStorage.setItem(ACTIVE_CHART_STORAGE_KEY, String(chart.id));
+                    }
                   }}
                 >
                   <div className={styles.chartListItemContent}>
                     <div className={styles.chartListItemName}>{chart.name}</div>
                     {chart.isMain && <div className={styles.chartListItemDate}>Основная карта (по анкете)</div>}
+                    {activeChartId === chart.id && <div className={styles.chatActiveBadge}>Активна для ответов в чате</div>}
                     <div className={styles.chartListItemDate}>
                       {chart.chartDate} {chart.chartTime}
                     </div>

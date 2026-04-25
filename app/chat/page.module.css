@@ -24,6 +24,36 @@
   color: var(--dark-purple);
 }
 
+.mobilePlanTimerBadge {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .planTimerBadge {
+    display: none;
+  }
+
+  .mobilePlanTimerBadge {
+    display: flex;
+    width: fit-content;
+    margin: 0.35rem auto 0;
+    padding: 0.28rem 0.62rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--beige);
+    font-size: 0.73rem;
+    color: var(--dark-purple);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    max-width: calc(100vw - 2rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .sidebar {
   width: 280px;
   background: var(--white);
@@ -336,6 +366,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .header {
@@ -543,6 +574,69 @@
   margin-top: 0;
 }
 
+.activeChartFloatingBadge {
+  position: fixed;
+  top: 5.5rem;
+  right: 1rem;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.32rem 0.45rem;
+  background: rgba(253, 227, 120, 0.95);
+  border: 1px solid rgba(184, 138, 12, 0.45);
+  border-radius: 10px;
+  color: #5b4200;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  max-width: min(540px, calc(100% - 2rem));
+}
+
+.activeChartLabel {
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.activeChartSelect {
+  flex: 1;
+  min-width: 150px;
+  border: 1px solid rgba(184, 138, 12, 0.45);
+  background: var(--white);
+  color: #5b4200;
+  border-radius: 7px;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.74rem;
+}
+
+.activeChartClose {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #7a5a00;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.activeChartCollapsedButton {
+  position: fixed;
+  top: 5.5rem;
+  right: 1rem;
+  z-index: 1100;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(184, 138, 12, 0.5);
+  border-radius: 8px;
+  background: rgba(253, 227, 120, 0.96);
+  color: #6c4d00;
+  font-size: 1.05rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+
 .comparisonBanner {
   align-self: center;
   background: rgba(155, 143, 184, 0.12);
@@ -568,8 +662,37 @@
 
 @media (max-width: 768px) {
   .messages {
-    padding: 1rem;
+    padding: calc(2rem + 80px) 1rem 1rem;
     gap: 1rem;
+  }
+
+  .activeChartFloatingBadge {
+    left: 0.75rem;
+    right: 0.75rem;
+    top: 6.25rem;
+    max-width: none;
+    gap: 0.35rem;
+  }
+
+  .activeChartLabel {
+    font-size: 0.69rem;
+  }
+
+  .activeChartSelect {
+    min-width: 0;
+    font-size: 0.72rem;
+  }
+
+  .activeChartClose {
+    width: 20px;
+    height: 20px;
+  }
+
+  .activeChartCollapsedButton {
+    top: 6.25rem;
+    right: 0.75rem;
+    width: 32px;
+    height: 32px;
   }
 }
 
