@@ -296,7 +296,7 @@ export default function AdminUsersCharts() {
           <div className={styles.loading}>Загрузка карты...</div>
         ) : (
           <div className={styles.chartContainer}>
-            <NatalChartVisualization chart={selectedChart} />
+            <NatalChartVisualization chart={selectedChart} chartId={selectedChart.id} />
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './NatalChartVisualization.module.css';
 import VedicChartCanvas from './VedicChartCanvas';
 
@@ -26,6 +26,7 @@ interface ChartData {
   name?: string;
   chartDate?: string;
   chartTime?: string;
+  /** Город карты (подпись к поясу для транзитов) */
   chartCity?: string;
   sun: number;
   moon: number;
@@ -59,8 +60,31 @@ interface ChartData {
   dashas?: DashaData[];
 }
 
+interface TransitApiPlanet {
+  key: string;
+  label: string;
+  signName: string;
+  signIndex: number;
+  degreeInSign: number;
+  isRetrograde: boolean;
+  houseFromMoon: number;
+  houseFromAscendant: number;
+}
+
+interface TransitApiResponse {
+  date: string;
+  time: string;
+  timezone: number;
+  city: string;
+  julianDay: number;
+  transitLocalLabel: string;
+  planets: TransitApiPlanet[];
+}
+
 interface Props {
   chart: ChartData;
+  /** Нужен для расчёта транзитов на выбранную дату */
+  chartId?: number;
 }
 
 // Названия знаков в ведической астрологии (сидерический зодиак)
@@ -242,10 +266,51 @@ function getPlanetHouse(planetLongitude: number, houses: number[], ascendant: nu
 
 type TabType = 'general' | 'transits' | 'other' | 'yogas' | 'bala' | 'bhava-chalita' | 'periods' | 'tajaka' | 'rectification';
 
-export default function NatalChartVisualization({ chart }: Props) {
+function todayLocalYMD(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export default function NatalChartVisualization({ chart, chartId }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('general');
   const [selectedHouse, setSelectedHouse] = useState<number | null>(null);
   const [selectedChartType, setSelectedChartType] = useState<'D1' | 'D9'>('D1');
+  const [transitDate, setTransitDate] = useState(todayLocalYMD);
+  const [transitTime, setTransitTime] = useState('12:00');
+  const [transitLoading, setTransitLoading] = useState(false);
+  const [transitError, setTransitError] = useState<string | null>(null);
+  const [transitPayload, setTransitPayload] = useState<TransitApiResponse | null>(null);
+
+  const fetchTransits = useCallback(
+    async (d: string, t: string) => {
+      if (!chartId) return;
+      setTransitLoading(true);
+      setTransitError(null);
+      try {
+        const res = await fetch('/api/natal-chart/transits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ chartId, date: d, time: t }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Не удалось рассчитать транзиты');
+        setTransitPayload(data as TransitApiResponse);
+      } catch (e: unknown) {
+        setTransitPayload(null);
+        setTransitError(e instanceof Error ? e.message : 'Ошибка расчёта');
+      } finally {
+        setTransitLoading(false);
+      }
+    },
+    [chartId]
+  );
+
+  useEffect(() => {
+    if (activeTab === 'transits' && chartId) {
+      void fetchTransits(transitDate, transitTime);
+    }
+  }, [activeTab, chartId, transitDate, transitTime, fetchTransits]);
 
   const planets = useMemo(() => {
     const planetList = [
@@ -622,8 +687,88 @@ export default function NatalChartVisualization({ chart }: Props) {
 
         {activeTab === 'transits' && (
           <div className={styles.transitsTab}>
-            <p>Транзиты - в разработке</p>
-            <p>Здесь будет отображение транзитных планет для выбранной даты</p>
+            <p className={styles.transitsIntro}>
+              Позиции планет в сидерическом зодиаке (как в натале). Дома — целознаковые (whole sign) от{' '}
+              <strong>знака натальной Луны</strong> (в приоритете по смыслу) и от <strong>знака асцендента</strong>.
+              Время и пояс — как у карты ({chart.chartCity || 'город карты'}).
+            </p>
+            {!chartId ? (
+              <p className={styles.transitsWarning}>Нет ID карты — откройте раздел «Карта» из личного кабинета.</p>
+            ) : (
+              <>
+                <div className={styles.transitControls}>
+                  <label className={styles.transitLabel}>
+                    Дата
+                    <input
+                      type="date"
+                      className={styles.transitInput}
+                      value={transitDate}
+                      onChange={(e) => setTransitDate(e.target.value)}
+                    />
+                  </label>
+                  <label className={styles.transitLabel}>
+                    Время (местное)
+                    <input
+                      type="time"
+                      className={styles.transitInput}
+                      value={transitTime}
+                      onChange={(e) => setTransitTime(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={styles.transitRecalc}
+                    onClick={() => void fetchTransits(transitDate, transitTime)}
+                    disabled={transitLoading}
+                  >
+                    {transitLoading ? 'Считаем…' : 'Пересчитать'}
+                  </button>
+                </div>
+                {transitError && <div className={styles.transitError}>{transitError}</div>}
+                {transitPayload && !transitLoading && (
+                  <p className={styles.transitMeta}>
+                    {transitPayload.transitLocalLabel} · JD {transitPayload.julianDay.toFixed(5)}
+                  </p>
+                )}
+                {transitLoading && <p className={styles.transitLoading}>Расчёт эфемерид…</p>}
+                {transitPayload && (
+                  <div className={styles.tableWrapper}>
+                    <table className={styles.dataTable}>
+                      <thead>
+                        <tr>
+                          <th>Планета</th>
+                          <th>Знак</th>
+                          <th>° в знаке</th>
+                          <th>Дом от Луны</th>
+                          <th>Дом от асцендента</th>
+                          <th>Ретро</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {transitPayload.planets.map((p) => (
+                          <tr key={p.key}>
+                            <td>{p.label}</td>
+                            <td>{RASHI_SIGN_NAMES[p.signIndex] ?? p.signName}</td>
+                            <td>
+                              {`${Math.floor(p.degreeInSign)}°${String(
+                                Math.floor((p.degreeInSign % 1) * 60)
+                              ).padStart(2, '0')}'`}
+                            </td>
+                            <td>{p.houseFromMoon}</td>
+                            <td>{p.houseFromAscendant}</td>
+                            <td>{p.isRetrograde ? 'R' : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className={styles.transitsFootnote}>
+                  Любая дата: Swiss Ephemeris (сидерик и аянамша как в расчёте натала). Медленные планеты — без
+                  привязки к 2026; при необходимости сверяйте переходы по знакам с календарём.
+                </p>
+              </>
+            )}
           </div>
         )}
 

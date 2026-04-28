@@ -520,6 +520,87 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.transitsTab {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.transitsIntro {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  margin: 0 0 1rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.transitsFootnote {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin: 1rem 0 0;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.transitsWarning {
+  color: #e8b86d;
+  margin: 0;
+}
+
+.transitControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.transitLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.transitInput {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+}
+
+.transitRecalc {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(155, 143, 184, 0.45);
+  background: rgba(155, 143, 184, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.transitRecalc:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.transitError {
+  color: #f0a0a0;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.transitMeta {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 0.75rem;
+}
+
+.transitLoading {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
 /* Адаптивность */
 @media (max-width: 1200px) {
   .chartsRow {

@@ -343,7 +343,7 @@ export default function NatalChartPage() {
               </div>
             </div>
 
-            <NatalChartVisualization chart={selectedChart} />
+            <NatalChartVisualization chart={selectedChart} chartId={selectedChart.id} />
           </div>
         )}
       </div>
