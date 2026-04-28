@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF4C4"/>
+      <stop offset="45%" stop-color="#E8C547"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+    <linearGradient id="goldEdge" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B6914"/>
+      <stop offset="100%" stop-color="#C9A227"/>
+    </linearGradient>
+  </defs>
+  <!-- пятиконечная звезда: центр (16,16), внешний R≈12.8, внутренний r≈5.2 -->
+  <path
+    fill="url(#gold)"
+    stroke="url(#goldEdge)"
+    stroke-width="0.65"
+    stroke-linejoin="round"
+    d="M16 3.2 19.06 11.79 28.17 12.04 20.94 17.61 23.51 26.36 16 21.2 8.49 26.36 11.06 17.61 3.83 12.04 12.94 11.79 16 3.2z"
+  />
+</svg>
