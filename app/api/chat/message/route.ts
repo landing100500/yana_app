@@ -23,6 +23,7 @@ import {
 } from '@/lib/personality-reading-algorithm';
 import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
+import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/lib/transit-calculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,40 @@ const PREDICTION_SECTION = 'ПРЕДСКАЗАНИЕ';
 /** Вопросы, для которых принудительно подгружается область «ПРЕДСКАЗАНИЕ» (если раздел есть и подключён к агенту) */
 const PREDICTION_TOPIC_RX =
   /транзит|предсказ|прогноз|гочар|gochar|что\s+жд[её]т|что\s+меня\s+жд|что\s+будет|будущ(ее|его|ем|им)?|впереди|текущ(ий|ая|ее|ие)\s+(год|месяц|сезон|период)|ближайш|когда\s+лучше|ретроград|санкрант|солнцесто(яние|ни)|равноденств|затмен|полнолун|новолун|экадаш|какой\s+сейчас\s+период|ожидает|перспектив|астропрогноз/i;
+
+function parseTransitYearRange(message: string): { fromYear: number; toYear: number } | null {
+  const years: number[] = [];
+  const rx = /\b(20\d{2})\b/g;
+  let match = rx.exec(message);
+  while (match) {
+    const y = Number(match[1]);
+    if (y >= 1900 && y <= 2200) years.push(y);
+    match = rx.exec(message);
+  }
+  if (years.length === 0) return null;
+  const fromYear = Math.min(...years);
+  const toYear = Math.max(...years);
+  return { fromYear, toYear };
+}
+
+function inferTransitPlanets(message: string): string[] {
+  const m = message.toLowerCase();
+  const requested = new Set<string>();
+  if (/юпитер|jupiter/.test(m)) requested.add('jupiter');
+  if (/венер|venus/.test(m)) requested.add('venus');
+  if (/сатурн|saturn/.test(m)) requested.add('saturn');
+  if (/марс|mars/.test(m)) requested.add('mars');
+  if (/меркур|mercury/.test(m)) requested.add('mercury');
+  if (/солнц|sun/.test(m)) requested.add('sun');
+  if (/лун|moon/.test(m)) requested.add('moon');
+  if (/раху|узел|node/.test(m)) requested.add('northNode');
+  if (requested.size === 0) {
+    return ['jupiter', 'saturn', 'venus', 'northNode'];
+  }
+  if (!requested.has('jupiter')) requested.add('jupiter');
+  if (!requested.has('venus')) requested.add('venus');
+  return Array.from(requested);
+}
 
 const SYSTEM_PROMPT = `Ты умный агент по астропсихологии.
 
@@ -439,6 +474,64 @@ export async function POST(request: NextRequest) {
       predictionBlock += '\n--- Конец блока "ПРЕДСКАЗАНИЕ" ---\n';
     }
 
+    let computedTransitBlock = '';
+    if (activeChart && isPredictionQuery) {
+      try {
+        const now = new Date();
+        const tz = Number(activeChart.timezone);
+        const isValidTimezone = Number.isFinite(tz) ? tz : 0;
+        const inferredYears = parseTransitYearRange(message);
+        const fromYear = inferredYears ? Math.max(2000, inferredYears.fromYear) : now.getUTCFullYear();
+        const requestedToYear = inferredYears
+          ? Math.min(2100, Math.max(inferredYears.toYear, inferredYears.fromYear))
+          : Math.min(2100, fromYear + 1);
+        // Ограничиваем объём, чтобы не раздувать системный промпт
+        const toYear = Math.min(requestedToYear, fromYear + 2);
+        const planetsForTimeline = inferTransitPlanets(message);
+        const timeline = await calculateTransitIngressTimeline({
+          fromLocalDate: { year: fromYear, month: 1, day: 1 },
+          toLocalDate: { year: toYear, month: 12, day: 31 },
+          timezone: isValidTimezone,
+          planets: planetsForTimeline,
+        });
+        const nowTransit = await calculateTransitPositions({
+          transitMoment: {
+            year: now.getUTCFullYear(),
+            month: now.getUTCMonth() + 1,
+            day: now.getUTCDate(),
+            hour: now.getUTCHours(),
+            minute: now.getUTCMinutes(),
+            latitude: Number(activeChart.chartLatitude),
+            longitude: Number(activeChart.chartLongitude),
+            timezone: 0,
+          },
+          natalMoonLongitude: Number(activeChart.moon),
+          natalAscendantLongitude: Number(activeChart.ascendant),
+        });
+
+        const nowLine = nowTransit.planets
+          .filter((p) => planetsForTimeline.includes(p.key))
+          .map((p) => `${p.label}: ${p.signNameSidereal} ${p.degreeInSign.toFixed(2)}°${p.isRetrograde ? ' R' : ''}`)
+          .join('; ');
+
+        let block =
+          `\n\n--- РАСЧЁТНЫЕ ТРАНЗИТЫ (Swiss Ephemeris, сидерика; источник истины для дат входа планет в знаки) ---\n`
+          + `Диапазон расчёта: ${fromYear}-${toYear} (локальное время карты, UTC${isValidTimezone >= 0 ? '+' : ''}${isValidTimezone}).\n`
+          + `Срез "сейчас" (UTC): ${nowLine}\n`;
+        for (const row of timeline) {
+          block += `\n${row.label}:\n`;
+          for (const w of row.windows) {
+            block += `- ${w.from} -> ${w.to}: ${w.signNameSidereal}\n`;
+          }
+        }
+        block += 'Используй ТОЛЬКО эти даты для утверждений о транзитах и переходах по знакам.\n';
+        block += '--- Конец расчётных транзитов ---\n';
+        computedTransitBlock = block;
+      } catch (transitErr) {
+        console.error('Computed transit block error:', transitErr);
+      }
+    }
+
     // Остальная релевантная информация из областей памяти
     let contextText = '';
     if (relevantChunks.length > 0) {
@@ -494,6 +587,7 @@ export async function POST(request: NextRequest) {
         + (userContext ? `\n\n--- Данные пользователя и натальная карта (всегда смотри сюда для вопросов о пользователе; расшифровывай по правилам из блока ниже) ---\n${userContext}\n--- Конец данных пользователя ---` : '')
         + chartInterpretationBlock
         + predictionBlock
+        + computedTransitBlock
         + atmakarakaBlock
         + personalityReadingBlock
         + comparisonBlock
