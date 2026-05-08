@@ -76,6 +76,8 @@ export default function ChatPage() {
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const selectedChartIdRef = useRef<number | null>(null);
   const router = useRouter();
 
   const QUESTIONS_BATCH = 6;
@@ -414,7 +416,7 @@ export default function ChatPage() {
           message: userMessage.content,
           topicId: currentTopicId,
           comparisonMode: activeComparison,
-          selectedChartId: activeComparison ? undefined : selectedChartId,
+          selectedChartId: activeComparison ? undefined : selectedChartIdRef.current,
         }),
       });
 
@@ -525,7 +527,10 @@ export default function ChatPage() {
       const response = await fetch('/api/self-knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionNumber: questionIndex + 1 }),
+        body: JSON.stringify({
+          questionNumber: questionIndex + 1,
+          selectedChartId: selectedChartIdRef.current,
+        }),
       });
 
       if (!response.ok) {
@@ -625,7 +630,17 @@ export default function ChatPage() {
     if (selectedChartId) {
       localStorage.setItem(ACTIVE_CHART_STORAGE_KEY, String(selectedChartId));
     }
+    selectedChartIdRef.current = selectedChartId;
   }, [selectedChartId]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 176;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [input]);
 
   useEffect(() => {
     if (selectedChartId) {
@@ -874,7 +889,11 @@ export default function ChatPage() {
             <select
               className={styles.activeChartSelect}
               value={selectedChartId ?? ''}
-              onChange={(e) => setSelectedChartId(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => {
+                const nextChartId = e.target.value ? Number(e.target.value) : null;
+                selectedChartIdRef.current = nextChartId;
+                setSelectedChartId(nextChartId);
+              }}
             >
               {natalCharts.map((chart) => (
                 <option key={chart.id} value={chart.id}>
@@ -1053,8 +1072,8 @@ export default function ChatPage() {
         )}
         <form onSubmit={handleSend} className={styles.inputForm}>
           <div className={styles.inputRow}>
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onFocus={() => setInputFocused(true)}
@@ -1062,6 +1081,7 @@ export default function ChatPage() {
               placeholder="Задайте вопрос..."
               className={styles.input}
               disabled={isLoading}
+              rows={1}
             />
             <VoiceInputButton
               setInput={setInput}

@@ -28,6 +28,8 @@ import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/li
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
+const UPGRADE_TO_TARIFFS_TEXT =
+  'Перейдите на тариф Оптимальный или Профессиональный: /tariffs';
 
 const SIGN_NAMES = ['Меша', 'Вришабха', 'Митхуна', 'Карка', 'Симха', 'Канья', 'Тула', 'Вришчика', 'Дхану', 'Макара', 'Кумбха', 'Мина'];
 function longitudeToSignName(lon: number): string {
@@ -171,7 +173,7 @@ export async function POST(request: NextRequest) {
     const planBefore = getUserPlanSnapshot(currentUser);
     if (!planBefore.hasUnlimitedTime && (planBefore.remainingSeconds ?? 0) <= 0) {
       return NextResponse.json(
-        { error: 'Лимит времени по вашему тарифу исчерпан. Попробуйте позже или обновите тариф.' },
+        { error: `Лимит времени по вашему тарифу исчерпан. ${UPGRADE_TO_TARIFFS_TEXT}` },
         { status: 403 }
       );
     }
@@ -230,7 +232,7 @@ export async function POST(request: NextRequest) {
       const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
       if (frozenIds.has(activeChart.id)) {
         return NextResponse.json(
-          { error: 'Выбранная карта сейчас заморожена вашим тарифом. Выберите другую карту.' },
+          { error: `Выбранная карта сейчас заморожена вашим тарифом. ${UPGRADE_TO_TARIFFS_TEXT}` },
           { status: 403 }
         );
       }
@@ -256,7 +258,7 @@ export async function POST(request: NextRequest) {
     if (comparisonMode?.chartAId && comparisonMode?.chartBId) {
       if (!planBefore.chartComparison) {
         return NextResponse.json(
-          { error: 'Режим сравнения карт недоступен на вашем тарифе.' },
+          { error: `Режим сравнения карт недоступен на вашем тарифе. ${UPGRADE_TO_TARIFFS_TEXT}` },
           { status: 403 }
         );
       }
@@ -280,7 +282,7 @@ export async function POST(request: NextRequest) {
       const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
       if (frozenIds.has(chartA.id) || frozenIds.has(chartB.id)) {
         return NextResponse.json(
-          { error: 'Одна из выбранных карт сейчас заморожена вашим тарифом. Выберите доступные карты.' },
+          { error: `Одна из выбранных карт сейчас заморожена вашим тарифом. ${UPGRADE_TO_TARIFFS_TEXT}` },
           { status: 403 }
         );
       }
@@ -601,13 +603,35 @@ export async function POST(request: NextRequest) {
     // Отправляем запрос в OpenAI
     let response = '';
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-5-chat-latest', // Основная чат-модель 5‑го поколения для диалога
-        messages: messages as any,
-        max_completion_tokens: 1000,
-      });
+      const createCompletion = async (requestMessages: any[]) =>
+        openai.chat.completions.create({
+          model: 'gpt-5-chat-latest', // Основная чат-модель 5‑го поколения для диалога
+          messages: requestMessages,
+          max_completion_tokens: 1800,
+        });
 
-      response = completion.choices?.[0]?.message?.content || 'Извините, не удалось получить ответ.';
+      let completion;
+      try {
+        completion = await createCompletion(messages as any);
+      } catch {
+        // Иногда первая попытка падает транзиентно, повтор проходит.
+        completion = await createCompletion(messages as any);
+      }
+
+      response = completion.choices?.[0]?.message?.content || '';
+      const finishReason = completion.choices?.[0]?.finish_reason;
+      if (finishReason === 'length' && response) {
+        const continueCompletion = await createCompletion([
+          ...(messages as any),
+          { role: 'assistant', content: response },
+          { role: 'user', content: 'Продолжи ответ с места остановки, без повторов.' },
+        ]);
+        const continuation = continueCompletion.choices?.[0]?.message?.content || '';
+        if (continuation) response = `${response}\n\n${continuation}`.trim();
+      }
+      if (!response) {
+        response = 'Извините, не удалось получить ответ. Повторите запрос, пожалуйста.';
+      }
       console.log('AI answer metadata:', {
         userId,
         topicId: topic.id,

@@ -8,6 +8,7 @@ import UserAnketa from '@/models/UserAnketa';
 import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { normalizeRuPhoneDigits } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   try {
     await initDatabase();
 
-    const { code, email: rawEmail, resetPin } = await request.json();
+    const { code, email: rawEmail, phone: rawPhone, resetPin } = await request.json();
 
     if (!code || String(code).length !== 4) {
       return NextResponse.json({ error: 'Введите 4-значный код из письма' }, { status: 400 });
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
     const email = normalizeEmail(String(rawEmail || ''));
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Email не найден' }, { status: 400 });
+    }
+    const phone = normalizeRuPhoneDigits(String(rawPhone || ''));
+    if (!resetPin && !phone) {
+      return NextResponse.json({ error: 'Телефон обязателен и должен быть в формате РФ' }, { status: 400 });
     }
 
     const otp = await EmailOtp.findOne({ where: { email } });
@@ -86,7 +91,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!user) {
-      user = await User.create({ email });
+      const existingByPhone = await User.findOne({ where: { phone } });
+      if (existingByPhone) {
+        return NextResponse.json(
+          { error: 'Этот номер телефона уже используется. Войдите в существующий аккаунт.' },
+          { status: 409 }
+        );
+      }
+      user = await User.create({ email, phone: phone || null });
       await UserAnketa.create({
         userId: user.id,
         gender: null,
@@ -99,6 +111,16 @@ export async function POST(request: NextRequest) {
         hasMoved: null,
         lifeDifficulties: null,
       });
+    } else if (!resetPin && !user.phone && phone) {
+      const existingByPhone = await User.findOne({ where: { phone } });
+      if (existingByPhone && existingByPhone.id !== user.id) {
+        return NextResponse.json(
+          { error: 'Этот номер телефона уже используется другим аккаунтом.' },
+          { status: 409 }
+        );
+      }
+      user.set('phone', phone);
+      await user.save();
     }
 
     const hasPin = Boolean(user.password && user.password.length > 0);

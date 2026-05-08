@@ -194,21 +194,19 @@ export default function VoiceInputButton({ setInput, disabled, hidden }: Props) 
       title={listening ? 'Остановить запись' : 'Голосовой ввод'}
     >
       <div className={styles.micActivity} aria-hidden="true">
-        <div className={styles.micRadar} />
-        <div
-          className={styles.micHalo}
-          style={{
-            opacity: 0.25 + micLevel * 0.75,
-            transform: `translate(-50%, -50%) scale(${0.85 + micLevel * 0.35})`,
-          }}
-        />
-        <div
-          className={styles.micCore}
-          style={{
-            opacity: 0.15 + micLevel * 0.85,
-            transform: `translate(-50%, -50%) scale(${0.85 + micLevel * 0.25})`,
-          }}
-        />
+        <div className={styles.micEq}>
+          {[0, 1, 2, 3].map((idx) => (
+            <span
+              key={idx}
+              className={styles.micEqBar}
+              style={{
+                animationDelay: `${idx * 0.09}s`,
+                opacity: 0.35 + micLevel * 0.65,
+                transform: `scaleY(${0.45 + micLevel * (0.45 + idx * 0.06)})`,
+              }}
+            />
+          ))}
+        </div>
       </div>
       <svg
         width="18"

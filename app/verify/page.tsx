@@ -24,7 +24,7 @@ export default function VerifyPage() {
   }, []);
 
   useEffect(() => {
-    const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
+    const storedEmail = localStorage.getItem('tempEmail');
     if (!storedEmail) {
       router.push('/');
     }
@@ -52,7 +52,8 @@ export default function VerifyPage() {
   const handleResend = async (e: React.MouseEvent) => {
     e.preventDefault();
     setError('');
-    const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
+    const storedEmail = localStorage.getItem('tempEmail');
+    const storedPhone = localStorage.getItem('tempPhone');
     if (!storedEmail || resendBusy) return;
     setResendBusy(true);
     try {
@@ -61,7 +62,7 @@ export default function VerifyPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: storedEmail }),
+        body: JSON.stringify({ email: storedEmail, phone: storedPhone || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -86,22 +87,22 @@ export default function VerifyPage() {
 
     setIsLoading(true);
     try {
-      const storedEmail = localStorage.getItem('tempEmail') || localStorage.getItem('tempPhone');
-      if (!storedEmail) {
+      const storedEmail = localStorage.getItem('tempEmail');
+      const storedPhone = localStorage.getItem('tempPhone');
+      const resetPin = typeof window !== 'undefined' && sessionStorage.getItem('authResetPin') === '1';
+      if (!storedEmail || (!resetPin && !storedPhone)) {
         setError('Сессия истекла. Пожалуйста, начните заново.');
         setIsLoading(false);
         router.push('/');
         return;
       }
 
-      const resetPin = typeof window !== 'undefined' && sessionStorage.getItem('authResetPin') === '1';
-
       const response = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code: fullCode, email: storedEmail, resetPin }),
+        body: JSON.stringify({ code: fullCode, email: storedEmail, phone: storedPhone || undefined, resetPin }),
       });
 
       const data = await response.json();

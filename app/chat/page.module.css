@@ -1127,7 +1127,7 @@
   flex: 1;
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   min-width: 0;
 }
 
@@ -1140,8 +1140,8 @@
 .micButton {
   position: absolute;
   right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 0.5rem;
+  transform: none;
   width: 36px;
   height: 36px;
   display: flex;
@@ -1197,50 +1197,30 @@
   opacity: 1;
 }
 
-.micRadar {
-  position: absolute;
-  inset: -2px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 20deg,
-    rgba(255, 255, 255, 0) 0deg,
-    rgba(255, 255, 255, 0.9) 35deg,
-    rgba(255, 255, 255, 0) 80deg
-  );
-  filter: blur(0.2px) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
-  transform: rotate(0deg);
-  animation: micRadarSpin 0.9s linear infinite;
-  /* Show only a ring, not the full disk */
-  -webkit-mask: radial-gradient(circle, transparent 56%, black 58%);
-  mask: radial-gradient(circle, transparent 56%, black 58%);
-}
-
-@keyframes micRadarSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.micHalo {
+.micEq {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
 }
 
-.micCore {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #ffffff 0%, rgba(255, 255, 255, 0.6) 35%, rgba(212, 165, 165, 0.2) 70%);
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+.micEqBar {
+  width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  transform-origin: center bottom;
+  animation: micEqRun 0.7s ease-in-out infinite;
+}
+
+@keyframes micEqRun {
+  0%, 100% { transform: scaleY(0.35); }
+  40% { transform: scaleY(1); }
+  70% { transform: scaleY(0.55); }
 }
 
 .micIcon {
@@ -1304,6 +1284,12 @@
   color: var(--dark-gray);
   background: var(--light-beige);
   transition: all 0.3s ease;
+  resize: none;
+  line-height: 1.4;
+  min-height: 52px;
+  max-height: 176px;
+  overflow-y: hidden;
+  font-family: inherit;
 }
 
 .input:focus {

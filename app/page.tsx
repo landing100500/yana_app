@@ -4,10 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { applyRuPhoneMask, RU_PHONE_PLACEHOLDER } from '@/lib/phone-mask';
+import { normalizeRuPhoneDigits } from '@/lib/phone';
 import styles from './page.module.css';
 
 export default function Home() {
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -31,8 +34,13 @@ export default function Home() {
     setError('');
 
     const cleanEmail = normalizeEmail(email);
+    const normalizedPhone = normalizeRuPhoneDigits(phone);
     if (!isValidEmail(cleanEmail)) {
       setError('Введите корректный email');
+      return;
+    }
+    if (!normalizedPhone) {
+      setError('Введите телефон в формате +7 (999) 123-45-67');
       return;
     }
 
@@ -48,13 +56,14 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify({ email: cleanEmail, phone: normalizedPhone }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
         localStorage.setItem('tempEmail', cleanEmail);
+        localStorage.setItem('tempPhone', normalizedPhone);
         router.push('/verify');
       } else {
         setError(data.error || 'Произошла ошибка');
@@ -112,7 +121,7 @@ export default function Home() {
 
       <div className={styles.authCard}>
         <h1 className={styles.title}>Добро пожаловать</h1>
-        <p className={styles.subtitle}>Введите email для входа</p>
+        <p className={styles.subtitle}>Введите email и телефон для входа</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
@@ -126,6 +135,20 @@ export default function Home() {
               onChange={(e) => setEmail(e.target.value)}
               className={styles.input}
               aria-label="Email"
+            />
+          </div>
+
+          <div className={styles.inputGroup}>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              name="phone"
+              placeholder={RU_PHONE_PLACEHOLDER}
+              value={phone ?? ''}
+              onChange={(e) => setPhone(applyRuPhoneMask(e.target.value))}
+              className={styles.input}
+              aria-label="Телефон"
             />
           </div>
 
