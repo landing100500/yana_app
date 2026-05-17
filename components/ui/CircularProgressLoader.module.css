@@ -1,0 +1,57 @@
+.fullScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: linear-gradient(135deg, var(--light-beige) 0%, var(--beige) 100%);
+}
+
+.inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.inner {
+  position: relative;
+  width: 112px;
+  height: 112px;
+}
+
+.svg {
+  display: block;
+}
+
+.track {
+  stroke: rgba(155, 143, 184, 0.25);
+}
+
+.fill {
+  stroke: var(--purple);
+  transition: stroke-dashoffset 0.35s ease;
+}
+
+.percent {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--dark-gray);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--gray);
+}

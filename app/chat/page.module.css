@@ -545,6 +545,12 @@
   background: var(--light-beige);
 }
 
+.menuItemWithIcon {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .logoutButton {
   width: 100%;
   padding: 0.75rem 1.5rem;

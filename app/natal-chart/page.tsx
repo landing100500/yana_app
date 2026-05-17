@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
+import CircularProgressLoader from '@/components/ui/CircularProgressLoader';
+import { loadNatalChartPage, readNatalChartPageCache } from '@/lib/natal-chart-page-load';
 const ACTIVE_CHART_STORAGE_KEY = 'active_natal_chart_id';
 
 interface NavamshaData {
@@ -71,17 +73,28 @@ interface PlanInfo {
   chartComparison: boolean;
 }
 
+function getInitialNatalCache() {
+  if (typeof window === 'undefined') return null;
+  return readNatalChartPageCache();
+}
+
 export default function NatalChartPage() {
   const router = useRouter();
-  const [charts, setCharts] = useState<ChartData[]>([]);
-  const [selectedChart, setSelectedChart] = useState<ChartData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const initialCache = getInitialNatalCache();
+  const [charts, setCharts] = useState<ChartData[]>(
+    () => (initialCache?.charts as unknown as ChartData[]) ?? []
+  );
+  const [selectedChart, setSelectedChart] = useState<ChartData | null>(
+    () => (initialCache?.selectedChart as unknown as ChartData | null) ?? null
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialCache);
+  const [loadProgress, setLoadProgress] = useState(() => (initialCache ? 100 : 5));
   const [isCalculating, setIsCalculating] = useState(false);
   const [calculationProgress, setCalculationProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [deletingChartId, setDeletingChartId] = useState<number | null>(null);
-  const [plan, setPlan] = useState<PlanInfo | null>(null);
-  const [activeChartId, setActiveChartId] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PlanInfo | null>(initialCache?.plan ?? null);
+  const [activeChartId, setActiveChartId] = useState<number | null>(initialCache?.activeChartId ?? null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -91,41 +104,37 @@ export default function NatalChartPage() {
   });
 
   useEffect(() => {
-    loadCharts();
+    const hadCache = !!readNatalChartPageCache();
+    loadCharts({ silent: hadCache });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadCharts = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/natal-chart/calculate');
-      const data = await response.json();
+  const applyNatalResult = (result: Awaited<ReturnType<typeof loadNatalChartPage>>) => {
+    setCharts(result.charts as unknown as ChartData[]);
+    setSelectedChart((result.selectedChart as unknown as ChartData | null) ?? null);
+    setActiveChartId(result.activeChartId);
+    setPlan(result.plan);
+    if (result.error) setError(result.error);
+  };
 
-      if (response.ok && data.charts) {
-        setCharts(data.charts);
-        const availableCharts = data.charts.filter((c: ChartData) => !c.isFrozen);
-        const storedRaw = typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_CHART_STORAGE_KEY) : null;
-        const storedId = storedRaw ? Number(storedRaw) : null;
-        const defaultChart =
-          (storedId && availableCharts.find((c: ChartData) => c.id === storedId))
-          || availableCharts.find((c: ChartData) => c.isMain)
-          || availableCharts[0]
-          || data.charts[0]
-          || null;
-        setSelectedChart(defaultChart);
-        setActiveChartId(defaultChart?.id ?? null);
-      } else if (data.error) {
-        setError(data.error);
+  const loadCharts = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    try {
+      if (!silent) {
+        setIsLoading(true);
+        setLoadProgress(8);
       }
-      const profileRes = await fetch('/api/auth/profile', { credentials: 'include' });
-      const profileData = await profileRes.json().catch(() => ({}));
-      if (profileRes.ok && profileData?.plan) {
-        setPlan(profileData.plan);
+      const result = await loadNatalChartPage(
+        silent ? undefined : (p) => setLoadProgress(p)
+      );
+      applyNatalResult(result);
+    } catch (err: unknown) {
+      if (!silent) {
+        setError('Ошибка при загрузке натальных карт');
       }
-    } catch (err: any) {
-      setError('Ошибка при загрузке натальных карт');
       console.error(err);
     } finally {
+      setLoadProgress(100);
       setIsLoading(false);
     }
   };
@@ -148,7 +157,7 @@ export default function NatalChartPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Ошибка при создании карты');
-      await loadCharts();
+      await loadCharts({ silent: true });
       setCreateForm({ name: '', birthDate: '', birthTime: '', birthPlace: '' });
       setIsCreateModalOpen(false);
     } catch (err: any) {
@@ -206,11 +215,7 @@ export default function NatalChartPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loading}>Загрузка...</div>
-      </div>
-    );
+    return <CircularProgressLoader progress={loadProgress} label="Загрузка карт" />;
   }
 
   return (

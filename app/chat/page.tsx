@@ -4,9 +4,23 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { SupportMenuIcon } from '@/components/SupportContactPopup';
+import PlanTimerBadge from '@/components/chat/PlanTimerBadge';
+import CircularProgressLoader from '@/components/ui/CircularProgressLoader';
+import {
+  loadChatPageBootstrap,
+  readChatBootstrapCache,
+  type ChatBootstrapResult,
+} from '@/lib/chat-bootstrap';
+import {
+  clearSessionCaches,
+  isSessionAuthenticated,
+  markSessionAuthenticated,
+} from '@/lib/client-page-cache';
 import styles from './page.module.css';
 
 const VoiceInputButton = dynamic(() => import('./VoiceInputButton'), { ssr: false });
+const SupportContactPopup = dynamic(() => import('@/components/SupportContactPopup'), { ssr: false });
 const ACTIVE_CHART_STORAGE_KEY = 'active_natal_chart_id';
 
 interface Message {
@@ -51,27 +65,34 @@ interface NatalChartOption {
   isFrozen?: boolean;
 }
 
+function getInitialChatCache(): ChatBootstrapResult | null {
+  if (typeof window === 'undefined') return null;
+  return readChatBootstrapCache();
+}
+
 export default function ChatPage() {
+  const initialCache = getInitialChatCache();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [topics, setTopics] = useState<ChatTopic[]>([]);
+  const [topics, setTopics] = useState<ChatTopic[]>(initialCache?.topics ?? []);
   const [currentTopicId, setCurrentTopicId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+  const [isAuthChecked, setIsAuthChecked] = useState(() => isSessionAuthenticated());
+  const [isPageReady, setIsPageReady] = useState(() => !!initialCache);
+  const [loadProgress, setLoadProgress] = useState(() => (initialCache ? 100 : 5));
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(initialCache?.profile ?? null);
+  const [chatContext, setChatContext] = useState<ChatContext | null>(initialCache?.chatContext ?? null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [natalChartModal, setNatalChartModal] = useState<{ show: boolean; progress: number; phase: 'progress' | 'done' }>({ show: false, progress: 0, phase: 'progress' });
   const [questionsVisibleCount, setQuestionsVisibleCount] = useState(6);
   const [rotatingQuestionIndex, setRotatingQuestionIndex] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
-  const [nowTs, setNowTs] = useState<number>(Date.now());
   const [comparisonMode, setComparisonMode] = useState<{ chartAId: number; chartAName: string; chartBId: number; chartBName: string } | null>(null);
-  const [planRemainingSeconds, setPlanRemainingSeconds] = useState<number | null>(null);
-  const [natalCharts, setNatalCharts] = useState<NatalChartOption[]>([]);
-  const [selectedChartId, setSelectedChartId] = useState<number | null>(null);
+  const [natalCharts, setNatalCharts] = useState<NatalChartOption[]>(initialCache?.charts ?? []);
+  const [selectedChartId, setSelectedChartId] = useState<number | null>(initialCache?.selectedChartId ?? null);
   const [isChartBadgeCollapsed, setIsChartBadgeCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -121,6 +142,8 @@ export default function ChatPage() {
                 return;
               }
               
+              markSessionAuthenticated();
+              setLoadProgress(18);
               setIsAuthChecked(true);
               return;
             }
@@ -128,6 +151,7 @@ export default function ChatPage() {
             console.error('Failed to set backup token:', e);
           }
         }
+        clearSessionCaches();
         router.push('/');
         return;
       }
@@ -144,9 +168,12 @@ export default function ChatPage() {
         return;
       }
       
+      markSessionAuthenticated();
+      setLoadProgress(18);
       setIsAuthChecked(true);
     } catch (err) {
       console.error('Auth check error:', err);
+      clearSessionCaches();
       router.push('/');
     }
   }, [router]);
@@ -155,31 +182,56 @@ export default function ChatPage() {
     checkAuth();
   }, [checkAuth]);
 
-  useEffect(() => {
-    if (isAuthChecked) {
-      loadTopics();
-      loadUserProfile();
-      loadChatContext();
-      loadAvailableCharts();
-    }
-  }, [isAuthChecked]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTs(Date.now()), 1000);
-    return () => window.clearInterval(id);
+  const applyBootstrap = useCallback((data: ChatBootstrapResult) => {
+    setUserProfile(data.profile);
+    setChatContext(data.chatContext);
+    setTopics(data.topics);
+    setNatalCharts(data.charts);
+    setSelectedChartId(data.selectedChartId);
   }, []);
 
   useEffect(() => {
-    if (userProfile?.plan?.hasUnlimitedTime) return;
-    if (planRemainingSeconds === null) return;
-    const id = window.setInterval(() => {
-      setPlanRemainingSeconds((prev) => {
-        if (prev === null) return prev;
-        return prev > 0 ? prev - 1 : 0;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [userProfile?.plan?.hasUnlimitedTime, planRemainingSeconds]);
+    if (!isAuthChecked) return;
+
+    let cancelled = false;
+    const cached = readChatBootstrapCache();
+    const hadCache = !!cached;
+
+    if (cached) {
+      applyBootstrap(cached);
+      setLoadProgress(100);
+      setIsPageReady(true);
+    } else {
+      setIsPageReady(false);
+      setLoadProgress(20);
+    }
+
+    (async () => {
+      try {
+        const data = await loadChatPageBootstrap(
+          selectedChartIdRef.current,
+          hadCache
+            ? undefined
+            : (p) => {
+                if (!cancelled) setLoadProgress(20 + Math.round(p * 0.8));
+              }
+        );
+        if (cancelled) return;
+        applyBootstrap(data);
+      } catch (err) {
+        console.error('Chat bootstrap error', err);
+      } finally {
+        if (!cancelled) {
+          setLoadProgress(100);
+          setIsPageReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthChecked, applyBootstrap]);
 
   useEffect(() => {
     try {
@@ -199,7 +251,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  const loadChatContext = async () => {
+  const refreshChatContext = async () => {
     try {
       const res = await fetch('/api/chat/context', { credentials: 'include' });
       if (res.ok) {
@@ -215,7 +267,7 @@ export default function ChatPage() {
     }
   };
 
-  const loadAvailableCharts = async () => {
+  const refreshAvailableCharts = async () => {
     try {
       const res = await fetch('/api/natal-chart/calculate', { credentials: 'include' });
       if (!res.ok) return;
@@ -223,12 +275,10 @@ export default function ChatPage() {
       const allCharts: NatalChartOption[] = Array.isArray(data.charts) ? data.charts : [];
       const availableCharts = allCharts.filter((chart) => !chart.isFrozen);
       setNatalCharts(availableCharts);
-
       if (availableCharts.length === 0) {
         setSelectedChartId(null);
         return;
       }
-
       const storedRaw = localStorage.getItem(ACTIVE_CHART_STORAGE_KEY);
       const storedId = storedRaw ? Number(storedRaw) : null;
       const currentStillExists = selectedChartId && availableCharts.some((chart) => chart.id === selectedChartId);
@@ -309,13 +359,18 @@ export default function ChatPage() {
     };
   }, [isMenuOpen, isMobileMenuOpen]);
 
-  const loadUserProfile = async () => {
-    try {
-      let response = await fetch('/api/auth/profile', {
-        credentials: 'include',
-      });
+  useEffect(() => {
+    if (!isSupportOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSupportOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isSupportOpen]);
 
-      // Если сессия в cookie потерялась, восстанавливаем ее из backup-токена и повторяем запрос.
+  const refreshUserProfile = async () => {
+    try {
+      let response = await fetch('/api/auth/profile', { credentials: 'include' });
       if (response.status === 401) {
         const backupToken = localStorage.getItem('auth_token_backup');
         if (backupToken) {
@@ -325,23 +380,13 @@ export default function ChatPage() {
             body: JSON.stringify({ token: backupToken }),
             credentials: 'include',
           });
-
           if (restoreResponse.ok) {
-            response = await fetch('/api/auth/profile', {
-              credentials: 'include',
-            });
+            response = await fetch('/api/auth/profile', { credentials: 'include' });
           }
         }
       }
-
       if (response.ok) {
-        const data = await response.json();
-        setUserProfile(data);
-        if (data?.plan && !data.plan.hasUnlimitedTime) {
-          setPlanRemainingSeconds(typeof data.plan.remainingSeconds === 'number' ? data.plan.remainingSeconds : 0);
-        } else {
-          setPlanRemainingSeconds(null);
-        }
+        setUserProfile(await response.json());
       }
     } catch (err) {
       console.error('Failed to load user profile');
@@ -355,10 +400,12 @@ export default function ChatPage() {
         credentials: 'include',
       });
       localStorage.removeItem('auth_token_backup');
+      clearSessionCaches();
       router.push('/');
     } catch (err) {
       console.error('Logout error:', err);
       localStorage.removeItem('auth_token_backup');
+      clearSessionCaches();
       router.push('/');
     }
   };
@@ -437,7 +484,7 @@ export default function ChatPage() {
           setCurrentTopicId(data.topicId);
           loadTopics();
         }
-        loadUserProfile();
+        refreshUserProfile();
       } else {
         const errorText = data?.error || 'Произошла ошибка при отправке сообщения';
         const errorMessage: Message = {
@@ -610,22 +657,6 @@ export default function ChatPage() {
     }
   };
 
-  const formatTimer = () => {
-    const plan = userProfile?.plan;
-    if (!plan) return '';
-    if (plan.hasUnlimitedTime) {
-      if (plan.expiresAt) {
-        return `Доступ до ${new Date(plan.expiresAt).toLocaleDateString('ru-RU')}`;
-      }
-      return 'Безлимитный доступ';
-    }
-    const sec = Math.max(0, (planRemainingSeconds ?? plan.remainingSeconds ?? 0));
-    const hh = Math.floor(sec / 3600);
-    const mm = Math.floor((sec % 3600) / 60);
-    const ss = sec % 60;
-    return `Осталось: ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-  };
-
   useEffect(() => {
     if (selectedChartId) {
       localStorage.setItem(ACTIVE_CHART_STORAGE_KEY, String(selectedChartId));
@@ -648,26 +679,14 @@ export default function ChatPage() {
     }
   }, [selectedChartId]);
 
-  if (!isAuthChecked) {
-    return (
-      <div className={styles.loadingScreen}>
-        <div className={styles.loader}>
-          <div className={styles.loaderCircle}></div>
-          <div className={styles.loaderCircle}></div>
-          <div className={styles.loaderCircle}></div>
-        </div>
-      </div>
-    );
+  const showLoader = !isAuthChecked || !isPageReady;
+  if (showLoader) {
+    return <CircularProgressLoader progress={loadProgress} />;
   }
 
   return (
     <div className={styles.container}>
-      {userProfile?.plan && (
-        <div className={styles.planTimerBadge} key={`${userProfile.plan.code}-${nowTs}`}>
-          <strong>{userProfile.plan.title}</strong>
-          <span>{formatTimer()}</span>
-        </div>
-      )}
+      {userProfile?.plan && <PlanTimerBadge plan={userProfile.plan} />}
       {natalChartModal.show && (
         <div className={styles.modalOverlay}>
           <div className={styles.modalContent}>
@@ -686,8 +705,8 @@ export default function ChatPage() {
                   className={styles.modalCloseButton}
                   onClick={() => {
                     setNatalChartModal((m) => ({ ...m, show: false }));
-                    loadChatContext();
-                    loadAvailableCharts();
+                    refreshChatContext();
+                    refreshAvailableCharts();
                   }}
                 >
                   Продолжить
@@ -818,7 +837,7 @@ export default function ChatPage() {
                 <div className={styles.profileDropdown}>
                   <div className={styles.profileInfo}>
                     <div className={styles.profilePhone}>
-                      {userProfile?.email || 'Загрузка...'}
+                      {userProfile?.email ?? '—'}
                     </div>
                     {userProfile?.plan && (
                       <>
@@ -867,6 +886,17 @@ export default function ChatPage() {
                     </button>
                   )}
                   <button
+                    type="button"
+                    className={`${styles.menuItem} ${styles.menuItemWithIcon}`}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsSupportOpen(true);
+                    }}
+                  >
+                    <SupportMenuIcon />
+                    <span>Поддержка</span>
+                  </button>
+                  <button
                     className={styles.logoutButton}
                     onClick={handleLogout}
                   >
@@ -876,12 +906,7 @@ export default function ChatPage() {
               )}
             </div>
           </div>
-          {userProfile?.plan && (
-            <div className={styles.mobilePlanTimerBadge}>
-              <strong>{userProfile.plan.title}</strong>
-              <span>{formatTimer()}</span>
-            </div>
-          )}
+          {userProfile?.plan && <PlanTimerBadge plan={userProfile.plan} className="mobile" />}
         </header>
         {!comparisonMode && !isChartBadgeCollapsed && (
           <div className={styles.activeChartFloatingBadge}>
@@ -1105,6 +1130,8 @@ export default function ChatPage() {
           </button>
         </form>
       </main>
+
+      {isSupportOpen && <SupportContactPopup onClose={() => setIsSupportOpen(false)} />}
     </div>
   );
 }
