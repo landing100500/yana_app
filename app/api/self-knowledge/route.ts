@@ -9,6 +9,7 @@ import { ensureFreePlanWindow, getUserPlanSnapshot } from '@/lib/subscription';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
 import { getChunksFromSectionByName } from '@/lib/rag-search';
+import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
 
@@ -297,6 +298,13 @@ export async function POST(request: NextRequest) {
     };
 
     // Формируем массив вопросов с данными карты
+    const vimshottariBlock = formatVimshottariForPrompt({
+      moonLongitude: moon,
+      birthDate: lastChart.chartDate,
+      birthTime: lastChart.chartTime,
+      timezone: Number(lastChart.timezone) || 0,
+    });
+
     const questionsList = [
       `1. Кто я на самом деле, если убрать все роли, ожидания и страхи? (описание по Лагнеше - ${lagneSha}, знак асцендента: ${chartData.ascendant.sign}, накшатра: ${ascendantNakshatra})`,
       `2. Какой главный смысл моей жизни в этом воплощении? (смотрим по Раху в Д1: Раху в знаке ${chartData.planets.rahu.sign}, долгота: ${chartData.planets.rahu.longitude.toFixed(2)}° и Лунной карте: Луна в знаке ${chartData.planets.moon.sign}, долгота: ${chartData.planets.moon.longitude.toFixed(2)}°)`,
@@ -306,14 +314,14 @@ export async function POST(request: NextRequest) {
       `6. Какую главную ошибку я совершаю, пытаясь «быть не собой»? (Аматья карака: ${amatyakaraka.planet}, в знаке ${chartData.amatyakaraka.sign}, долгота: ${amatyakaraka.longitude.toFixed(2)}°)`,
       `7. Почему мне кажется, что я живу не на полную силу? (накшатра Марса: ${marsNakshatra}, Марс в знаке ${chartData.planets.mars.sign}, долгота: ${chartData.planets.mars.longitude.toFixed(2)}°)`,
       `8. Что моя душа давно пытается мне сказать, но я не слышу? (Атмакарака: ${atmakaraka.planet}, в знаке ${chartData.atmakaraka.sign})`,
-      `9. В каком жизненном периоде я нахожусь прямо сейчас? (Вимшоттари даша - требуется расчет на основе текущей даты и времени карты: ${lastChart.chartDate} ${lastChart.chartTime})`,
+      `9. В каком жизненном периоде я нахожусь прямо сейчас? (Вимшоттари: используй блок «Расчёт Вимшоттари» ниже — махадаша и антардаша на сегодня)`,
       `10. Для каких моих действий сейчас идеальное время? (Транзит Солнца по Лунной карте - требуется расчет транзитов на текущую дату)`,
-      `11. Почему сейчас так много сомнений / усталости / тревоги? (Период Сатурна - требуется расчет Вимшоттари даши)`,
+      `11. Почему сейчас так много сомнений / усталости / тревоги? (Сатурн в натальной карте отвечает за сомнения, усталость и тревогу — разбери его положение в D1: знак ${chartData.planets.saturn.sign}, долгота ${saturn.toFixed(2)}°; это НЕ «период Сатурна» в даше, даже если сейчас идёт даша Сатурна)`,
       `12. Что перестать делать, чтобы не идти против своей судьбы? (идти по Кету, а надо по Раху)`,
       `13. Какой урок я проживаю в этом году? (транзит Сатурна и Юпитера - требуется расчет транзитов на текущую дату)`,
       `14. Что в моей жизни сейчас завершает цикл? (транзиты по 12 дому в Лунной карте и в Д1 - требуется расчет транзитов)`,
       `15. Что, наоборот, только начинает раскрываться? (транзиты по 1 и 7 дому - требуется расчет транзитов)`,
-      `16. Почему мне кажется, что я в «застое», и правда ли это? (планета Вимшоттари Даши, период и подпериод - требуется расчет на основе текущей даты)`,
+      `16. Почему мне кажется, что я в «застое», и правда ли это? (махадаша и антардаша — из блока «Расчёт Вимшоттари» ниже)`,
       `17. Почему я снова притягиваю похожих партнёров? (смотрим на Даракараку — не проработана карма)`,
       `18. Какой тип партнёра мне действительно подходит по судьбе? (смотрим Марс-знак и дом, Солнце — знак и дом, Луна и Венера в Д1 и в Лунной карте)`,
       `19. С этим партнёром — это рост или откат? (нужны его данные рождения — делаем совместимость)`,
@@ -322,7 +330,7 @@ export async function POST(request: NextRequest) {
       ? [questionsList[questionNumber - 1]]
       : questionsList;
     const questions = questionsToAnswer.join('\n\n');
-    const requiresPredictionMemory = questionNumber === 9 || questionNumber === 10 || questionNumber === 11;
+    const requiresPredictionMemory = questionNumber === 9 || questionNumber === 10 || questionNumber === 11 || questionNumber === 16;
     const nextQuestionText =
       questionNumber !== null
         ? SELF_KNOWLEDGE_QUESTION_TITLES[questionNumber % SELF_KNOWLEDGE_QUESTION_TITLES.length]
@@ -380,12 +388,18 @@ export async function POST(request: NextRequest) {
 - Аматьякарака: ${amatyakaraka.planet} (${amatyakaraka.longitude.toFixed(2)}°) в знаке ${chartData.amatyakaraka.sign}
 - Дома: 1 дом (${chartData.houses.house1.toFixed(2)}°), 7 дом (${chartData.houses.house7.toFixed(2)}°), 12 дом (${chartData.houses.house12.toFixed(2)}°)
 
+--- Расчёт Вимшоттари (обязательно для вопросов 9 и 16; для 11 — только если упоминаешь текущий жизненный этап, не подменяя натальный Сатурн) ---
+${vimshottariBlock}
+--- Конец расчёта Вимшоттари ---
+
 Вопросы для анализа:
 ${questions}
 
 ${singleQuestionInstruction}
 
-Для вопросов про периоды и транзиты не уходи в отказ: делай ориентировочную трактовку по данным карты и текущему времени, явно помечая уровень точности как предварительный.
+Для вопросов про периоды и транзиты не уходи в отказ: опирайся на блок «Расчёт Вимшоттари» (махадаша/антардаша уже посчитаны), не выдумывай другие даты периодов.
+
+Для вопроса 11: главный фокус — натальный Сатурн (знак, дом, связи в карте). Не называй ответ «периодом Сатурна» и не строй объяснение вокруг Вимшоттари даши Сатурна.
 
 ${predictionMemoryBlock}
 

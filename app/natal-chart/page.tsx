@@ -30,6 +30,7 @@ interface ChartData {
   chartDate: string;
   chartTime: string;
   chartCity: string;
+  timezone?: number;
   sun: number;
   moon: number;
   mercury: number;

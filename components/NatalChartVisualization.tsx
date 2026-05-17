@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './NatalChartVisualization.module.css';
 import VedicChartCanvas from './VedicChartCanvas';
+import {
+  calculateMahadashas,
+  formatDashaDateLocal,
+  getActiveVimshottariDasha,
+  getMoonNakshatraMeta,
+} from '@/lib/vimshottari-dasha';
 
 interface NavamshaData {
   sun?: { longitude: number; sign: number; signName: string; degree: number };
@@ -28,6 +34,7 @@ interface ChartData {
   chartTime?: string;
   /** Город карты (подпись к поясу для транзитов) */
   chartCity?: string;
+  timezone?: number;
   sun: number;
   moon: number;
   mercury: number;
@@ -550,77 +557,118 @@ export default function NatalChartVisualization({ chart, chartId }: Props) {
 
   const houseInfo = getHouseInfo();
 
-              return (
+  const vimshottari = useMemo(() => {
+    if (!chart.chartDate || !chart.chartTime) return null;
+    const timezone = Number(chart.timezone) || 0;
+    const options = {
+      moonLongitude: chart.moon,
+      birthDate: chart.chartDate,
+      birthTime: chart.chartTime,
+      timezone,
+      cycles: 2,
+    };
+    return {
+      active: getActiveVimshottariDasha(options),
+      meta: getMoonNakshatraMeta(chart.moon),
+      mahadashas: calculateMahadashas(options),
+      todayLabel: formatDashaDateLocal(Date.now(), timezone),
+    };
+  }, [chart.moon, chart.chartDate, chart.chartTime, chart.timezone]);
+
+  return (
     <div className={styles.container}>
-      {/* Карта D1 и информация о доме */}
       <div className={styles.chartsRow}>
         {renderVedicChart('D1', 'D1 Раши')}
-        
-        {/* Информация о выбранном доме */}
-        {houseInfo ? (
-          <div className={styles.houseInfoPanel}>
-            <div className={styles.houseInfoTitle}>
-              Дом {houseInfo.houseNum} - {houseInfo.sign} ({houseInfo.signAbbr})
-                  </div>
-            <div className={styles.houseInfoContent}>
-              <div className={styles.houseInfoRow}>
-                <span className={styles.houseInfoLabel}>Куспид:</span>
-                <span className={styles.houseInfoValue}>{houseInfo.cusp}</span>
+
+        <div className={styles.houseInfoPanel}>
+          <div className={styles.houseInfoTitle}>Вимшоттари даша</div>
+          <div className={styles.houseInfoContent}>
+            {vimshottari?.active ? (
+              <>
+                <div className={styles.houseInfoRow}>
+                  <span className={styles.houseInfoLabel}>На {vimshottari.todayLabel}:</span>
+                  <span className={styles.houseInfoValue}>
+                    {vimshottari.active.mahadasha.planet} / {vimshottari.active.antardasha.planet}
+                  </span>
                 </div>
-              {houseInfo.planets.length > 0 ? (
-                <div className={styles.houseInfoPlanets}>
-                  <div className={styles.houseInfoLabel}>Планеты в доме:</div>
-                  {houseInfo.planets.map((planet, idx) => (
-                    <div key={idx} className={styles.houseInfoPlanet}>
-                      <span className={styles.planetName}>{planet.name}</span>
-                      <span className={styles.planetAbbrInfo}>({planet.abbreviation})</span>
-                      <span className={styles.planetDegreeInfo}>{planet.fullDegree}</span>
-                    </div>
-                  ))}
-                            </div>
-                      ) : (
-                <div className={styles.houseInfoEmpty}>В доме нет планет</div>
-                      )}
-                    </div>
+                <div className={styles.houseInfoRow}>
+                  <span className={styles.houseInfoLabel}>Махадаша:</span>
+                  <span className={styles.houseInfoValue}>
+                    {vimshottari.active.mahadasha.planet} ({vimshottari.active.mahadasha.startDate} — {vimshottari.active.mahadasha.endDate})
+                  </span>
+                </div>
+                <div className={styles.houseInfoRow}>
+                  <span className={styles.houseInfoLabel}>Антардаша:</span>
+                  <span className={styles.houseInfoValue}>
+                    {vimshottari.active.antardasha.planet} ({vimshottari.active.antardasha.startDate} — {vimshottari.active.antardasha.endDate})
+                  </span>
+                </div>
+                <div className={styles.houseInfoRow}>
+                  <span className={styles.houseInfoLabel}>Накшатра Луны:</span>
+                  <span className={styles.houseInfoValue}>{vimshottari.meta.moonNakshatra}</span>
+                </div>
+              </>
+            ) : (
+              <div className={styles.houseInfoEmpty}>Нет данных для расчёта периодов</div>
+            )}
+
+            {houseInfo ? (
+              <>
+                <div className={`${styles.houseInfoTitle} ${styles.houseInfoSubTitle}`}>
+                  Дом {houseInfo.houseNum} — {houseInfo.sign} ({houseInfo.signAbbr})
+                </div>
+                <div className={styles.houseInfoRow}>
+                  <span className={styles.houseInfoLabel}>Куспид:</span>
+                  <span className={styles.houseInfoValue}>{houseInfo.cusp}</span>
+                </div>
+                {houseInfo.planets.length > 0 ? (
+                  <div className={styles.houseInfoPlanets}>
+                    <div className={styles.houseInfoLabel}>Планеты в доме:</div>
+                    {houseInfo.planets.map((planet, idx) => (
+                      <div key={idx} className={styles.houseInfoPlanet}>
+                        <span className={styles.planetName}>{planet.name}</span>
+                        <span className={styles.planetAbbrInfo}>({planet.abbreviation})</span>
+                        <span className={styles.planetDegreeInfo}>{planet.fullDegree}</span>
+                      </div>
+                    ))}
                   </div>
-        ) : (
-          <div className={styles.houseInfoPanel}>
-            <div className={styles.houseInfoTitle}>Выберите дом на карте</div>
-            <div className={styles.houseInfoContent}>
-              <div className={styles.houseInfoEmpty}>Кликните на любой дом для просмотра информации</div>
+                ) : (
+                  <div className={styles.houseInfoEmpty}>В доме нет планет</div>
+                )}
+              </>
+            ) : (
+              <div className={styles.houseInfoEmpty}>Кликните на дом на карте — ниже появятся куспид и планеты</div>
+            )}
+
+            {vimshottari && vimshottari.mahadashas.length > 0 && (
+              <div className={styles.dashaCompactTable}>
+                <div className={styles.houseInfoLabel}>Махадаши (цикл):</div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Планета</th>
+                      <th>С</th>
+                      <th>По</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vimshottari.mahadashas.slice(0, 9).map((dasha, idx) => {
+                      const isActive = vimshottari.active?.mahadasha.startMs === dasha.startMs;
+                      return (
+                        <tr key={idx} className={isActive ? styles.dashaRowActive : undefined}>
+                          <td>{dasha.planet}</td>
+                          <td>{dasha.startDate}</td>
+                          <td>{dasha.endDate}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
-      )}
-        
-        {/* Вимшоттари даша справа */}
-          {chart.dashas && chart.dashas.length > 0 && (
-          <div className={styles.dashaPanel}>
-            <div className={styles.dashaTitle}>Вимшоттари даша</div>
-            <div className={styles.dashaTable}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Планета</th>
-                    <th>Начало</th>
-                    <th>Конец</th>
-                    <th>Длительность</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chart.dashas.slice(0, 9).map((dasha, idx) => (
-                    <tr key={idx}>
-                      <td>{dasha.planet}</td>
-                      <td>{dasha.startDate}</td>
-                      <td>{dasha.endDate}</td>
-                      <td>{dasha.duration}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          )}
-        </div>
+      </div>
 
       {/* Вкладки */}
       <div className={styles.tabsContainer}>

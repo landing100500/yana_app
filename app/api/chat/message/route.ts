@@ -24,6 +24,7 @@ import {
 import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/lib/transit-calculator';
+import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,12 +42,21 @@ function buildChartSummary(chart: NatalChart): string {
   const s = (lon: number) => longitudeToSignName(lon);
   const d = (lon: number) => `${(((lon % 360) + 360) % 360).toFixed(2)}°`;
   const inSignDegree = (lon: number) => `${((((lon % 360) + 360) % 360) % 30).toFixed(2)}°`;
+  const moonLon = Number(chart.moon);
+  const timezone = Number(chart.timezone) || 0;
+  const vimshottari = formatVimshottariForPrompt({
+    moonLongitude: moonLon,
+    birthDate: chart.chartDate,
+    birthTime: chart.chartTime,
+    timezone,
+  });
   return [
     `Дата и время: ${chart.chartDate} ${chart.chartTime}, место: ${chart.chartCity}.`,
     `Асцендент: ${s(chart.ascendant)} (${d(chart.ascendant)}).`,
     `Солнце: ${s(chart.sun)} (${d(chart.sun)}), Луна: ${s(chart.moon)} (${d(chart.moon)}), Меркурий: ${s(chart.mercury)} (${d(chart.mercury)}), Венера: ${s(chart.venus)} (${d(chart.venus)}), Марс: ${s(chart.mars)} (${d(chart.mars)}), Юпитер: ${s(chart.jupiter)} (${d(chart.jupiter)}), Сатурн: ${s(chart.saturn)} (${d(chart.saturn)}).`,
     `Раху: ${s(chart.northNode)} (${d(chart.northNode)}), Кету: ${s(chart.southNode)} (${d(chart.southNode)}).`,
     `Градусы планет внутри знака (для расчёта Атмакараки): Солнце ${inSignDegree(chart.sun)}, Луна ${inSignDegree(chart.moon)}, Меркурий ${inSignDegree(chart.mercury)}, Венера ${inSignDegree(chart.venus)}, Марс ${inSignDegree(chart.mars)}, Юпитер ${inSignDegree(chart.jupiter)}, Сатурн ${inSignDegree(chart.saturn)}.`,
+    vimshottari,
   ].join(' ');
 }
 

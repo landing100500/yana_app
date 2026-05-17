@@ -2,6 +2,15 @@
  * Расчет натальной карты с использованием Swiss Ephemeris
  * Используем динамический импорт для избежания проблем с webpack
  */
+import {
+  calculateMahadashas,
+  DASHA_LORDS,
+  NAKSHATRA_NAMES,
+  type DashaPeriod,
+} from '@/lib/vimshottari-dasha';
+
+export type { DashaPeriod };
+
 const path = require('path');
 
 async function getSwisseph() {
@@ -73,13 +82,6 @@ export interface NavamshaData {
   ascendant: PlanetPosition;
 }
 
-export interface DashaPeriod {
-  planet: string;
-  startDate: string;
-  endDate: string;
-  duration: string;
-}
-
 export interface NatalChartData {
   julianDay: number;
   siderealTime: number;
@@ -136,14 +138,7 @@ const SIGN_NAMES = [
   'Мина'       // Рыбы (Pisces)
 ];
 
-// Названия накшатр (27 лунных стоянок)
-const NAKSHATRA_NAMES = [
-  'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
-  'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
-  'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
-  'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
-  'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
-];
+// NAKSHATRA_NAMES импортирован из vimshottari-dasha (27 накшатр, включая Пурнавасу)
 
 function longitudeToSign(longitude: number): { sign: number; degree: number; signName: string } {
   // Нормализуем долготу в диапазон 0-360
@@ -378,17 +373,19 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
         // Определяем накшатру
         const nakshatraData = longitudeToNakshatra(longitude);
         
-        // Определяем управителя накшатры
-        // 27 накшатр, каждая управляется одной из 9 планет в цикле
-        // Порядок планет: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
-        const nakshatraRulers = [
-          0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
-          0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
-          0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26) - повторение цикла
-        ];
-        const rulerIndex = nakshatraRulers[nakshatraData.nakshatra % 27];
-        const rulerNames = ['Ке', 'Ve', 'Su', 'Mo', 'Ma', 'Ra', 'Ju', 'Sa', 'Me'];
-        const nakshatraRuler = rulerNames[rulerIndex];
+        const rulerIndex = nakshatraData.nakshatra % 9;
+        const rulerAbbr: Record<string, string> = {
+          Кету: 'Ке',
+          Венера: 'Ve',
+          Солнце: 'Su',
+          Луна: 'Mo',
+          Марс: 'Ma',
+          Раху: 'Ra',
+          Юпитер: 'Ju',
+          Сатурн: 'Sa',
+          Меркурий: 'Me',
+        };
+        const nakshatraRuler = rulerAbbr[DASHA_LORDS[rulerIndex]] || DASHA_LORDS[rulerIndex];
         
         return {
           longitude,
@@ -663,68 +660,15 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     venusFull.karaka = karakaMap['venus'];
     saturnFull.karaka = karakaMap['saturn'];
 
-    // Рассчитываем Вимшоттари даши
-    // Начало даши рассчитывается от положения Луны в накшатре
-    const moonLongitude = moonFull.longitude;
-    const moonNormalized = moonLongitude % 360;
-    const nakshatraIndex = Math.floor(moonNormalized / 13.333333);
-    const nakshatraDegree = moonNormalized % 13.333333;
-    
-    // Периоды Вимшоттари даши (в годах) в порядке: Кету, Венера, Солнце, Луна, Марс, Раху, Юпитер, Сатурн, Меркурий
-    const dashaPeriods = [7, 20, 6, 10, 7, 18, 16, 19, 17];
-    const dashaLords = ['Кету', 'Венера', 'Солнце', 'Луна', 'Марс', 'Раху', 'Юпитер', 'Сатурн', 'Меркурий'];
-    
-    // Определяем управителя накшатры и начальную дашу
-    // 27 накшатр, каждая управляется одной из 9 планет в цикле
-    // Порядок планет: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
-    const nakshatraRulers = [
-      0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
-      0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
-      0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26) - повторение цикла
-    ];
-    
-    const initialDashaIndex = nakshatraRulers[nakshatraIndex % 27];
-    const remainingInNakshatra = (13.333333 - nakshatraDegree) / 13.333333;
-    const initialDashaYears = dashaPeriods[initialDashaIndex] * remainingInNakshatra;
-    
-    // Рассчитываем даты даш от даты рождения
-    const dashas: DashaPeriod[] = [];
-    let currentDate = new Date(birthData.year, birthData.month - 1, birthData.day);
-    let dashaIndex = initialDashaIndex;
-    let remainingYears = initialDashaYears;
-    
-    // Первая даша (текущая)
-    const firstPlanet = dashaLords[dashaIndex];
-    const firstEndDate = new Date(currentDate);
-    firstEndDate.setFullYear(firstEndDate.getFullYear() + remainingYears);
-    
-    dashas.push({
-      planet: firstPlanet,
-      startDate: currentDate.toISOString().split('T')[0],
-      endDate: firstEndDate.toISOString().split('T')[0],
-      duration: `${remainingYears.toFixed(2)} лет`,
+    const chartDate = `${birthData.year}-${String(birthData.month).padStart(2, '0')}-${String(birthData.day).padStart(2, '0')}`;
+    const chartTime = `${String(birthData.hour).padStart(2, '0')}:${String(birthData.minute).padStart(2, '0')}`;
+    const dashas: DashaPeriod[] = calculateMahadashas({
+      moonLongitude: moonFull.longitude,
+      birthDate: chartDate,
+      birthTime: chartTime,
+      timezone: birthData.timezone,
+      cycles: 1,
     });
-    
-    // Следующие 8 даш
-    currentDate = firstEndDate;
-    dashaIndex = (dashaIndex + 1) % 9;
-    
-    for (let i = 0; i < 8; i++) {
-      const planet = dashaLords[dashaIndex];
-      const startDate = new Date(currentDate);
-      const endDate = new Date(currentDate);
-      endDate.setFullYear(endDate.getFullYear() + dashaPeriods[dashaIndex]);
-      
-      dashas.push({
-        planet,
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        duration: `${dashaPeriods[dashaIndex]} лет`,
-      });
-      
-      currentDate = endDate;
-      dashaIndex = (dashaIndex + 1) % 9;
-    }
 
     return {
       julianDay,
