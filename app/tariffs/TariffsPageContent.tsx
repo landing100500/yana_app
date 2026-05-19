@@ -1,0 +1,210 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import styles from './page.module.css';
+
+interface PlanSnapshot {
+  code: 'free' | 'optimal' | 'professional';
+  title: string;
+}
+
+type PaymentNotice = {
+  type: 'success' | 'pending' | 'error';
+  message: string;
+};
+
+export default function TariffsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [currentPlan, setCurrentPlan] = useState<PlanSnapshot | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
+  const pollRef = useRef<number | null>(null);
+
+  const loadProfile = useCallback(async () => {
+    const res = await fetch('/api/auth/profile', { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.plan) setCurrentPlan(data.plan);
+    return res.ok;
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    const paymentId = searchParams.get('payment');
+    if (!paymentId) return;
+
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const pollStatus = async () => {
+      attempts += 1;
+      const res = await fetch(`/api/payments/status?id=${encodeURIComponent(paymentId)}`, {
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setPaymentNotice({
+          type: 'error',
+          message: data?.error || 'Не удалось проверить статус оплаты',
+        });
+        router.replace('/tariffs');
+        return;
+      }
+
+      if (data.status === 'succeeded') {
+        if (data.plan) setCurrentPlan(data.plan);
+        setPaymentNotice({
+          type: 'success',
+          message: `Оплата прошла успешно. Активирован тариф «${data.plan?.title || ''}».`,
+        });
+        router.replace('/tariffs');
+        return;
+      }
+
+      if (data.status === 'canceled') {
+        setPaymentNotice({
+          type: 'error',
+          message: 'Оплата отменена. Тариф не изменён.',
+        });
+        router.replace('/tariffs');
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        setPaymentNotice({
+          type: 'pending',
+          message: 'Платёж ещё обрабатывается. Обновите страницу через минуту.',
+        });
+        router.replace('/tariffs');
+        return;
+      }
+
+      pollRef.current = window.setTimeout(pollStatus, 3000);
+    };
+
+    setPaymentNotice({
+      type: 'pending',
+      message: 'Проверяем статус оплаты...',
+    });
+    pollStatus();
+
+    return () => {
+      if (pollRef.current) window.clearTimeout(pollRef.current);
+    };
+  }, [router, searchParams]);
+
+  const handleSelectPlan = async (planCode: 'optimal' | 'professional') => {
+    setLoadingPlan(planCode);
+    setPaymentNotice(null);
+
+    try {
+      const res = await fetch('/api/payments/create', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planCode }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        router.push('/verify');
+        return;
+      }
+
+      if (!res.ok || !data?.confirmationUrl) {
+        setPaymentNotice({
+          type: 'error',
+          message: data?.error || 'Не удалось создать платёж',
+        });
+        return;
+      }
+
+      window.location.href = data.confirmationUrl;
+    } catch {
+      setPaymentNotice({
+        type: 'error',
+        message: 'Ошибка сети при создании платежа',
+      });
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const plans = [
+    {
+      code: 'free',
+      title: 'Бесплатный',
+      price: '0 ₽',
+      items: ['60 минут раз в 7 дней', 'Карты создавать нельзя', 'Сравнение карт недоступно'],
+    },
+    {
+      code: 'optimal',
+      title: 'Оптимальный',
+      price: '30 ₽',
+      items: ['Доступ 30 дней', 'Время не ограничено', 'Сравнение карт', 'До 5 карт'],
+    },
+    {
+      code: 'professional',
+      title: 'Профессиональный',
+      price: '60 ₽',
+      items: ['Доступ 180 дней', 'Время не ограничено', 'Сравнение карт', 'Карт без ограничений'],
+    },
+  ] as const;
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.inner}>
+        <button className={styles.backButton} onClick={() => router.push('/chat')}>← Назад</button>
+        <h1>Тарифы</h1>
+        <p className={styles.currentPlanLine}>
+          <span className={styles.currentPlanLabel}>Текущий тариф:</span>{' '}
+          <span className={styles.currentPlanValue}>{currentPlan?.title || '—'}</span>
+        </p>
+
+        {paymentNotice && (
+          <div
+            className={`${styles.notice} ${
+              paymentNotice.type === 'success'
+                ? styles.noticeSuccess
+                : paymentNotice.type === 'error'
+                  ? styles.noticeError
+                  : styles.noticePending
+            }`}
+          >
+            {paymentNotice.message}
+          </div>
+        )}
+
+        <div className={styles.grid}>
+          {plans.map((plan) => (
+            <div key={plan.code} className={styles.card}>
+              <h3>{plan.title}</h3>
+              <p className={styles.price}>{plan.price}</p>
+              <ul>
+                {plan.items.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+              {plan.code !== 'free' && (
+                <button
+                  className={styles.button}
+                  disabled={currentPlan?.code === plan.code || loadingPlan === plan.code}
+                  onClick={() => handleSelectPlan(plan.code)}
+                >
+                  {loadingPlan === plan.code
+                    ? 'Переход к оплате...'
+                    : currentPlan?.code === plan.code
+                      ? 'Текущий тариф'
+                      : 'Оплатить'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

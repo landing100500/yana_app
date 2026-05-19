@@ -13,6 +13,7 @@ import PhoneOtp from '@/models/PhoneOtp';
 import SmsSendLog from '@/models/SmsSendLog';
 import EmailOtp from '@/models/EmailOtp';
 import EmailSendLog from '@/models/EmailSendLog';
+import Payment from '@/models/Payment';
 import '@/models/AppSetting';
 
 async function ensureAuthSchema() {
