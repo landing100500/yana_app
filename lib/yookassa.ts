@@ -29,6 +29,7 @@ interface CreatePaymentInput {
   };
   description: string;
   metadata: Record<string, string>;
+  receipt?: Record<string, unknown>;
 }
 
 function getCredentials(): { shopId: string; secretKey: string } {

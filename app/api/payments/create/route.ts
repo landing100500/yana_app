@@ -4,6 +4,7 @@ import { initDatabase } from '@/lib/initDb';
 import { getAuthenticatedUserId } from '@/lib/auth-user';
 import { getAppBaseUrl } from '@/lib/app-url';
 import { createYookassaPayment, formatRubAmount } from '@/lib/yookassa';
+import { buildSubscriptionReceipt } from '@/lib/yookassa-receipt';
 import { getPlanConfig, PlanCode } from '@/lib/subscription';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
@@ -50,6 +51,25 @@ export async function POST(request: NextRequest) {
     });
 
     const returnUrl = `${getAppBaseUrl()}/tariffs?payment=${payment.id}`;
+
+    let receipt;
+    try {
+      receipt = buildSubscriptionReceipt({
+        planTitle: planConfig.title,
+        amountRub: planConfig.priceRub,
+        customer: {
+          email: user.email || undefined,
+          phone: user.phone || undefined,
+          full_name: user.name || undefined,
+        },
+      });
+    } catch (receiptError: any) {
+      return NextResponse.json(
+        { error: receiptError?.message || 'Не удалось сформировать чек для оплаты' },
+        { status: 400 }
+      );
+    }
+
     const yookassaPayment = await createYookassaPayment(
       {
         amount: {
@@ -67,6 +87,7 @@ export async function POST(request: NextRequest) {
           plan_code: planCode,
           payment_id: String(payment.id),
         },
+        receipt,
       },
       idempotenceKey
     );
