@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import SiteFooter from '@/components/SiteFooter';
+import Link from 'next/link';
 import styles from './page.module.css';
 
 interface PlanSnapshot {
@@ -204,7 +206,14 @@ export default function TariffsPageContent() {
             </div>
           ))}
         </div>
+
+        <p className={styles.offerNote}>
+          Нажимая «Оплатить», вы принимаете условия{' '}
+          <Link href="/offer">публичной оферты</Link>.
+        </p>
       </div>
+
+      <SiteFooter />
     </div>
   );
 }

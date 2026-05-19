@@ -8,7 +8,7 @@ import UserAnketa from '@/models/UserAnketa';
 import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
-import { normalizeRuPhoneDigits } from '@/lib/phone';
+import { normalizePhoneDigits, formatPhoneValidationError } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,9 +40,9 @@ export async function POST(request: NextRequest) {
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Email не найден' }, { status: 400 });
     }
-    const phone = normalizeRuPhoneDigits(String(rawPhone || ''));
+    const phone = normalizePhoneDigits(String(rawPhone || ''));
     if (!resetPin && !phone) {
-      return NextResponse.json({ error: 'Телефон обязателен и должен быть в формате РФ' }, { status: 400 });
+      return NextResponse.json({ error: formatPhoneValidationError() }, { status: 400 });
     }
 
     const otp = await EmailOtp.findOne({ where: { email } });

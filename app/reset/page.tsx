@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
 export default function ResetPage() {
@@ -129,6 +130,7 @@ export default function ResetPage() {
           <a href="/login" className={styles.link}>Вход по паролю</a>
         </div>
       </div>
+      <SiteFooter className={styles.siteFooter} />
     </div>
   );
 }

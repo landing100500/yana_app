@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
 export default function LoginPage() {
@@ -143,6 +144,7 @@ export default function LoginPage() {
           <a href="/reset" className={styles.link}>Забыли пароль?</a>
         </div>
       </div>
+      <SiteFooter className={styles.siteFooter} />
     </div>
   );
 }

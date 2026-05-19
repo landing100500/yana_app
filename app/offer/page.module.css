@@ -68,8 +68,15 @@
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: rgba(255, 255, 255, 0.95);
-  margin-bottom: 2rem;
+  margin-bottom: 0.75rem;
   text-align: center;
+}
+
+.subtitle {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
 }
 
 .section {
@@ -89,7 +96,7 @@
   font-size: 1rem;
   font-weight: 400;
   letter-spacing: -0.011em;
-  line-height: 1.5;
+  line-height: 1.6;
   color: rgba(255, 255, 255, 0.8);
   margin-bottom: 1rem;
 }
@@ -118,7 +125,7 @@
 }
 
 .backLink {
-  margin-top: 3rem;
+  margin-top: 2rem;
   text-align: center;
 }
 
@@ -134,16 +141,9 @@
   text-shadow: 0 0 10px rgba(155, 143, 184, 0.5);
 }
 
-.subtitle {
-  text-align: center;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.95rem;
-  margin-bottom: 2rem;
-}
-
 @media (max-width: 768px) {
   .container {
-    padding: 1rem;
+    padding: 1rem 1rem 0;
   }
 
   .content {
@@ -152,18 +152,9 @@
 
   .title {
     font-size: 1.5rem;
-    word-break: break-word;
-    hyphens: auto;
   }
 
   .sectionTitle {
     font-size: 1.2rem;
-    word-break: break-word;
-  }
-
-  .text {
-    word-break: break-word;
-    hyphens: auto;
   }
 }
-

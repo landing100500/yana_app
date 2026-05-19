@@ -1,0 +1,50 @@
+.footer {
+  position: relative;
+  z-index: 2;
+  margin-top: 2.5rem;
+  padding: 1.25rem 1rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.orgLine {
+  margin-bottom: 0.5rem;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.link {
+  color: rgba(155, 143, 184, 0.95);
+  transition: color 0.2s ease;
+}
+
+.link:hover {
+  color: rgba(212, 197, 232, 1);
+}
+
+.separator {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.copy {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+@media (max-width: 768px) {
+  .footer {
+    font-size: 0.78rem;
+    padding-bottom: 1.25rem;
+  }
+}

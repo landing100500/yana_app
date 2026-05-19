@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import SiteFooter from '@/components/SiteFooter';
 import styles from '../verify/page.module.css';
 
 export default function SetupPinPage() {
@@ -189,6 +190,7 @@ export default function SetupPinPage() {
           </button>
         </form>
       </div>
+      <SiteFooter className={styles.siteFooter} />
     </div>
   );
 }

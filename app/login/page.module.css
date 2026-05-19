@@ -1,9 +1,10 @@
 .container {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 2rem 2rem 0;
   background: linear-gradient(135deg, #1a1625 0%, #2d1f3d 50%, #1a1625 100%);
   position: relative;
   overflow: hidden;
@@ -217,6 +218,12 @@
 
 .separator {
   color: rgba(255, 255, 255, 0.4);
+}
+
+.siteFooter {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 1.5rem;
 }
 
 @media (max-width: 768px) {

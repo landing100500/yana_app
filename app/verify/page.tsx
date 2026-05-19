@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
 export default function VerifyPage() {
@@ -205,6 +206,7 @@ export default function VerifyPage() {
           </a>
         </p>
       </div>
+      <SiteFooter className={styles.siteFooter} />
     </div>
   );
 }

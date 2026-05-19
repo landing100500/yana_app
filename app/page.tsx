@@ -4,14 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
-import { applyRuPhoneMask, RU_PHONE_PLACEHOLDER } from '@/lib/phone-mask';
-import { normalizeRuPhoneDigits } from '@/lib/phone';
+import { normalizePhoneDigits, formatPhoneValidationError, PHONE_PLACEHOLDER } from '@/lib/phone';
+import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
 export default function Home() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  const [agreed, setAgreed] = useState(true);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [stars, setStars] = useState<Array<{ id: number; x: number; y: number; delay: number; duration: number }>>([]);
@@ -34,18 +34,18 @@ export default function Home() {
     setError('');
 
     const cleanEmail = normalizeEmail(email);
-    const normalizedPhone = normalizeRuPhoneDigits(phone);
+    const normalizedPhone = normalizePhoneDigits(phone);
     if (!isValidEmail(cleanEmail)) {
       setError('Введите корректный email');
       return;
     }
     if (!normalizedPhone) {
-      setError('Введите телефон в формате +7 (999) 123-45-67');
+      setError(formatPhoneValidationError());
       return;
     }
 
     if (!agreed) {
-      setError('Необходимо согласие с политикой конфиденциальности');
+      setError('Необходимо согласие с политикой конфиденциальности и публичной офертой');
       return;
     }
 
@@ -144,9 +144,9 @@ export default function Home() {
               inputMode="tel"
               autoComplete="tel"
               name="phone"
-              placeholder={RU_PHONE_PLACEHOLDER}
+              placeholder={PHONE_PLACEHOLDER}
               value={phone ?? ''}
-              onChange={(e) => setPhone(applyRuPhoneMask(e.target.value))}
+              onChange={(e) => setPhone(e.target.value)}
               className={styles.input}
               aria-label="Телефон"
             />
@@ -160,13 +160,18 @@ export default function Home() {
                 onChange={(e) => setAgreed(e.target.checked)}
                 className={styles.checkbox}
               />
-              <span>Я согласен с <a href="/privacy" target="_blank">политикой конфиденциальности</a></span>
+              <span>
+                Я согласен с{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer">политикой конфиденциальности</a>
+                {' '}и{' '}
+                <a href="/offer" target="_blank" rel="noopener noreferrer">публичной офертой</a>
+              </span>
             </label>
           </div>
 
           {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" className={styles.button} disabled={isLoading}>
+          <button type="submit" className={styles.button} disabled={isLoading || !agreed}>
             {isLoading ? (
               <span className={styles.buttonLoader}>
                 <span></span>
@@ -185,6 +190,8 @@ export default function Home() {
           <a href="/reset" className={styles.link}>Забыли пароль?</a>
         </div>
       </div>
+
+      <SiteFooter className={styles.siteFooter} />
     </div>
   );
 }
