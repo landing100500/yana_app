@@ -898,6 +898,48 @@ export default function ChatPage() {
                     <span>Поддержка</span>
                   </button>
                   <button
+                    type="button"
+                    className={`${styles.menuItem} ${styles.menuItemWithIcon}`}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      router.push('/install');
+                    }}
+                  >
+                    <svg
+                      className={styles.menuItemIconSvg}
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden
+                    >
+                      <rect
+                        x="6"
+                        y="2"
+                        width="12"
+                        height="20"
+                        rx="2"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                      />
+                      <path
+                        d="M10 19h4"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M12 6v6m0 0l-2-2m2 2l2-2"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <span>Установить на устройство</span>
+                  </button>
+                  <button
                     className={styles.logoutButton}
                     onClick={handleLogout}
                   >

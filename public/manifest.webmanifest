@@ -1,0 +1,32 @@
+{
+  "name": "ЯСНА — ИИ психолог-предсказатель",
+  "short_name": "ЯСНА",
+  "description": "Ясность и решение любой ситуации. Ведическая карта и поддержка.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF5ED",
+  "theme_color": "#7A6B9A",
+  "icons": [
+    {
+      "src": "/icons/yasna-app-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/yasna-app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/yasna-app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

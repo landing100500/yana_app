@@ -1,21 +1,39 @@
-import type { Metadata } from 'next'
-import './globals.css'
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
+import PwaServiceWorkerRegister from '@/components/PwaServiceWorkerRegister';
+
+export const viewport: Viewport = {
+  themeColor: '#7A6B9A',
+};
 
 export const metadata: Metadata = {
   title: 'ЯСНА - ИИ Психолог-предсказатель',
   description:
     'Ясность и решение любой ситуации, твои 60 минут в подарок. Ведическая карта + подсознание',
-}
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'ЯСНА',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: [{ url: '/icons/yasna-apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body>
+        <PwaServiceWorkerRegister />
+        {children}
+      </body>
     </html>
-  )
+  );
 }
 

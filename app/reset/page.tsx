@@ -130,7 +130,7 @@ export default function ResetPage() {
           <a href="/login" className={styles.link}>Вход по паролю</a>
         </div>
       </div>
-      <SiteFooter className={styles.siteFooter} />
+      <SiteFooter className={styles.siteFooter} showInstallLink />
     </div>
   );
 }

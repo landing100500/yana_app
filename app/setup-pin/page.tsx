@@ -190,7 +190,7 @@ export default function SetupPinPage() {
           </button>
         </form>
       </div>
-      <SiteFooter className={styles.siteFooter} />
+      <SiteFooter className={styles.siteFooter} showInstallLink />
     </div>
   );
 }

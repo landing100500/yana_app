@@ -144,7 +144,7 @@ export default function LoginPage() {
           <a href="/reset" className={styles.link}>Забыли пароль?</a>
         </div>
       </div>
-      <SiteFooter className={styles.siteFooter} />
+      <SiteFooter className={styles.siteFooter} showInstallLink />
     </div>
   );
 }

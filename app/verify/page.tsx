@@ -206,7 +206,7 @@ export default function VerifyPage() {
           </a>
         </p>
       </div>
-      <SiteFooter className={styles.siteFooter} />
+      <SiteFooter className={styles.siteFooter} showInstallLink />
     </div>
   );
 }

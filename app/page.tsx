@@ -191,7 +191,7 @@ export default function Home() {
         </div>
       </div>
 
-      <SiteFooter className={styles.siteFooter} />
+      <SiteFooter className={styles.siteFooter} showInstallLink />
     </div>
   );
 }

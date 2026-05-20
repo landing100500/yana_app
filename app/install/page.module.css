@@ -1,0 +1,129 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.75rem 1.25rem 2rem;
+  background: linear-gradient(135deg, #1a1625 0%, #2d1f3d 50%, #1a1625 100%);
+  color: rgba(255, 255, 255, 0.92);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.back {
+  align-self: flex-start;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: rgba(155, 143, 184, 0.95);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.back:hover {
+  color: rgba(212, 197, 232, 1);
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 1.35rem 1.35rem 1.5rem;
+}
+
+.title {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin: 0 0 1.1rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.iconWrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.icon {
+  border-radius: 22%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.installBtn {
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(155, 143, 184, 0.95), rgba(122, 107, 154, 0.98));
+  color: #fff;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.installBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.installBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.osBadge {
+  display: inline-block;
+  margin-bottom: 0.65rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(212, 197, 232, 0.95);
+  background: rgba(155, 143, 184, 0.2);
+}
+
+.stepsTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.steps li {
+  margin-bottom: 0.45rem;
+}
+
+.hint {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.origin {
+  word-break: break-all;
+  color: rgba(212, 197, 232, 0.9);
+}

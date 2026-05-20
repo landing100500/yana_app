@@ -4,9 +4,10 @@ import styles from './SiteFooter.module.css';
 
 type SiteFooterProps = {
   className?: string;
+  showInstallLink?: boolean;
 };
 
-export default function SiteFooter({ className }: SiteFooterProps) {
+export default function SiteFooter({ className, showInstallLink = false }: SiteFooterProps) {
   const year = new Date().getFullYear();
 
   return (
@@ -33,6 +34,16 @@ export default function SiteFooter({ className }: SiteFooterProps) {
         <Link href="/tariffs" className={styles.link}>
           Тарифы
         </Link>
+        {showInstallLink && (
+          <>
+            <span className={styles.separator} aria-hidden="true">
+              ·
+            </span>
+            <Link href="/install" className={styles.link}>
+              Установить на устройство
+            </Link>
+          </>
+        )}
       </nav>
       <div className={styles.copy}>
         © {year} {LEGAL_ENTITY.siteName}
