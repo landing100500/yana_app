@@ -33,7 +33,7 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
   hours24: {
     code: 'hours24',
     title: '24 часа',
-    priceRub: 10, // TODO: вернуть 900 после теста
+    priceRub: 900,
     durationDays: 1,
     maxCharts: 0,
     chartComparison: false,
@@ -43,7 +43,7 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
   optimal: {
     code: 'optimal',
     title: 'Оптимальный',
-    priceRub: 30, // TODO: вернуть 9900 после теста
+    priceRub: 9900,
     durationDays: 30,
     maxCharts: 5,
     chartComparison: true,
@@ -52,7 +52,7 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
   professional: {
     code: 'professional',
     title: 'Профессиональный',
-    priceRub: 60, // TODO: вернуть 49000 после теста
+    priceRub: 49000,
     durationDays: 180,
     maxCharts: null,
     chartComparison: true,
