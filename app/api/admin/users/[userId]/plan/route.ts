@@ -29,7 +29,7 @@ export async function PUT(
 
     const body = await request.json();
     const requestedCode = String(body?.planCode || '').toLowerCase();
-    if (!['free', 'optimal', 'professional'].includes(requestedCode)) {
+    if (!['free', 'hours24', 'optimal', 'professional'].includes(requestedCode)) {
       return NextResponse.json({ error: 'Неверный тариф' }, { status: 400 });
     }
 
@@ -46,6 +46,8 @@ export async function PUT(
     if (planCode === 'free') {
       (user as any).freeWindowStartedAt = new Date();
       (user as any).freeMinutesUsed = 0;
+    } else if (planCode === 'hours24') {
+      (user as any).freeWindowStartedAt = null;
     }
     await user.save();
 

@@ -11,7 +11,7 @@ import User from '@/models/User';
 
 export const dynamic = 'force-dynamic';
 
-const PAID_PLANS: PlanCode[] = ['optimal', 'professional'];
+const PAID_PLANS: PlanCode[] = ['hours24', 'optimal', 'professional'];
 
 export async function POST(request: NextRequest) {
   try {

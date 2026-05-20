@@ -6,7 +6,7 @@
 }
 
 .inner {
-  max-width: 980px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -26,6 +26,59 @@
   gap: 1rem;
 }
 
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: calc(1rem + 20px);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card li {
+  position: relative;
+  padding-left: 0.85rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.card li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: rgba(155, 143, 184, 0.9);
+}
+
+.price {
+  font-weight: 700;
+  font-size: 1.2rem;
+  margin: 0.25rem 0 0.6rem 0;
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  color: var(--white);
+  cursor: pointer;
+  margin-top: 120px;
+}
+
 .currentPlanLine {
   margin: 0 0 1.25rem 0;
 }
@@ -38,29 +91,6 @@
 .currentPlanValue {
   color: #f2b6cf;
   font-weight: 700;
-}
-
-.card {
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: calc(1rem + 20px);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.price {
-  font-weight: 700;
-  font-size: 1.2rem;
-  margin: 0.25rem 0 0.75rem 0;
-}
-
-.button {
-  border: none;
-  border-radius: 10px;
-  padding: 0.6rem 0.9rem;
-  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
-  color: var(--white);
-  cursor: pointer;
-  margin-top: 40px;
 }
 
 .button:disabled {
@@ -103,6 +133,37 @@
 
 .offerNote a:hover {
   color: rgba(212, 197, 232, 1);
+}
+
+@media (min-width: 1024px) {
+  .inner {
+    max-width: 920px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .card {
+    padding: 0.85rem 0.65rem;
+  }
+
+  .card h3 {
+    font-size: 1.05rem;
+  }
+
+  .card li {
+    font-size: 0.84rem;
+  }
+
+  .price {
+    font-size: 1.15rem;
+  }
+
+  .button {
+    font-size: 0.88rem;
+  }
 }
 
 @media (max-width: 768px) {

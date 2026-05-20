@@ -1,6 +1,8 @@
 import User from '@/models/User';
 
-export type PlanCode = 'free' | 'optimal' | 'professional';
+export type PlanCode = 'free' | 'hours24' | 'optimal' | 'professional';
+
+export const FREE_PROMO_MONTHS = 4;
 
 export interface PlanConfig {
   code: PlanCode;
@@ -10,6 +12,8 @@ export interface PlanConfig {
   maxCharts: number | null;
   chartComparison: boolean;
   hasUnlimitedTime: boolean;
+  /** Минуты сессии от planAssignedAt (тариф «24 часа»). */
+  sessionMinutesFromPlanStart?: number;
   freeMinutesPerWindow?: number;
   freeWindowDays?: number;
 }
@@ -25,6 +29,16 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
     hasUnlimitedTime: false,
     freeMinutesPerWindow: 60,
     freeWindowDays: 7,
+  },
+  hours24: {
+    code: 'hours24',
+    title: '24 часа',
+    priceRub: 10, // TODO: вернуть 900 после теста
+    durationDays: 1,
+    maxCharts: 0,
+    chartComparison: false,
+    hasUnlimitedTime: false,
+    sessionMinutesFromPlanStart: 24 * 60,
   },
   optimal: {
     code: 'optimal',
@@ -71,7 +85,9 @@ function nowMs(): number {
 }
 
 function normalizePlanCode(value: unknown): PlanCode {
-  if (value === 'optimal' || value === 'professional' || value === 'free') return value;
+  if (value === 'hours24' || value === 'optimal' || value === 'professional' || value === 'free') {
+    return value;
+  }
   return 'free';
 }
 
@@ -95,20 +111,27 @@ export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
   const activeCode: PlanCode = isExpired ? 'free' : code;
   const activeConfig = getPlanConfig(activeCode);
   const freeWindowStartedAt = getDate((user as any).freeWindowStartedAt);
+  const planAssignedAt = getDate((user as any).planAssignedAt);
   let remainingSeconds: number | null = null;
   let freeWindowEndsAt: string | null = null;
 
-  if (!activeConfig.hasUnlimitedTime && activeConfig.freeMinutesPerWindow && activeConfig.freeWindowDays) {
-    const cycleMs = activeConfig.freeWindowDays * 24 * 60 * 60 * 1000;
-    const sessionMs = activeConfig.freeMinutesPerWindow * 60 * 1000;
-    const startedAtMs = freeWindowStartedAt?.getTime() ?? nowMs();
-    const elapsed = nowMs() - startedAtMs;
-    if (elapsed <= sessionMs) {
+  if (!activeConfig.hasUnlimitedTime) {
+    if (activeConfig.sessionMinutesFromPlanStart && planAssignedAt) {
+      const sessionMs = activeConfig.sessionMinutesFromPlanStart * 60 * 1000;
+      const elapsed = nowMs() - planAssignedAt.getTime();
       remainingSeconds = Math.max(0, Math.floor((sessionMs - Math.max(0, elapsed)) / 1000));
-    } else {
-      remainingSeconds = 0;
+    } else if (activeConfig.freeMinutesPerWindow && activeConfig.freeWindowDays) {
+      const cycleMs = activeConfig.freeWindowDays * 24 * 60 * 60 * 1000;
+      const sessionMs = activeConfig.freeMinutesPerWindow * 60 * 1000;
+      const startedAtMs = freeWindowStartedAt?.getTime() ?? nowMs();
+      const elapsed = nowMs() - startedAtMs;
+      if (elapsed <= sessionMs) {
+        remainingSeconds = Math.max(0, Math.floor((sessionMs - Math.max(0, elapsed)) / 1000));
+      } else {
+        remainingSeconds = 0;
+      }
+      freeWindowEndsAt = new Date(startedAtMs + cycleMs).toISOString();
     }
-    freeWindowEndsAt = new Date(startedAtMs + cycleMs).toISOString();
   }
 
   return {
@@ -166,7 +189,7 @@ export function getFrozenChartIdsForPlan(planCodeLike: unknown, charts: ChartLik
     });
 
   if (planCode === 'professional') return new Set<number>();
-  if (planCode === 'free') return new Set(nonMain.map((c) => c.id));
+  if (planCode === 'free' || planCode === 'hours24') return new Set(nonMain.map((c) => c.id));
 
   const allowedIds = new Set(nonMain.slice(0, 5).map((c) => c.id));
   const frozen = new Set<number>();

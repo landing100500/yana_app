@@ -1075,6 +1075,17 @@
   color: var(--dark-gray);
 }
 
+.messageContent :global(.chatInlineLink) {
+  color: var(--purple);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.messageContent :global(.chatInlineLink:hover) {
+  color: var(--dark-purple);
+}
+
 .messageContent strong {
   font-weight: 600;
   color: var(--dark-purple);

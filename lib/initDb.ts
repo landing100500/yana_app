@@ -68,6 +68,19 @@ async function ensureAuthSchema() {
         defaultValue: 0,
       });
     }
+    if (!usersTable.reminderLastSentAt) {
+      await queryInterface.addColumn('users', 'reminderLastSentAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!usersTable.reminderDayIndex) {
+      await queryInterface.addColumn('users', 'reminderDayIndex', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0,
+      });
+    }
   } catch (error) {
     console.error('Failed to ensure auth schema:', error);
     throw error;

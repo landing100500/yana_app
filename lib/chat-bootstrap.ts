@@ -7,7 +7,7 @@ export type BootstrapProfile = {
   email: string | null;
   name?: string;
   plan?: {
-    code: 'free' | 'optimal' | 'professional';
+    code: 'free' | 'hours24' | 'optimal' | 'professional';
     title: string;
     expiresAt: string | null;
     hasUnlimitedTime: boolean;

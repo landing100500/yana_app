@@ -5,7 +5,8 @@ import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 import { openai } from '@/lib/openai';
-import { ensureFreePlanWindow, getUserPlanSnapshot } from '@/lib/subscription';
+import { ensureFreePlanWindow } from '@/lib/subscription';
+import { getChatBlockState } from '@/lib/plan-access';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
 import { getChunksFromSectionByName } from '@/lib/rag-search';
@@ -16,9 +17,6 @@ export const dynamic = 'force-dynamic';
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 const SYSTEM_PROMPT = 'Ты умный агент по астропсихологии';
 const PREDICTION_SECTION = 'ПРЕДСКАЗАНИЕ';
-const UPGRADE_TO_TARIFFS_TEXT =
-  'Чтобы получить расширенный разбор и больше аналитики, перейдите на тариф Оптимальный или Профессиональный: /tariffs';
-
 async function getUserId(request: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get('auth_token')?.value;
@@ -152,12 +150,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
     await ensureFreePlanWindow(currentUser);
-    const planBefore = getUserPlanSnapshot(currentUser);
-    if (!planBefore.hasUnlimitedTime && (planBefore.remainingSeconds ?? 0) <= 0) {
-      return NextResponse.json(
-        { error: `Лимит времени по вашему тарифу исчерпан. ${UPGRADE_TO_TARIFFS_TEXT}` },
-        { status: 403 }
-      );
+    const blockState = await getChatBlockState(currentUser);
+    if (blockState.blocked) {
+      return NextResponse.json({ error: blockState.message, planBlocked: true }, { status: 403 });
     }
 
     // Опционально: ответить только на один вопрос (1–19)
@@ -404,7 +399,7 @@ ${singleQuestionInstruction}
 ${predictionMemoryBlock}
 
 Если пользователь на бесплатном тарифе и уместно дать расширенный доп.разбор (совместимость карт, более глубокие сценарии, альтернативные ветки), кратко добавь в конце:
-"Чтобы получить расширенный разбор, перейдите на тариф Оптимальный или Профессиональный: /tariffs".
+"Чтобы получить расширенный разбор, предложи перейти к тарифам: [Тарифы](/tariffs)".
 `;
 
     // Создаем потоковый ответ

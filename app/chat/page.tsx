@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { SupportMenuIcon } from '@/components/SupportContactPopup';
 import PlanTimerBadge from '@/components/chat/PlanTimerBadge';
+import MessageParagraphs from '@/components/chat/MessageParagraphs';
 import CircularProgressLoader from '@/components/ui/CircularProgressLoader';
 import {
   loadChatPageBootstrap,
@@ -40,7 +41,7 @@ interface UserProfile {
   email: string | null;
   name?: string;
   plan?: {
-    code: 'free' | 'optimal' | 'professional';
+    code: 'free' | 'hours24' | 'optimal' | 'professional';
     title: string;
     expiresAt: string | null;
     hasUnlimitedTime: boolean;
@@ -1012,61 +1013,10 @@ export default function ChatPage() {
                 className={`${styles.message} ${styles[message.role]}`}
               >
                 <div className={styles.messageContent}>
-                  {message.content.split(/\n\n+/).map((paragraph, idx) => {
-                    let trimmed = paragraph.trim();
-                    if (!trimmed) return null;
-
-                    // h3-заголовки вида "### Текст" — убираем ###, поддерживаем **жирный**
-                    const isH3 = /^#{3}\s+/.test(trimmed);
-                    if (isH3) {
-                      const html = trimmed
-                        .replace(/^#{3}\s+/, '')
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\n/g, '<br>');
-                      return (
-                        <div key={idx}>
-                          <p
-                            className={styles.sectionTitle || styles.answerParagraph}
-                            dangerouslySetInnerHTML={{ __html: html }}
-                          />
-                        </div>
-                      );
-                    }
-
-                    // Вопросы вида "**1. Текст"
-                    const isQuestion = /^\*\*\d+\./.test(trimmed);
-                    if (isQuestion) {
-                      // Удаляем подсказки в скобках из текста вопроса, чтобы пользователь их не видел
-                      const trimmedNoHints = trimmed
-                        .replace(/\s*\([^)]*\)/g, ' ')
-                        .replace(/\s{2,}/g, ' ')
-                        .trim();
-                      const formatted = trimmedNoHints
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\n/g, '<br>');
-                      return (
-                        <div key={idx}>
-                          <p
-                            className={styles.questionParagraph}
-                            dangerouslySetInnerHTML={{ __html: formatted }}
-                          />
-                        </div>
-                      );
-                    }
-
-                    // Обычный параграф: тоже поддерживаем **жирный**
-                    const html = trimmed
-                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                      .replace(/\n/g, '<br>');
-                    return (
-                      <div key={idx}>
-                        <p
-                          className={styles.answerParagraph}
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      </div>
-                    );
-                  })}
+                  <MessageParagraphs
+                    content={message.content}
+                    onTariffsClick={() => router.push('/tariffs')}
+                  />
                 </div>
               </div>
             ))

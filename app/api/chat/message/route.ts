@@ -22,6 +22,8 @@ import {
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
 import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
+import { getChatBlockState } from '@/lib/plan-access';
+import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/lib/transit-calculator';
 import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
@@ -29,9 +31,6 @@ import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
-const UPGRADE_TO_TARIFFS_TEXT =
-  'Перейдите на тариф Оптимальный или Профессиональный: /tariffs';
-
 const SIGN_NAMES = ['Меша', 'Вришабха', 'Митхуна', 'Карка', 'Симха', 'Канья', 'Тула', 'Вришчика', 'Дхану', 'Макара', 'Кумбха', 'Мина'];
 function longitudeToSignName(lon: number): string {
   const n = ((lon % 360) + 360) % 360;
@@ -180,13 +179,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
     await ensureFreePlanWindow(currentUser);
-    const planBefore = getUserPlanSnapshot(currentUser);
-    if (!planBefore.hasUnlimitedTime && (planBefore.remainingSeconds ?? 0) <= 0) {
-      return NextResponse.json(
-        { error: `Лимит времени по вашему тарифу исчерпан. ${UPGRADE_TO_TARIFFS_TEXT}` },
-        { status: 403 }
-      );
+    const blockState = await getChatBlockState(currentUser);
+    if (blockState.blocked) {
+      return NextResponse.json({ error: blockState.message, planBlocked: true }, { status: 403 });
     }
+    const planBefore = blockState.snapshot;
+    const upgradeHint = getTariffsLinkMarkdown('Тарифы');
 
     const { message, topicId, comparisonMode, selectedChartId } = await request.json();
 
@@ -242,7 +240,7 @@ export async function POST(request: NextRequest) {
       const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
       if (frozenIds.has(activeChart.id)) {
         return NextResponse.json(
-          { error: `Выбранная карта сейчас заморожена вашим тарифом. ${UPGRADE_TO_TARIFFS_TEXT}` },
+          { error: `Выбранная карта сейчас заморожена вашим тарифом. ${upgradeHint}` },
           { status: 403 }
         );
       }
@@ -268,7 +266,7 @@ export async function POST(request: NextRequest) {
     if (comparisonMode?.chartAId && comparisonMode?.chartBId) {
       if (!planBefore.chartComparison) {
         return NextResponse.json(
-          { error: `Режим сравнения карт недоступен на вашем тарифе. ${UPGRADE_TO_TARIFFS_TEXT}` },
+          { error: `Режим сравнения карт недоступен на вашем тарифе. ${upgradeHint}` },
           { status: 403 }
         );
       }
@@ -292,7 +290,7 @@ export async function POST(request: NextRequest) {
       const frozenIds = getFrozenChartIdsForPlan(planBefore.code, allCharts as any);
       if (frozenIds.has(chartA.id) || frozenIds.has(chartB.id)) {
         return NextResponse.json(
-          { error: `Одна из выбранных карт сейчас заморожена вашим тарифом. ${UPGRADE_TO_TARIFFS_TEXT}` },
+          { error: `Одна из выбранных карт сейчас заморожена вашим тарифом. ${upgradeHint}` },
           { status: 403 }
         );
       }

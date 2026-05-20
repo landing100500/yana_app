@@ -7,9 +7,11 @@ import Link from 'next/link';
 import styles from './page.module.css';
 
 interface PlanSnapshot {
-  code: 'free' | 'optimal' | 'professional';
+  code: 'free' | 'hours24' | 'optimal' | 'professional';
   title: string;
 }
+
+type PaidPlanCode = 'hours24' | 'optimal' | 'professional';
 
 type PaymentNotice = {
   type: 'success' | 'pending' | 'error';
@@ -100,7 +102,7 @@ export default function TariffsPageContent() {
     };
   }, [router, searchParams]);
 
-  const handleSelectPlan = async (planCode: 'optimal' | 'professional') => {
+  const handleSelectPlan = async (planCode: PaidPlanCode) => {
     setLoadingPlan(planCode);
     setPaymentNotice(null);
 
@@ -143,6 +145,12 @@ export default function TariffsPageContent() {
       title: 'Бесплатный',
       price: '0 ₽',
       items: ['60 минут раз в 7 дней', 'Карты создавать нельзя', 'Сравнение карт недоступно'],
+    },
+    {
+      code: 'hours24',
+      title: '24 часа',
+      price: '10 ₽',
+      items: ['24 часа доступа к Ясне', 'Таймер сессии', 'Карты создавать нельзя', 'Сравнение карт недоступно'],
     },
     {
       code: 'optimal',
@@ -194,7 +202,7 @@ export default function TariffsPageContent() {
                 <button
                   className={styles.button}
                   disabled={currentPlan?.code === plan.code || loadingPlan === plan.code}
-                  onClick={() => handleSelectPlan(plan.code)}
+                  onClick={() => handleSelectPlan(plan.code as PaidPlanCode)}
                 >
                   {loadingPlan === plan.code
                     ? 'Переход к оплате...'

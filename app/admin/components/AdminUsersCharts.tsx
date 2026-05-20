@@ -10,7 +10,7 @@ interface User {
   phone?: string | null;
   name: string;
   tariff: string;
-  planCode?: 'free' | 'optimal' | 'professional';
+  planCode?: 'free' | 'hours24' | 'optimal' | 'professional';
   planExpiresAt?: string | null;
   createdAt: string;
   chartCount: number;
@@ -220,7 +220,7 @@ export default function AdminUsersCharts() {
     }
   };
 
-  const handlePlanChange = async (userId: number, planCode: 'free' | 'optimal' | 'professional') => {
+  const handlePlanChange = async (userId: number, planCode: 'free' | 'hours24' | 'optimal' | 'professional') => {
     try {
       setUpdatingPlanUserId(userId);
       const response = await fetch(`/api/admin/users/${userId}/plan`, {
@@ -448,9 +448,15 @@ export default function AdminUsersCharts() {
                       value={user.planCode || 'free'}
                       className={styles.modalInput}
                       disabled={updatingPlanUserId === user.id}
-                      onChange={(e) => handlePlanChange(user.id, e.target.value as 'free' | 'optimal' | 'professional')}
+                      onChange={(e) =>
+                        handlePlanChange(
+                          user.id,
+                          e.target.value as 'free' | 'hours24' | 'optimal' | 'professional'
+                        )
+                      }
                     >
                       <option value="free">Бесплатный</option>
+                      <option value="hours24">24 часа</option>
                       <option value="optimal">Оптимальный</option>
                       <option value="professional">Профессиональный</option>
                     </select>

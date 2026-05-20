@@ -16,6 +16,10 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
   (user as any).planCode = planCode;
   (user as any).planAssignedAt = assignedAt;
   (user as any).planExpiresAt = expiresAt;
+  if (planCode === 'free') {
+    (user as any).freeWindowStartedAt = assignedAt;
+    (user as any).freeMinutesUsed = 0;
+  }
   await user.save();
 
   payment.status = 'succeeded';
