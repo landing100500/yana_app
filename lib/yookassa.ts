@@ -1,4 +1,5 @@
 const YOOKASSA_API_URL = 'https://api.yookassa.ru/v3';
+const YOOKASSA_TIMEOUT_MS = 30000;
 
 export interface YookassaAmount {
   value: string;
@@ -62,28 +63,54 @@ export async function createYookassaPayment(
   input: CreatePaymentInput,
   idempotenceKey: string
 ): Promise<YookassaPayment> {
-  const response = await fetch(`${YOOKASSA_API_URL}/payments`, {
-    method: 'POST',
-    headers: {
-      Authorization: getAuthHeader(),
-      'Content-Type': 'application/json',
-      'Idempotence-Key': idempotenceKey,
-    },
-    body: JSON.stringify(input),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), YOOKASSA_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${YOOKASSA_API_URL}/payments`, {
+      method: 'POST',
+      headers: {
+        Authorization: getAuthHeader(),
+        'Content-Type': 'application/json',
+        'Idempotence-Key': idempotenceKey,
+      },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('ЮKassa не ответила вовремя, попробуйте снова');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   return parseYookassaResponse<YookassaPayment>(response);
 }
 
 export async function getYookassaPayment(paymentId: string): Promise<YookassaPayment> {
-  const response = await fetch(`${YOOKASSA_API_URL}/payments/${paymentId}`, {
-    method: 'GET',
-    headers: {
-      Authorization: getAuthHeader(),
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), YOOKASSA_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${YOOKASSA_API_URL}/payments/${paymentId}`, {
+      method: 'GET',
+      headers: {
+        Authorization: getAuthHeader(),
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Не удалось проверить статус платежа в ЮKassa');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   return parseYookassaResponse<YookassaPayment>(response);
 }

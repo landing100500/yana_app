@@ -107,12 +107,20 @@ export default function TariffsPageContent() {
     setPaymentNotice(null);
 
     try {
-      const res = await fetch('/api/payments/create', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planCode }),
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+      let res: Response;
+      try {
+        res = await fetch('/api/payments/create', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planCode }),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 401) {
@@ -129,7 +137,14 @@ export default function TariffsPageContent() {
       }
 
       window.location.href = data.confirmationUrl;
-    } catch {
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        setPaymentNotice({
+          type: 'error',
+          message: 'Платежный сервис отвечает слишком долго. Попробуйте снова через несколько секунд.',
+        });
+        return;
+      }
       setPaymentNotice({
         type: 'error',
         message: 'Ошибка сети при создании платежа',
