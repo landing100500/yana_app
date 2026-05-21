@@ -91,7 +91,7 @@ export default function VerifyPage() {
       const storedEmail = localStorage.getItem('tempEmail');
       const storedPhone = localStorage.getItem('tempPhone');
       const resetPin = typeof window !== 'undefined' && sessionStorage.getItem('authResetPin') === '1';
-      if (!storedEmail || (!resetPin && !storedPhone)) {
+      if (!storedEmail) {
         setError('Сессия истекла. Пожалуйста, начните заново.');
         setIsLoading(false);
         router.push('/');
@@ -165,6 +165,7 @@ export default function VerifyPage() {
       <div className={styles.card}>
         <h1 className={styles.title}>Подтверждение</h1>
         <p className={styles.subtitle}>Введите код из письма</p>
+        <p className={styles.hint}>Проверьте папку СПАМ, если нет во входящих</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.codeInputs}>

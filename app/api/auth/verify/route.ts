@@ -8,7 +8,6 @@ import UserAnketa from '@/models/UserAnketa';
 import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
-import { normalizePhoneDigits, formatPhoneValidationError } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,10 +39,7 @@ export async function POST(request: NextRequest) {
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Email не найден' }, { status: 400 });
     }
-    const phone = normalizePhoneDigits(String(rawPhone || ''));
-    if (!resetPin && !phone) {
-      return NextResponse.json({ error: formatPhoneValidationError() }, { status: 400 });
-    }
+    const phone = String(rawPhone || '').trim() || null;
 
     const otp = await EmailOtp.findOne({ where: { email } });
 
@@ -91,14 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!user) {
-      const existingByPhone = await User.findOne({ where: { phone } });
-      if (existingByPhone) {
-        return NextResponse.json(
-          { error: 'Этот номер телефона уже используется. Войдите в существующий аккаунт.' },
-          { status: 409 }
-        );
-      }
-      user = await User.create({ email, phone: phone || null });
+      user = await User.create({ email, phone });
       await UserAnketa.create({
         userId: user.id,
         gender: null,
@@ -112,13 +101,6 @@ export async function POST(request: NextRequest) {
         lifeDifficulties: null,
       });
     } else if (!resetPin && !user.phone && phone) {
-      const existingByPhone = await User.findOne({ where: { phone } });
-      if (existingByPhone && existingByPhone.id !== user.id) {
-        return NextResponse.json(
-          { error: 'Этот номер телефона уже используется другим аккаунтом.' },
-          { status: 409 }
-        );
-      }
       user.set('phone', phone);
       await user.save();
     }

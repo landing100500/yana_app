@@ -83,6 +83,15 @@
   letter-spacing: -0.011em;
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.hint {
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
   margin-bottom: 2rem;
   text-align: center;
 }
@@ -242,6 +251,10 @@
 
   .subtitle {
     font-size: 0.9rem;
+  }
+
+  .hint {
+    font-size: 0.85rem;
   }
 
   .codeInput {

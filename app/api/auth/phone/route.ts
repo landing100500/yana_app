@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { sendEmailOtp } from '@/lib/send-email-otp';
-import { normalizePhoneDigits, formatPhoneValidationError } from '@/lib/phone';
 // import { sendPhoneSmsOtp } from '@/lib/send-phone-sms-otp';
 
 export async function POST(request: NextRequest) {
@@ -19,10 +18,7 @@ export async function POST(request: NextRequest) {
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Введите корректный email' }, { status: 400 });
     }
-    const phone = normalizePhoneDigits(String(rawPhone || ''));
-    if (!phone) {
-      return NextResponse.json({ error: formatPhoneValidationError() }, { status: 400 });
-    }
+    const phone = String(rawPhone || '').trim();
 
     const result = await sendEmailOtp(email, { requireExistingUser: false });
 
@@ -33,7 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Код отправлен на email',
-      phoneMaskedTail: `***${phone.slice(-4)}`,
+      phoneMaskedTail: phone.length >= 4 ? `***${phone.slice(-4)}` : undefined,
     });
   } catch (error: unknown) {
     console.error('Phone auth error:', error);

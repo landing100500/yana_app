@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
-import { normalizePhoneDigits, formatPhoneValidationError, PHONE_PLACEHOLDER } from '@/lib/phone';
+import { PHONE_PLACEHOLDER } from '@/lib/phone';
 import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
@@ -34,13 +34,9 @@ export default function Home() {
     setError('');
 
     const cleanEmail = normalizeEmail(email);
-    const normalizedPhone = normalizePhoneDigits(phone);
+    const phoneValue = phone.trim();
     if (!isValidEmail(cleanEmail)) {
       setError('Введите корректный email');
-      return;
-    }
-    if (!normalizedPhone) {
-      setError(formatPhoneValidationError());
       return;
     }
 
@@ -56,14 +52,14 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: cleanEmail, phone: normalizedPhone }),
+        body: JSON.stringify({ email: cleanEmail, phone: phoneValue }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
         localStorage.setItem('tempEmail', cleanEmail);
-        localStorage.setItem('tempPhone', normalizedPhone);
+        localStorage.setItem('tempPhone', phoneValue);
         router.push('/verify');
       } else {
         setError(data.error || 'Произошла ошибка');
