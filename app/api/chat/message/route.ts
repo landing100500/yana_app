@@ -33,6 +33,7 @@ import { getChatBlockState } from '@/lib/plan-access';
 import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/lib/transit-calculator';
+import { utcNowToFixedOffsetLocal } from '@/lib/swisseph-vedic';
 import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
@@ -513,16 +514,13 @@ export async function POST(request: NextRequest) {
           timezone: isValidTimezone,
           planets: planetsForTimeline,
         });
+        const nowLocal = utcNowToFixedOffsetLocal(isValidTimezone);
         const nowTransit = await calculateTransitPositions({
           transitMoment: {
-            year: now.getUTCFullYear(),
-            month: now.getUTCMonth() + 1,
-            day: now.getUTCDate(),
-            hour: now.getUTCHours(),
-            minute: now.getUTCMinutes(),
+            ...nowLocal,
             latitude: Number(activeChart.chartLatitude),
             longitude: Number(activeChart.chartLongitude),
-            timezone: 0,
+            timezone: isValidTimezone,
           },
           natalMoonLongitude: Number(activeChart.moon),
           natalAscendantLongitude: Number(activeChart.ascendant),
@@ -530,13 +528,16 @@ export async function POST(request: NextRequest) {
 
         const nowLine = nowTransit.planets
           .filter((p) => planetsForTimeline.includes(p.key))
-          .map((p) => `${p.label}: ${p.signNameSidereal} ${p.degreeInSign.toFixed(2)}°${p.isRetrograde ? ' R' : ''}`)
+          .map(
+            (p) =>
+              `${p.label}: ${p.signNameSidereal} ${p.degreeInSign.toFixed(2)}° (${p.nakshatraName}, п.${p.nakshatraPada})${p.isRetrograde ? ' R' : ''}`
+          )
           .join('; ');
 
         let block =
-          `\n\n--- РАСЧЁТНЫЕ ТРАНЗИТЫ (Swiss Ephemeris, сидерика; источник истины для дат входа планет в знаки) ---\n`
+          `\n\n--- РАСЧЁТНЫЕ ТРАНЗИТЫ (Swiss Ephemeris, сидерика Лахири; источник истины для дат входа планет в знаки) ---\n`
           + `Диапазон расчёта: ${fromYear}-${toYear} (локальное время карты, UTC${isValidTimezone >= 0 ? '+' : ''}${isValidTimezone}).\n`
-          + `Срез "сейчас" (UTC): ${nowLine}\n`;
+          + `Срез «сейчас» (местное время карты): ${nowLine}\n`;
         for (const row of timeline) {
           block += `\n${row.label}:\n`;
           for (const w of row.windows) {

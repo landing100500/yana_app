@@ -4,10 +4,15 @@
  */
 import {
   calculateMahadashas,
-  DASHA_LORDS,
-  NAKSHATRA_NAMES,
+  longitudeToNakshatra,
   type DashaPeriod,
 } from '@/lib/vimshottari-dasha';
+import {
+  calcSiderealPlanetUt,
+  configureSiderealMode,
+  getAyanamsaMode,
+  setSwissephEphePath as setSwissephEphePathShared,
+} from '@/lib/swisseph-vedic';
 
 export type { DashaPeriod };
 
@@ -155,27 +160,11 @@ function longitudeToSign(longitude: number): { sign: number; degree: number; sig
   };
 }
 
-// Функция для определения накшатры
-function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string } {
-  let normalized = longitude % 360;
-  if (normalized < 0) normalized += 360;
-  
-  // Каждая накшатра занимает 13.333... градуса (360/27)
-  const nakshatraIndex = Math.floor(normalized / (360 / 27));
-  const degreeInNakshatra = normalized % (360 / 27);
-  const pada = Math.floor(degreeInNakshatra / (360 / 27 / 4)) + 1; // Пада от 1 до 4
-  
-  return {
-    nakshatra: nakshatraIndex % 27,
-    pada: pada > 4 ? 4 : pada,
-    name: NAKSHATRA_NAMES[nakshatraIndex % 27]
-  };
-}
-
 export async function calculateNatalChart(birthData: BirthData): Promise<NatalChartData> {
   try {
     const swisseph = await getSwisseph();
     setSwissephEphePath(swisseph);
+    setSwissephEphePathShared(swisseph);
 
     // Конвертируем локальное время в UTC (local = UTC + timezone => UTC = local - timezone)
     let hourUTC = birthData.hour - birthData.timezone;
@@ -219,30 +208,8 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
       swisseph.SE_GREG_CAL
     );
 
-    // Флаги для расчета в ведической астрологии (сидерический зодиак)
-    const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
-    
-    // Аянамша: по умолчанию Lahiri (совпадает с эталоном vedic-horo при корректной широте и системе домов)
-    const ayanamsaEnv = (process.env.NATAL_CHART_AYANAMSA || 'LAHIRI').toUpperCase().replace(/-/g, '_');
-    const ayanamsaMap: Record<string, number> = {
-      FAGAN_BRADLEY: swisseph.SE_SIDM_FAGAN_BRADLEY,
-      LAHIRI: swisseph.SE_SIDM_LAHIRI,
-      DELUCE: swisseph.SE_SIDM_DELUCE,
-      RAMAN: swisseph.SE_SIDM_RAMAN,
-      USHASHASHI: swisseph.SE_SIDM_USHASHASHI,
-      KRISHNAMURTI: swisseph.SE_SIDM_KRISHNAMURTI,
-      YUKTESHWAR: swisseph.SE_SIDM_YUKTESHWAR,
-      TRUE_CITRA: swisseph.SE_SIDM_TRUE_CITRA,
-      SS_CITRA: swisseph.SE_SIDM_SS_CITRA,
-      SURYASIDDHANTA: swisseph.SE_SIDM_SURYASIDDHANTA,
-      SS_REVATI: swisseph.SE_SIDM_SS_REVATI,
-      TRUE_REVATI: swisseph.SE_SIDM_TRUE_REVATI,
-      TRUE_PUSHYA: swisseph.SE_SIDM_TRUE_PUSHYA,
-      TRUE_MULA: swisseph.SE_SIDM_TRUE_MULA,
-      ARYABHATA: swisseph.SE_SIDM_ARYABHATA,
-    };
-    const ayanamsa = ayanamsaMap[ayanamsaEnv] ?? swisseph.SE_SIDM_LAHIRI;
-    swisseph.swe_set_sid_mode(ayanamsa, 0, 0);
+    configureSiderealMode(swisseph);
+    const ayanamsa = getAyanamsaMode(swisseph);
     
     // Вспомогательные функции для расчета планет
     // Определяем дом для планеты в системе Whole Sign Houses
@@ -322,35 +289,7 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
     // Рассчитываем позиции планет
     const calculatePlanet = (planetId: number, houses?: { house1: PlanetPosition; house2: PlanetPosition; house3: PlanetPosition; house4: PlanetPosition; house5: PlanetPosition; house6: PlanetPosition; house7: PlanetPosition; house8: PlanetPosition; house9: PlanetPosition; house10: PlanetPosition; house11: PlanetPosition; house12: PlanetPosition }): PlanetPosition => {
       try {
-        const result = swisseph.swe_calc_ut(julianDay, planetId, flags);
-        
-        if (!result) {
-          throw new Error(`Пустой результат для планеты ${planetId}`);
-        }
-        
-        let longitude: number;
-        let speed: number = 0;
-        
-        if (result && result.xx && Array.isArray(result.xx) && result.xx.length > 0) {
-          longitude = result.xx[0];
-          speed = result.xx[3] || 0;
-        } else if (result && Array.isArray(result) && result.length > 0) {
-          longitude = result[0];
-          speed = result[3] || 0;
-        } else if (result && typeof result.longitude === 'number') {
-          longitude = result.longitude;
-          speed = result.speed || 0;
-        } else if (result && Array.isArray(result.longitude) && result.longitude.length > 0) {
-          longitude = result.longitude[0];
-          speed = result.speed || 0;
-        } else {
-          console.error('Неожиданный формат результата swisseph для планеты', planetId, ':', result);
-          throw new Error(`Неверный формат ответа для планеты ${planetId}`);
-        }
-        
-        if (isNaN(longitude) || longitude === undefined || longitude === null) {
-          throw new Error(`Не удалось получить долготу для планеты ${planetId}`);
-        }
+        const { longitude, speed } = calcSiderealPlanetUt(swisseph, julianDay, planetId, { withSpeed: true });
         
         const signData = longitudeToSign(longitude);
         
@@ -372,20 +311,7 @@ export async function calculateNatalChart(birthData: BirthData): Promise<NatalCh
         
         // Определяем накшатру
         const nakshatraData = longitudeToNakshatra(longitude);
-        
-        const rulerIndex = nakshatraData.nakshatra % 9;
-        const rulerAbbr: Record<string, string> = {
-          Кету: 'Ке',
-          Венера: 'Ve',
-          Солнце: 'Su',
-          Луна: 'Mo',
-          Марс: 'Ma',
-          Раху: 'Ra',
-          Юпитер: 'Ju',
-          Сатурн: 'Sa',
-          Меркурий: 'Me',
-        };
-        const nakshatraRuler = rulerAbbr[DASHA_LORDS[rulerIndex]] || DASHA_LORDS[rulerIndex];
+        const nakshatraRuler = nakshatraData.ruler;
         
         return {
           longitude,

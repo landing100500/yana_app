@@ -8,6 +8,7 @@ import {
   formatDashaDateLocal,
   getActiveVimshottariDasha,
   getMoonNakshatraMeta,
+  longitudeToNakshatra,
 } from '@/lib/vimshottari-dasha';
 
 interface NavamshaData {
@@ -73,6 +74,9 @@ interface TransitApiPlanet {
   signName: string;
   signIndex: number;
   degreeInSign: number;
+  nakshatraName: string;
+  nakshatraPada: number;
+  nakshatraRuler: string;
   isRetrograde: boolean;
   houseFromMoon: number;
   houseFromAscendant: number;
@@ -165,42 +169,6 @@ function longitudeToSign(longitude: number): { sign: number; degree: number; sig
     sign: sign % 12,
     degree: Math.round(degree * 10) / 10,
     signName: SIGN_NAMES[sign % 12]
-  };
-}
-
-// Определение накшатры
-function longitudeToNakshatra(longitude: number): { nakshatra: number; pada: number; name: string; ruler: string } {
-  let normalized = longitude % 360;
-  if (normalized < 0) normalized += 360;
-  
-  const nakshatraIndex = Math.floor(normalized / (360 / 27));
-  const degreeInNakshatra = normalized % (360 / 27);
-  const pada = Math.floor(degreeInNakshatra / (360 / 27 / 4)) + 1;
-  
-  // 27 накшатр по порядку: 0=Ашвини … 13=Читра (26°40' Дева–13°20' Весов), 14=Свати …
-  const nakshatraNames = [
-    'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира', 'Ардра',
-    'Пурнавасу', 'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни', 'Уттара Пхалгуни', 'Хаста',
-    'Читра', 'Свати', 'Вишакха', 'Анурадха', 'Джьештха', 'Мула',
-    'Пурва Ашадха', 'Уттара Ашадха', 'Шравана', 'Дхаништха', 'Шатабхиша',
-    'Пурва Бхадрапада', 'Уттара Бхадрапада', 'Ревати'
-  ];
-  
-  // Управители накшатр: Кету(0), Венера(1), Солнце(2), Луна(3), Марс(4), Раху(5), Юпитер(6), Сатурн(7), Меркурий(8)
-  const nakshatraRulers = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(0) - Анурадха(8)
-    0, 1, 2, 3, 4, 5, 6, 7, 8, // Джьештха(9) - Ревати(17)
-    0, 1, 2, 3, 4, 5, 6, 7, 8, // Ашвини(18) - Ревати(26)
-  ];
-  const rulerIndex = nakshatraRulers[nakshatraIndex % 27];
-  const rulerNames = ['Ке', 'Ve', 'Su', 'Mo', 'Ma', 'Ra', 'Ju', 'Sa', 'Me'];
-  const ruler = rulerNames[rulerIndex];
-  
-  return {
-    nakshatra: nakshatraIndex % 27,
-    pada: pada > 4 ? 4 : pada,
-    name: nakshatraNames[nakshatraIndex % 27],
-    ruler
   };
 }
 
@@ -787,6 +755,7 @@ export default function NatalChartVisualization({ chart, chartId }: Props) {
                           <th>Планета</th>
                           <th>Знак</th>
                           <th>° в знаке</th>
+                          <th>Накшатра</th>
                           <th>Дом от Луны</th>
                           <th>Дом от асцендента</th>
                           <th>Ретро</th>
@@ -801,6 +770,9 @@ export default function NatalChartVisualization({ chart, chartId }: Props) {
                               {`${Math.floor(p.degreeInSign)}°${String(
                                 Math.floor((p.degreeInSign % 1) * 60)
                               ).padStart(2, '0')}'`}
+                            </td>
+                            <td>
+                              {p.nakshatraName} ({p.nakshatraPada}, {p.nakshatraRuler})
                             </td>
                             <td>{p.houseFromMoon}</td>
                             <td>{p.houseFromAscendant}</td>

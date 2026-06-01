@@ -2,76 +2,17 @@
  * Транзиты: сидерические позиции планет на момент времени (Swiss Ephemeris)
  * и дома целознаковые от знака натальной Луны и от знака натального асцендента.
  */
-const path = require('path');
-
 import type { BirthData } from '@/lib/natal-chart-calculator';
-
-async function getSwisseph() {
-  if (typeof window === 'undefined') {
-    return require('swisseph');
-  }
-  throw new Error('Swiss Ephemeris can only be used on the server');
-}
-
-function setSwissephEphePath(swisseph: any) {
-  if (typeof swisseph.swe_set_ephe_path !== 'function') return;
-  const envPath = process.env.SWISSEPH_EPHE_PATH;
-  const candidates = envPath
-    ? [envPath]
-    : [
-        path.join(process.cwd(), 'node_modules', 'swisseph', 'ephe'),
-        path.join(process.cwd(), 'swisseph', 'ephe'),
-        path.join(__dirname, '..', 'node_modules', 'swisseph', 'ephe'),
-      ];
-  for (const ephePath of candidates) {
-    try {
-      swisseph.swe_set_ephe_path(ephePath);
-      return;
-    } catch (_) {
-      /* ignore */
-    }
-  }
-}
-
-function localCivilToUtcParts(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  timezone: number
-) {
-  let hourUTC = hour - timezone;
-  let dayUTC = day;
-  let monthUTC = month;
-  let yearUTC = year;
-  if (hourUTC < 0) {
-    hourUTC += 24;
-    dayUTC -= 1;
-    if (dayUTC < 1) {
-      monthUTC -= 1;
-      if (monthUTC < 1) {
-        monthUTC = 12;
-        yearUTC -= 1;
-      }
-      const daysInMonth = new Date(yearUTC, monthUTC, 0).getDate();
-      dayUTC = daysInMonth;
-    }
-  } else if (hourUTC >= 24) {
-    hourUTC -= 24;
-    dayUTC += 1;
-    const daysInMonth = new Date(yearUTC, monthUTC, 0).getDate();
-    if (dayUTC > daysInMonth) {
-      dayUTC = 1;
-      monthUTC += 1;
-      if (monthUTC > 12) {
-        monthUTC = 1;
-        yearUTC += 1;
-      }
-    }
-  }
-  return { yearUTC, monthUTC, dayUTC, hourUTC };
-}
+import {
+  calcSiderealPlanetUt,
+  configureSiderealMode,
+  getSwisseph,
+  localCivilToUtcParts,
+  longitudeToSignParts,
+  setSwissephEphePath,
+  SIGN_NAMES_SIDEREAL,
+} from '@/lib/swisseph-vedic';
+import { longitudeToNakshatra } from '@/lib/vimshottari-dasha';
 
 /** Целознаковый дом от опорной точки (Лагна или Чандра-лагна): знак референса = 1-й дом */
 export function wholeSignHouseFromReference(planetLongitude: number, referenceLongitude: number): number {
@@ -91,25 +32,14 @@ export interface TransitPlanetRow {
   signIndex: number;
   signNameSidereal: string;
   degreeInSign: number;
+  nakshatraIndex: number;
+  nakshatraName: string;
+  nakshatraPada: number;
+  nakshatraRuler: string;
   isRetrograde: boolean;
   houseFromMoon: number;
   houseFromAscendant: number;
 }
-
-const SIGN_NAMES_SIDEREAL = [
-  'Меша',
-  'Вришабха',
-  'Митхуна',
-  'Карка',
-  'Симха',
-  'Канья',
-  'Тула',
-  'Вришчика',
-  'Дхану',
-  'Макара',
-  'Кумбха',
-  'Мина',
-];
 
 export interface TransitCalculationResult {
   julianDay: number;
@@ -130,17 +60,6 @@ export interface TransitIngressTimelineRow {
   windows: TransitIngressWindow[];
 }
 
-function longitudeToSignParts(longitude: number): { signIndex: number; degreeInSign: number; signName: string } {
-  let n = longitude % 360;
-  if (n < 0) n += 360;
-  const signIndex = Math.floor(n / 30) % 12;
-  return {
-    signIndex,
-    degreeInSign: n % 30,
-    signName: SIGN_NAMES_SIDEREAL[signIndex],
-  };
-}
-
 const PLANET_LABELS: Record<string, string> = {
   sun: 'Солнце',
   moon: 'Луна',
@@ -155,28 +74,6 @@ const PLANET_LABELS: Record<string, string> = {
   northNode: 'Раху',
 };
 
-function getAyanamsa(swisseph: any): number {
-  const ayanamsaEnv = (process.env.NATAL_CHART_AYANAMSA || 'LAHIRI').toUpperCase().replace(/-/g, '_');
-  const ayanamsaMap: Record<string, number> = {
-    FAGAN_BRADLEY: swisseph.SE_SIDM_FAGAN_BRADLEY,
-    LAHIRI: swisseph.SE_SIDM_LAHIRI,
-    DELUCE: swisseph.SE_SIDM_DELUCE,
-    RAMAN: swisseph.SE_SIDM_RAMAN,
-    USHASHASHI: swisseph.SE_SIDM_USHASHASHI,
-    KRISHNAMURTI: swisseph.SE_SIDM_KRISHNAMURTI,
-    YUKTESHWAR: swisseph.SE_SIDM_YUKTESHWAR,
-    TRUE_CITRA: swisseph.SE_SIDM_TRUE_CITRA,
-    SS_CITRA: swisseph.SE_SIDM_SS_CITRA,
-    SURYASIDDHANTA: swisseph.SE_SIDM_SURYASIDDHANTA,
-    SS_REVATI: swisseph.SE_SIDM_SS_REVATI,
-    TRUE_REVATI: swisseph.SE_SIDM_TRUE_REVATI,
-    TRUE_PUSHYA: swisseph.SE_SIDM_TRUE_PUSHYA,
-    TRUE_MULA: swisseph.SE_SIDM_TRUE_MULA,
-    ARYABHATA: swisseph.SE_SIDM_ARYABHATA,
-  };
-  return ayanamsaMap[ayanamsaEnv] ?? swisseph.SE_SIDM_LAHIRI;
-}
-
 function toJdFromLocalDateParts(swisseph: any, date: { year: number; month: number; day: number }, timezone: number): number {
   const utcHour = -timezone;
   return swisseph.swe_julday(date.year, date.month, date.day, utcHour, swisseph.SE_GREG_CAL);
@@ -184,13 +81,24 @@ function toJdFromLocalDateParts(swisseph: any, date: { year: number; month: numb
 
 function formatJdAsLocalIso(swisseph: any, jd: number, timezone: number): string {
   const utc = swisseph.swe_revjul(jd, swisseph.SE_GREG_CAL);
-  if (!utc || !Array.isArray(utc) || utc.length < 4) {
+  let year: number;
+  let month: number;
+  let day: number;
+  let hourFraction: number;
+  if (utc && typeof utc === 'object' && 'year' in utc) {
+    year = utc.year as number;
+    month = utc.month as number;
+    day = utc.day as number;
+    hourFraction = utc.hour as number;
+  } else if (utc && Array.isArray(utc) && utc.length >= 4) {
+    year = utc[0] as number;
+    month = utc[1] as number;
+    day = utc[2] as number;
+    hourFraction = utc[3] as number;
+  } else {
     throw new Error('Не удалось преобразовать Julian Day');
   }
-  let year = utc[0] as number;
-  let month = utc[1] as number;
-  let day = utc[2] as number;
-  const hourWithFraction = (utc[3] as number) + timezone;
+  const hourWithFraction = hourFraction + timezone;
   const dayMs = 24 * 60 * 60 * 1000;
   const baseUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0);
   const shiftedMs = baseUtcMs + hourWithFraction * 60 * 60 * 1000;
@@ -211,13 +119,9 @@ function normalizeSignIndex(i: number): number {
   return n < 0 ? n + 12 : n;
 }
 
-function signAtJd(swisseph: any, jd: number, planetId: number, flags: number): number {
-  const result = swisseph.swe_calc_ut(jd, planetId, flags);
-  const lon = result?.xx?.[0];
-  if (typeof lon !== 'number' || Number.isNaN(lon)) {
-    throw new Error(`Не удалось получить долготу для планеты ${planetId}`);
-  }
-  return normalizeSignIndex(Math.floor((((lon % 360) + 360) % 360) / 30));
+function signAtJd(swisseph: any, jd: number, planetId: number): number {
+  const { longitude } = calcSiderealPlanetUt(swisseph, jd, planetId);
+  return normalizeSignIndex(Math.floor(longitude / 30));
 }
 
 function resolvePlanetId(swisseph: any, key: string): number {
@@ -241,6 +145,33 @@ function resolvePlanetId(swisseph: any, key: string): number {
   return id;
 }
 
+function buildTransitRow(
+  key: string,
+  label: string,
+  longitude: number,
+  speed: number,
+  natalMoon: number,
+  natalAsc: number
+): TransitPlanetRow {
+  const parts = longitudeToSignParts(longitude);
+  const nak = longitudeToNakshatra(longitude);
+  return {
+    key,
+    label,
+    longitude,
+    signIndex: parts.signIndex,
+    signNameSidereal: parts.signName,
+    degreeInSign: parts.degreeInSign,
+    nakshatraIndex: nak.nakshatraIndex,
+    nakshatraName: nak.name,
+    nakshatraPada: nak.pada,
+    nakshatraRuler: nak.ruler,
+    isRetrograde: speed < 0,
+    houseFromMoon: wholeSignHouseFromReference(longitude, natalMoon),
+    houseFromAscendant: wholeSignHouseFromReference(longitude, natalAsc),
+  };
+}
+
 export async function calculateTransitPositions(params: {
   transitMoment: BirthData;
   natalMoonLongitude: number;
@@ -248,6 +179,7 @@ export async function calculateTransitPositions(params: {
 }): Promise<TransitCalculationResult> {
   const swisseph = await getSwisseph();
   setSwissephEphePath(swisseph);
+  configureSiderealMode(swisseph);
 
   const { yearUTC, monthUTC, dayUTC, hourUTC } = localCivilToUtcParts(
     params.transitMoment.year,
@@ -266,32 +198,7 @@ export async function calculateTransitPositions(params: {
     swisseph.SE_GREG_CAL
   );
 
-  const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SPEED | swisseph.SEFLG_SIDEREAL;
-
-  swisseph.swe_set_sid_mode(getAyanamsa(swisseph), 0, 0);
-
-  const readPlanet = (planetId: number): { longitude: number; speed: number } => {
-    const result = swisseph.swe_calc_ut(julianDay, planetId, flags);
-    if (!result) throw new Error(`Нет данных для планеты ${planetId}`);
-    let longitude: number;
-    let speed = 0;
-    if (result.xx && Array.isArray(result.xx) && result.xx.length > 0) {
-      longitude = result.xx[0];
-      speed = result.xx[3] || 0;
-    } else if (Array.isArray(result) && result.length > 0) {
-      longitude = result[0];
-      speed = result[3] || 0;
-    } else if (typeof (result as any).longitude === 'number') {
-      longitude = (result as any).longitude;
-      speed = (result as any).speed || 0;
-    } else {
-      throw new Error(`Неверный ответ swisseph для планеты ${planetId}`);
-    }
-    if (longitude == null || Number.isNaN(longitude)) {
-      throw new Error(`Пустая долгота для планеты ${planetId}`);
-    }
-    return { longitude, speed };
-  };
+  const readPlanet = (planetId: number) => calcSiderealPlanetUt(swisseph, julianDay, planetId, { withSpeed: true });
 
   const natalMoon = params.natalMoonLongitude;
   const natalAsc = params.natalAscendantLongitude;
@@ -309,52 +216,17 @@ export async function calculateTransitPositions(params: {
     { key: 'pluto', label: 'Плутон', id: swisseph.SE_PLUTO },
   ];
 
-  const planets: TransitPlanetRow[] = [];
-
-  for (const row of order) {
+  const planets: TransitPlanetRow[] = order.map((row) => {
     const { longitude, speed } = readPlanet(row.id);
-    const parts = longitudeToSignParts(longitude);
-    planets.push({
-      key: row.key,
-      label: row.label,
-      longitude,
-      signIndex: parts.signIndex,
-      signNameSidereal: parts.signName,
-      degreeInSign: parts.degreeInSign,
-      isRetrograde: speed < 0,
-      houseFromMoon: wholeSignHouseFromReference(longitude, natalMoon),
-      houseFromAscendant: wholeSignHouseFromReference(longitude, natalAsc),
-    });
-  }
+    return buildTransitRow(row.key, row.label, longitude, speed, natalMoon, natalAsc);
+  });
 
   const rahuData = readPlanet(swisseph.SE_TRUE_NODE);
   const rahuLong = rahuData.longitude;
   const nodeRetro = rahuData.speed < 0;
-  const rahuParts = longitudeToSignParts(rahuLong);
-  planets.push({
-    key: 'northNode',
-    label: 'Раху',
-    longitude: rahuLong,
-    signIndex: rahuParts.signIndex,
-    signNameSidereal: rahuParts.signName,
-    degreeInSign: rahuParts.degreeInSign,
-    isRetrograde: nodeRetro,
-    houseFromMoon: wholeSignHouseFromReference(rahuLong, natalMoon),
-    houseFromAscendant: wholeSignHouseFromReference(rahuLong, natalAsc),
-  });
+  planets.push(buildTransitRow('northNode', 'Раху', rahuLong, rahuData.speed, natalMoon, natalAsc));
   const ketuLong = (rahuLong + 180) % 360;
-  const ketuParts = longitudeToSignParts(ketuLong);
-  planets.push({
-    key: 'southNode',
-    label: 'Кету',
-    longitude: ketuLong,
-    signIndex: ketuParts.signIndex,
-    signNameSidereal: ketuParts.signName,
-    degreeInSign: ketuParts.degreeInSign,
-    isRetrograde: nodeRetro,
-    houseFromMoon: wholeSignHouseFromReference(ketuLong, natalMoon),
-    houseFromAscendant: wholeSignHouseFromReference(ketuLong, natalAsc),
-  });
+  planets.push(buildTransitRow('southNode', 'Кету', ketuLong, rahuData.speed, natalMoon, natalAsc));
 
   const transitLocalLabel = `${String(params.transitMoment.day).padStart(2, '0')}.${String(
     params.transitMoment.month
@@ -374,8 +246,8 @@ export async function calculateTransitIngressTimeline(params: {
 }): Promise<TransitIngressTimelineRow[]> {
   const swisseph = await getSwisseph();
   setSwissephEphePath(swisseph);
-  swisseph.swe_set_sid_mode(getAyanamsa(swisseph), 0, 0);
-  const flags = swisseph.SEFLG_SWIEPH | swisseph.SEFLG_SIDEREAL;
+  configureSiderealMode(swisseph);
+
   const stepHours = Math.max(1, Math.min(24, Math.floor(params.stepHours ?? 6)));
   const stepDays = stepHours / 24;
 
@@ -393,18 +265,18 @@ export async function calculateTransitIngressTimeline(params: {
     const label = PLANET_LABELS[key] || key;
     let windowStart = startJd;
     let prevJd = startJd;
-    let prevSign = signAtJd(swisseph, prevJd, planetId, flags);
+    let prevSign = signAtJd(swisseph, prevJd, planetId);
     const windows: TransitIngressWindow[] = [];
 
     for (let t = startJd + stepDays; t <= endJd + 1e-9; t += stepDays) {
       const curJd = Math.min(t, endJd);
-      const curSign = signAtJd(swisseph, curJd, planetId, flags);
+      const curSign = signAtJd(swisseph, curJd, planetId);
       if (curSign !== prevSign) {
         let lo = prevJd;
         let hi = curJd;
         for (let i = 0; i < 40; i += 1) {
           const mid = (lo + hi) / 2;
-          const midSign = signAtJd(swisseph, mid, planetId, flags);
+          const midSign = signAtJd(swisseph, mid, planetId);
           if (midSign === prevSign) lo = mid;
           else hi = mid;
           if ((hi - lo) * 24 * 60 < 1) break;

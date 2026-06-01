@@ -10,7 +10,7 @@ import { getChatBlockState } from '@/lib/plan-access';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
 import { fetchSectionChunks, formatSectionMemoryHint } from '@/lib/rag-search';
-import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
+import { formatVimshottariForPrompt, longitudeToNakshatra } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,19 +62,8 @@ function longitudeToSign(longitude: number): number {
   return Math.floor(normalized / 30) % 12;
 }
 
-// Функция для определения накшатры (упрощенная версия)
 function getNakshatra(longitude: number): string {
-  // Накшатры занимают примерно 13.33 градуса каждая
-  const nakshatraIndex = Math.floor((longitude % 360) / 13.333333);
-  const nakshatras = [
-    'Ашвини', 'Бхарани', 'Криттика', 'Рохини', 'Мригашира',
-    'Ардра', 'Пушья', 'Ашлеша', 'Магха', 'Пурва Пхалгуни',
-    'Уттара Пхалгуни', 'Хаста', 'Читра', 'Свати', 'Вишакха',
-    'Анурадха', 'Джьештха', 'Мула', 'Пурва Ашадха', 'Уттара Ашадха',
-    'Шравана', 'Дхаништха', 'Шатабхиша', 'Пурва Бхадрапада', 'Уттара Бхадрапада',
-    'Ревати'
-  ];
-  return nakshatras[nakshatraIndex % 27] || 'Неизвестно';
+  return longitudeToNakshatra(longitude).name;
 }
 
 function normalizeInSignDegrees(longitude: number): number {

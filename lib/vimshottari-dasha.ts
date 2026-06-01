@@ -101,6 +101,42 @@ function normalizeLongitude(longitude: number): number {
   return n < 0 ? n + 360 : n;
 }
 
+const NAKSHATRA_RULER_ABBR: Record<(typeof DASHA_LORDS)[number], string> = {
+  Кету: 'Ке',
+  Венера: 'Ve',
+  Солнце: 'Su',
+  Луна: 'Mo',
+  Марс: 'Ma',
+  Раху: 'Ra',
+  Юпитер: 'Ju',
+  Сатурн: 'Sa',
+  Меркурий: 'Me',
+};
+
+/** Накшатра по сидерической долготе (0° = начало Ашвини, шаг 13°20'). */
+export function longitudeToNakshatra(longitude: number): {
+  nakshatraIndex: number;
+  nakshatra: number;
+  pada: number;
+  name: string;
+  ruler: string;
+} {
+  const normalized = normalizeLongitude(longitude);
+  const nakshatraIndex = Math.floor(normalized / NAKSHATRA_SPAN_DEG) % 27;
+  const degreeInNakshatra = normalized % NAKSHATRA_SPAN_DEG;
+  const padaSpan = NAKSHATRA_SPAN_DEG / 4;
+  let pada = Math.floor(degreeInNakshatra / padaSpan) + 1;
+  if (pada > 4) pada = 4;
+  const lord = DASHA_LORDS[NAKSHATRA_DASHA_LORD_INDEX[nakshatraIndex]];
+  return {
+    nakshatraIndex,
+    nakshatra: nakshatraIndex,
+    pada,
+    name: NAKSHATRA_NAMES[nakshatraIndex],
+    ruler: NAKSHATRA_RULER_ABBR[lord],
+  };
+}
+
 function dashaLordIndex(planet: string): number {
   const idx = DASHA_LORDS.indexOf(planet as (typeof DASHA_LORDS)[number]);
   return idx >= 0 ? idx : 0;
