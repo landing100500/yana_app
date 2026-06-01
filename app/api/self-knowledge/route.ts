@@ -9,7 +9,7 @@ import { ensureFreePlanWindow } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
-import { getChunksFromSectionByName } from '@/lib/rag-search';
+import { fetchSectionChunks, formatSectionMemoryHint } from '@/lib/rag-search';
 import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
@@ -333,16 +333,19 @@ export async function POST(request: NextRequest) {
 
     let predictionMemoryBlock = '';
     if (requiresPredictionMemory) {
-      const predictionChunks = await getChunksFromSectionByName(PREDICTION_SECTION, questions, 10);
-      if (predictionChunks.length > 0) {
+      const predResult = await fetchSectionChunks(
+        PREDICTION_SECTION,
+        [questions, 'транзит прогноз предсказание период вимшоттари даша'],
+        10
+      );
+      if (predResult.chunks.length > 0) {
         predictionMemoryBlock = '\n\n--- ПРЕДСКАЗАНИЕ (обязательно используй для вопросов 9/10/11) ---\n';
-        predictionChunks.forEach((chunk, index) => {
+        predResult.chunks.forEach((chunk, index) => {
           predictionMemoryBlock += `\n[${index + 1}]\n${chunk.text}\n`;
         });
         predictionMemoryBlock += '\n--- Конец блока "ПРЕДСКАЗАНИЕ" ---\n';
       } else {
-        predictionMemoryBlock =
-          '\n\n--- Блок "ПРЕДСКАЗАНИЕ" не найден в подключенной памяти. Ответь честно, без выдумывания отсутствующей методики. ---\n';
+        predictionMemoryBlock = formatSectionMemoryHint('ПРЕДСКАЗАНИЕ', predResult);
       }
     }
 

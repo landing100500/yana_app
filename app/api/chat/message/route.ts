@@ -10,7 +10,14 @@ import UserMemory from '@/models/UserMemory';
 import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { searchRelevantChunks, getSectionStyleChunks, getEnabledSectionIds, getChunksFromSectionByName } from '@/lib/rag-search';
+import {
+  searchRelevantChunks,
+  getSectionStyleChunks,
+  getEnabledSectionIds,
+  fetchSectionChunks,
+  formatSectionMemoryHint,
+  type RagChunk,
+} from '@/lib/rag-search';
 import {
   getTopicContext,
   appendUserMemory,
@@ -123,7 +130,7 @@ const SYSTEM_PROMPT = `Ты умный агент по астропсихоло�
 
 ЖЁСТКИЕ ПРАВИЛА (обязательны к выполнению):
 
-0. **Именованные разделы памяти** (в т.ч. «Как трактовать карту - 1 часть», «Интерпретация натальной карты», «ПРЕДСКАЗАНИЕ»). Всё, что ниже ссылается на эти области, **применяй только если** в системном сообщении **фактически есть** отдельный блок с фрагментами из соответствующей области. **Если блока нет** (раздел не создан, не подключён к агенту, пуст) — **не подменяй** отсутствующий раздел внутренними знаниями; скажи честно, что в подключённой памяти нет этой области; опирайся на **данные натальной карты** и **другие** переданные фрагменты. Не рассуждай «как будто» раздел существует.
+0. **Именованные разделы памяти** (в т.ч. «Как трактовать карту - 1 часть», «Интерпретация натальной карты», «ПРЕДСКАЗАНИЕ»). Правила с фрагментами из области — **только если** ниже есть блок с текстом из этой области. Если блока с фрагментами нет — смотри блоки **«Статус области …»**: (а) «раздел не найден» или «не подключён к агенту» — честно скажи, что области нет в подключённой памяти; (б) «подключён, но фрагменты не подобрались» — **не** утверждай, что области нет; отвечай по **данным карты**, **расчётным транзитам** и **другим** фрагментам. Не подменяй отсутствующий раздел внутренними знаниями модели.
 
 1. Любой вопрос пользователя о себе, своей жизни, предназначении, личных качествах, отношениях и т.п. рассматривай через его натальную карту. У каждого пользователя есть натальная карта (она передаётся в блоке "Данные пользователя и натальная карта"). Сначала внимательно смотри данные карты, затем формулируй ответ.
 
@@ -302,19 +309,22 @@ export async function POST(request: NextRequest) {
       const chunksToText = (arr: Array<{ text: string }>, label: string) =>
         arr.map((c, i) => `\n[${label} ${i + 1}]\n${c.text}\n`).join('');
       try {
-        const [compat, ascAChunks, ascBChunks, opora, trakt, interp, planets] = await Promise.all([
-          getChunksFromSectionByName('Совместимость в отношениях', q, 8),
-          getChunksFromSectionByName(sectionA, q, 2),
-          getChunksFromSectionByName(sectionB, q, 2),
-          getChunksFromSectionByName('51 опора', `${q} накшатры сферы`, 6),
-          getChunksFromSectionByName('Как трактовать карту - 1 часть', q, 3),
-          getChunksFromSectionByName('Интерпретация натальной карты', q, 2),
-          getChunksFromSectionByName(
-            'Интерпретация натальной карты',
-            `${q} Венера Раху Кету Сатурн Меркурий Юпитер Солнце Луна Марс`,
-            4
-          ),
+        const [compatR, ascAR, ascBR, oporaR, traktR, interpR, planetsR] = await Promise.all([
+          fetchSectionChunks('Совместимость в отношениях', q, 8),
+          fetchSectionChunks(sectionA, q, 2),
+          fetchSectionChunks(sectionB, q, 2),
+          fetchSectionChunks('51 опора', `${q} накшатры сферы`, 6),
+          fetchSectionChunks('Как трактовать карту - 1 часть', q, 3),
+          fetchSectionChunks('Интерпретация натальной карты', q, 2),
+          fetchSectionChunks('Интерпретация натальной карты', `${q} Венера Раху Кету Сатурн Меркурий Юпитер Солнце Луна Марс`, 4),
         ]);
+        const compat = compatR.chunks;
+        const ascAChunks = ascAR.chunks;
+        const ascBChunks = ascBR.chunks;
+        const opora = oporaR.chunks;
+        const trakt = traktR.chunks;
+        const interp = interpR.chunks;
+        const planets = planetsR.chunks;
         comparisonBlock =
           '\n\n--- Режим сравнения карт (ОБЯЗАТЕЛЕН) ---\n' +
           `Сейчас активен режим совместимости. Строго отвечай на основе СРАВНЕНИЯ двух карт, а не одной.\n` +
@@ -387,56 +397,55 @@ export async function POST(request: NextRequest) {
     }
     const isAtmakarakaQuery = /атмакарак|атма-карак|atmakaraka|atma karaka/i.test(message);
     const isPredictionQuery = PREDICTION_TOPIC_RX.test(message);
-    // Для трактовки карты и вопросов о пользователе жёстко подтягиваем область "Как трактовать карту - 1 часть"
-    let chartInterpretationChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
-    if (activeChart) {
-      chartInterpretationChunks = await getChunksFromSectionByName(CHART_INTERPRETATION_SECTION, message, 10);
-      if (chartInterpretationChunks.length === 0) {
-        chartInterpretationChunks = await getChunksFromSectionByName(CHART_INTERPRETATION_SECTION, 'натальная карта трактовка расшифровка', 10);
-      }
+    let namedSectionHints = '';
+
+    const mergeChunks = (chunks: RagChunk[]) => {
       const seen = new Set(relevantChunks.map((c) => c.text));
-      for (const ch of chartInterpretationChunks) {
+      for (const ch of chunks) {
         if (!seen.has(ch.text)) {
           seen.add(ch.text);
           relevantChunks.push(ch);
         }
       }
+    };
+
+    // Для трактовки карты и вопросов о пользователе жёстко подтягиваем область "Как трактовать карту - 1 часть"
+    let chartInterpretationChunks: RagChunk[] = [];
+    if (activeChart) {
+      const chartResult = await fetchSectionChunks(
+        CHART_INTERPRETATION_SECTION,
+        [message, 'натальная карта трактовка расшифровка интерпретация'],
+        10
+      );
+      chartInterpretationChunks = chartResult.chunks;
+      namedSectionHints += formatSectionMemoryHint('Как трактовать карту - 1 часть', chartResult);
+      mergeChunks(chartInterpretationChunks);
     }
 
     // Технический safeguard: для вопросов по Атмакараке принудительно подтягиваем область "Интерпретация натальной карты"
-    let atmakarakaChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
+    let atmakarakaChunks: RagChunk[] = [];
     if (activeChart && isAtmakarakaQuery) {
-      atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, message, 10);
-      if (atmakarakaChunks.length === 0) {
-        atmakarakaChunks = await getChunksFromSectionByName(ATMAKARAKA_SECTION, 'атмакарака расчет характеристика трактовка', 10);
-      }
-      const seen = new Set(relevantChunks.map((c) => c.text));
-      for (const ch of atmakarakaChunks) {
-        if (!seen.has(ch.text)) {
-          seen.add(ch.text);
-          relevantChunks.push(ch);
-        }
-      }
+      const atmResult = await fetchSectionChunks(
+        ATMAKARAKA_SECTION,
+        [message, 'атмакарака расчет характеристика трактовка'],
+        10
+      );
+      atmakarakaChunks = atmResult.chunks;
+      namedSectionHints += formatSectionMemoryHint('Интерпретация натальной карты', atmResult);
+      mergeChunks(atmakarakaChunks);
     }
 
     // Прогноз / транзиты / предсказание — принудительно область «ПРЕДСКАЗАНИЕ» (если есть в БД и подключена)
-    let predictionChunks: Array<{ text: string; sectionId: string; sectionName?: string }> = [];
+    let predictionChunks: RagChunk[] = [];
     if (activeChart && isPredictionQuery) {
-      predictionChunks = await getChunksFromSectionByName(PREDICTION_SECTION, message, 10);
-      if (predictionChunks.length === 0) {
-        predictionChunks = await getChunksFromSectionByName(
-          PREDICTION_SECTION,
-          'транзит прогноз предсказание период ретроград гочар',
-          10
-        );
-      }
-      const seen = new Set(relevantChunks.map((c) => c.text));
-      for (const ch of predictionChunks) {
-        if (!seen.has(ch.text)) {
-          seen.add(ch.text);
-          relevantChunks.push(ch);
-        }
-      }
+      const predResult = await fetchSectionChunks(
+        PREDICTION_SECTION,
+        [message, 'транзит прогноз предсказание период ретроград гочар'],
+        10
+      );
+      predictionChunks = predResult.chunks;
+      namedSectionHints += formatSectionMemoryHint('ПРЕДСКАЗАНИЕ', predResult);
+      mergeChunks(predictionChunks);
     }
 
     // Стилистика только из подключённых областей памяти (первая подключённая)
@@ -550,9 +559,9 @@ export async function POST(request: NextRequest) {
         contextText += `\n[Источник ${index + 1}${chunk.sectionName ? ` - ${chunk.sectionName}` : ''}]\n${chunk.text}\n`;
       });
       contextText += '\n--- Конец блока ---\n';
-    } else if (!chartInterpretationBlock && !atmakarakaBlock && !predictionBlock) {
+    } else if (!chartInterpretationBlock && !atmakarakaBlock && !predictionBlock && !namedSectionHints.trim()) {
       contextText =
-        '\n\n--- Релевантные чанки векторного поиска пусты, а именованных разделов (трактовка, Атмакарака, ПРЕДСКАЗАНИЕ) в этом ответе нет. См. п. 0: не выдумывай отсутствующие разделы; опирайся на «Данные пользователя и натальная карта» и на честное уточнение, что область не подключена. ---\n';
+        '\n\n--- Релевантные чанки векторного поиска пусты, именованные блоки не переданы. См. п. 0 и блоки «Статус области» (если есть). ---\n';
     }
 
     const userTurnsInTopic = messageHistory.filter((m) => m.role === 'user').length;
@@ -602,6 +611,7 @@ export async function POST(request: NextRequest) {
         + personalityReadingBlock
         + comparisonBlock
         + styleContext
+        + namedSectionHints
         + (contextText ? contextText : ''),
     };
 

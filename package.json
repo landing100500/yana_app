@@ -16,7 +16,8 @@
     "fix-natal-charts": "tsx scripts/fix-natal-charts-columns.ts",
     "remove-userid-unique": "tsx scripts/remove-userid-unique.ts",
     "delete-all-users": "tsx scripts/delete-all-users.ts",
-    "list-openai-models": "tsx scripts/list-openai-models.ts"
+    "list-openai-models": "tsx scripts/list-openai-models.ts",
+    "rag-smoke-test": "tsx scripts/rag-memory-smoke-test.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
