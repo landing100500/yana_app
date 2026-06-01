@@ -476,6 +476,9 @@ export default function ChatPage() {
       }
 
       if (response.ok) {
+        if (!data) {
+          throw new Error('Пустой ответ сервера');
+        }
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
