@@ -46,7 +46,7 @@ function buildSectionSearchTerms(sectionName: string): string[] {
     terms.add(kw);
     if (kw.length >= 6) terms.add(kw.slice(0, 4));
   }
-  return [...terms];
+  return Array.from(terms);
 }
 
 export function scoreSectionNameMatch(requested: string, candidate: string): number {
@@ -62,7 +62,7 @@ export function scoreSectionNameMatch(requested: string, candidate: string): num
   let hits = 0;
   for (const w of wordsA) {
     if (wordsB.has(w)) hits += 1;
-    else if ([...wordsB].some((bw) => bw.includes(w) || w.includes(bw))) hits += 0.7;
+    else if (Array.from(wordsB).some((bw) => bw.includes(w) || w.includes(bw))) hits += 0.7;
   }
   return Math.round((hits / wordsA.length) * 80);
 }
@@ -124,7 +124,7 @@ export async function findSectionByName(
       if (byId.size >= 5) break;
     }
 
-    const candidates = [...byId.values()];
+    const candidates = Array.from(byId.values());
     if (!candidates.length) {
       console.warn(`Section "${sectionName}" not found: no candidates`);
       return null;
