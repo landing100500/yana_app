@@ -170,9 +170,13 @@ async function getUserId(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let phase = 'init_db';
+  let logUserId: number | undefined;
+  let logTopicId: number | undefined;
   try {
     await initDatabase();
 
+    phase = 'auth';
     const userId = await getUserId(request);
 
     if (!userId) {
@@ -182,6 +186,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    logUserId = userId;
+    phase = 'plan_check';
     const currentUser = await User.findByPk(userId);
     if (!currentUser) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
@@ -194,6 +200,7 @@ export async function POST(request: NextRequest) {
     const planBefore = blockState.snapshot;
     const upgradeHint = getTariffsLinkMarkdown('Тарифы');
 
+    phase = 'parse_body';
     const { message, topicId, comparisonMode, selectedChartId } = await request.json();
 
     if (!message) {
@@ -203,6 +210,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    phase = 'topic';
     let topic: ChatTopic | null = null;
 
     if (topicId) {
@@ -219,14 +227,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Сохраняем сообщение пользователя в БД
+    logTopicId = topic.id;
+    phase = 'save_user_message';
     const userMessage = await Message.create({
       topicId: topic.id,
       role: 'user',
       content: message,
     });
 
-    // Контекст пользователя: анкета + полные данные выбранной натальной карты (или основной по умолчанию)
+    phase = 'load_context';
     const anketa = await UserAnketa.findOne({ where: { userId } });
     let activeChart: NatalChart | null = null;
     if (selectedChartId !== undefined && selectedChartId !== null && selectedChartId !== '') {
@@ -385,13 +394,13 @@ export async function POST(request: NextRequest) {
       otherTopicsBlock = '\n\n--- Другие диалоги пользователя (кратко) ---\n' + parts.join('\n') + '\n--- Конец ---';
     }
 
-    // История текущего топика: резюме длинной части + последние 25 сообщений (уже включают текущее сообщение пользователя)
+    phase = 'topic_context';
     const { summary: topicSummary, recentMessages: messageHistory } = await getTopicContext(topic.id);
     const topicSummaryBlock = topicSummary
       ? '\n\n--- Резюме предыдущей части этого диалога ---\n' + topicSummary + '\n--- Конец резюме ---'
       : '';
 
-    // Ищем релевантные чанки в подключённых областях памяти (больше чанков; при 0 — второй проход с более низким порогом)
+    phase = 'rag_search';
     let relevantChunks = await searchRelevantChunks(message, 10);
     if (relevantChunks.length === 0) {
       relevantChunks = await searchRelevantChunks(message, 10, undefined, { minSimilarity: 0.25 });
@@ -574,6 +583,7 @@ export async function POST(request: NextRequest) {
 
     let personalityReadingBlock = '';
     if (runPersonalityAlgo && activeChart) {
+      phase = 'personality_algo';
       const alreadyUsedChunkTexts = new Set<string>();
       for (const ch of chartInterpretationChunks) {
         if (ch.text) alreadyUsedChunkTexts.add(ch.text);
@@ -619,7 +629,7 @@ export async function POST(request: NextRequest) {
     // История уже включает текущее сообщение пользователя (последние до 25 сообщений)
     const messages = [systemMessage, ...messageHistory];
 
-    // Отправляем запрос в OpenAI
+    phase = 'openai';
     let response = '';
     try {
       const createCompletion = async (requestMessages: any[]) =>
@@ -675,7 +685,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Сохраняем ответ ассистента в БД
+    phase = 'save_assistant_message';
     const assistantMessage = await Message.create({
       topicId: topic.id,
       role: 'assistant',
@@ -719,12 +729,25 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     const errMessage = error?.message || String(error);
-    console.error('Send message error:', errMessage, error);
+    const sqlParent = error?.parent as { sqlMessage?: string; sql?: string } | undefined;
+    console.error(
+      '[chat/message] FAILED',
+      JSON.stringify({
+        phase,
+        userId: logUserId,
+        topicId: logTopicId,
+        err: errMessage,
+        code: error?.code,
+        name: error?.name,
+        sqlMessage: sqlParent?.sqlMessage,
+      })
+    );
+    if (error?.stack) console.error('[chat/message] stack:', error.stack);
     const debug = process.env.CHAT_ERROR_DEBUG === '1' || process.env.CHAT_ERROR_DEBUG === 'true';
     return NextResponse.json(
       {
         error: 'Произошла ошибка при отправке сообщения',
-        ...(debug ? { detail: errMessage } : {}),
+        ...(debug ? { detail: `${phase}: ${errMessage}` } : {}),
       },
       { status: 500 }
     );
