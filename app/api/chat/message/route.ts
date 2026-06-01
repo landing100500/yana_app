@@ -37,6 +37,8 @@ import { utcNowToFixedOffsetLocal } from '@/lib/swisseph-vedic';
 import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
+/** Долгие RAG + GPT; на self-hosted без лимита, на serverless — увеличивает таймаут платформы */
+export const maxDuration = 600;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 const SIGN_NAMES = ['Меша', 'Вришабха', 'Митхуна', 'Карка', 'Симха', 'Канья', 'Тула', 'Вришчика', 'Дхану', 'Макара', 'Кумбха', 'Мина'];
@@ -692,7 +694,6 @@ export async function POST(request: NextRequest) {
       content: response,
     });
 
-    // Логируем запрос: какие области памяти использовались
     const sectionRefsMap = new Map<string, string>();
     relevantChunks.forEach((chunk) => {
       if (chunk.sectionId && !sectionRefsMap.has(chunk.sectionId)) {
@@ -700,28 +701,25 @@ export async function POST(request: NextRequest) {
       }
     });
     const sectionRefs = Array.from(sectionRefsMap.entries()).map(([id, name]) => ({ id, name }));
-    try {
-      await ChatRequestLog.create({
-        userId,
-        topicId: topic.id,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        sectionRefs,
-      });
-    } catch (logErr) {
-      console.warn('ChatRequestLog.create failed (chat still ok):', logErr);
-    }
 
-    // Обновляем время обновления топика
-    await topic.update({ updatedAt: new Date() });
+    // Не блокируем ответ клиенту: второй вызов GPT (extractUserFacts) и логи — в фоне
+    void runChatMessagePostProcess({
+      userId,
+      topicId: topic.id,
+      userMessageId: userMessage.id,
+      assistantMessageId: assistantMessage.id,
+      userMessageContent: userMessage.content,
+      assistantContent: response,
+      sectionRefs,
+    }).catch((postErr) => {
+      console.warn('[chat/message] post-process failed:', postErr);
+    });
 
-    // Обновляем долгосрочную память о пользователе (извлечь факты из этого обмена)
-    try {
-      const newFacts = await extractUserFacts(userMessage.content, response);
-      if (newFacts.length > 0) await appendUserMemory(userId, newFacts);
-    } catch (memErr) {
-      console.warn('User memory update failed:', memErr);
-    }
+    console.log('[chat/message] OK', {
+      userId,
+      topicId: topic.id,
+      assistantMessageId: assistantMessage.id,
+    });
 
     return NextResponse.json({
       response,
@@ -751,6 +749,41 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+async function runChatMessagePostProcess(payload: {
+  userId: number;
+  topicId: number;
+  userMessageId: number;
+  assistantMessageId: number;
+  userMessageContent: string;
+  assistantContent: string;
+  sectionRefs: { id: string; name: string }[];
+}): Promise<void> {
+  try {
+    await ChatRequestLog.create({
+      userId: payload.userId,
+      topicId: payload.topicId,
+      userMessageId: payload.userMessageId,
+      assistantMessageId: payload.assistantMessageId,
+      sectionRefs: payload.sectionRefs,
+    });
+  } catch (logErr) {
+    console.warn('ChatRequestLog.create failed (chat still ok):', logErr);
+  }
+
+  try {
+    await ChatTopic.update({ updatedAt: new Date() }, { where: { id: payload.topicId } });
+  } catch (topicErr) {
+    console.warn('ChatTopic.update failed:', topicErr);
+  }
+
+  try {
+    const newFacts = await extractUserFacts(payload.userMessageContent, payload.assistantContent);
+    if (newFacts.length > 0) await appendUserMemory(payload.userId, newFacts);
+  } catch (memErr) {
+    console.warn('User memory update failed:', memErr);
   }
 }
 

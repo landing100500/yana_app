@@ -506,11 +506,16 @@ export default function ChatPage() {
         setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'string'
+            ? err
+            : 'Произошла ошибка при отправке сообщения';
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content:
-          err instanceof Error ? err.message : 'Произошла ошибка при отправке сообщения',
+        content: msg,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
