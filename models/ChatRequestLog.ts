@@ -86,7 +86,7 @@ ChatRequestLog.init(
 
 ChatRequestLog.belongsTo(User, { foreignKey: 'userId' });
 ChatRequestLog.belongsTo(ChatTopic, { foreignKey: 'topicId' });
-ChatRequestLog.belongsTo(Message, { foreignKey: 'userMessageId' });
-ChatRequestLog.belongsTo(Message, { foreignKey: 'assistantMessageId' });
+ChatRequestLog.belongsTo(Message, { foreignKey: 'userMessageId', as: 'userMessage' });
+ChatRequestLog.belongsTo(Message, { foreignKey: 'assistantMessageId', as: 'assistantMessage' });
 
 export default ChatRequestLog;

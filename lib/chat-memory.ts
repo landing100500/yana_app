@@ -123,7 +123,15 @@ export async function getTopicContext(
  */
 export async function appendUserMemory(userId: number, newFacts: string[]): Promise<void> {
   if (newFacts.length === 0) return;
-  const [row] = await UserMemory.findOrCreate({ where: { userId }, defaults: { userId, facts: '' } });
+  let row = await UserMemory.findOne({ where: { userId } });
+  if (!row) {
+    try {
+      row = await UserMemory.create({ userId, facts: '' });
+    } catch {
+      row = await UserMemory.findOne({ where: { userId } });
+      if (!row) throw new Error('UserMemory row missing after create race');
+    }
+  }
   const existing = row.facts ? row.facts.split('\n').filter(Boolean) : [];
   const combined = [...existing];
   for (const f of newFacts) {

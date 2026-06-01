@@ -87,20 +87,36 @@ async function ensureAuthSchema() {
   }
 }
 
-export async function initDatabase() {
-  try {
-    await sequelize.authenticate();
-    console.log('Database connection established successfully.');
+let initPromise: Promise<void> | null = null;
+let dbReady = false;
 
-    await ensureAuthSchema();
-    
-    // Используем sync без alter, чтобы не создавать лишние индексы
-    // Таблицы будут созданы только если их нет
-    await sequelize.sync({ force: false });
-    console.log('Database models synchronized.');
-  } catch (error) {
-    console.error('Unable to connect to the database:', error);
-    throw error;
+/**
+ * Один раз на процесс: authenticate + миграции схемы + sync.
+ * Повторные вызовы (каждый API-запрос) не должны гонять sync параллельно —
+ * это приводило к RangeError: Maximum call stack size exceeded в Sequelize на VPS.
+ */
+export async function initDatabase(): Promise<void> {
+  if (dbReady) return;
+
+  if (!initPromise) {
+    initPromise = (async () => {
+      await sequelize.authenticate();
+      console.log('Database connection established successfully.');
+
+      await ensureAuthSchema();
+
+      // sync без alter — только создание отсутствующих таблиц
+      await sequelize.sync({ force: false });
+      console.log('Database models synchronized.');
+
+      dbReady = true;
+    })().catch((error) => {
+      initPromise = null;
+      console.error('Unable to connect to the database:', error);
+      throw error;
+    });
   }
+
+  await initPromise;
 }
 
