@@ -468,7 +468,12 @@ export default function ChatPage() {
         }),
       });
 
-      const data = await response.json();
+      let data: { response?: string; topicId?: number; error?: string; detail?: string } | null = null;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(`HTTP ${response.status}: ответ не JSON (часто nginx timeout или падение процесса)`);
+      }
 
       if (response.ok) {
         const assistantMessage: Message = {
@@ -487,7 +492,8 @@ export default function ChatPage() {
         }
         refreshUserProfile();
       } else {
-        const errorText = data?.error || 'Произошла ошибка при отправке сообщения';
+        const errorText =
+          data?.detail || data?.error || `Ошибка сервера (HTTP ${response.status})`;
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
@@ -500,7 +506,8 @@ export default function ChatPage() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Произошла ошибка при отправке сообщения',
+        content:
+          err instanceof Error ? err.message : 'Произошла ошибка при отправке сообщения',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);

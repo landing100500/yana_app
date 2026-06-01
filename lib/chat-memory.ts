@@ -85,15 +85,20 @@ export async function getTopicContext(
     if (existing && existing.upToMessageId >= lastOldId) {
       summary = existing.summary || null;
     } else {
-      const toSummarize = oldMessages.map((m) => ({ role: m.role, content: m.content }));
-      const summaryText = await summarizeMessages(toSummarize);
-      const row = await ChatTopicSummary.findOne({ where: { topicId } });
-      if (row) {
-        await row.update({ summary: summaryText, upToMessageId: lastOldId });
-      } else {
-        await ChatTopicSummary.create({ topicId, summary: summaryText, upToMessageId: lastOldId });
+      try {
+        const toSummarize = oldMessages.map((m) => ({ role: m.role, content: m.content }));
+        const summaryText = await summarizeMessages(toSummarize);
+        const row = await ChatTopicSummary.findOne({ where: { topicId } });
+        if (row) {
+          await row.update({ summary: summaryText, upToMessageId: lastOldId });
+        } else {
+          await ChatTopicSummary.create({ topicId, summary: summaryText, upToMessageId: lastOldId });
+        }
+        summary = summaryText || null;
+      } catch (summaryErr) {
+        console.warn('Topic summary generation failed, continuing without summary:', summaryErr);
+        summary = existing?.summary || null;
       }
-      summary = summaryText || null;
     }
   }
 

@@ -690,13 +690,17 @@ export async function POST(request: NextRequest) {
       }
     });
     const sectionRefs = Array.from(sectionRefsMap.entries()).map(([id, name]) => ({ id, name }));
-    await ChatRequestLog.create({
-      userId,
-      topicId: topic.id,
-      userMessageId: userMessage.id,
-      assistantMessageId: assistantMessage.id,
-      sectionRefs,
-    });
+    try {
+      await ChatRequestLog.create({
+        userId,
+        topicId: topic.id,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+        sectionRefs,
+      });
+    } catch (logErr) {
+      console.warn('ChatRequestLog.create failed (chat still ok):', logErr);
+    }
 
     // Обновляем время обновления топика
     await topic.update({ updatedAt: new Date() });
@@ -714,9 +718,14 @@ export async function POST(request: NextRequest) {
       topicId: topic.id,
     });
   } catch (error: any) {
-    console.error('Send message error:', error);
+    const errMessage = error?.message || String(error);
+    console.error('Send message error:', errMessage, error);
+    const debug = process.env.CHAT_ERROR_DEBUG === '1' || process.env.CHAT_ERROR_DEBUG === 'true';
     return NextResponse.json(
-      { error: 'Произошла ошибка при отправке сообщения' },
+      {
+        error: 'Произошла ошибка при отправке сообщения',
+        ...(debug ? { detail: errMessage } : {}),
+      },
       { status: 500 }
     );
   }
