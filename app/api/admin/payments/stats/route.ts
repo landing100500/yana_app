@@ -84,20 +84,34 @@ export async function GET(request: NextRequest) {
           [Op.between]: [from, to],
         },
       },
-      include: [
-        {
-          model: User,
-          attributes: ['id', 'name', 'email', 'phone'],
-          required: false,
-        },
-      ],
       order: [['paidAt', 'DESC']],
     });
+
+    const userIds = Array.from(
+      new Set(
+        payments
+          .map((payment: any) => Number(payment.userId))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+
+    const users = userIds.length
+      ? await User.findAll({
+          where: { id: userIds },
+          attributes: ['id', 'name', 'email', 'phone'],
+          raw: true,
+        })
+      : [];
+
+    const userById = new Map<number, any>();
+    for (const user of users as any[]) {
+      userById.set(Number(user.id), user);
+    }
 
     const rows = payments.map((payment: any) => {
       const amount = Number(payment.amountValue);
       const safeAmount = Number.isFinite(amount) ? amount : 0;
-      const user = payment.User;
+      const user = userById.get(Number(payment.userId)) || null;
       return {
         id: payment.id,
         paidAt: payment.paidAt,
