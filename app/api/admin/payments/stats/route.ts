@@ -127,8 +127,9 @@ export async function GET(request: NextRequest) {
       totalPayments: rows.length,
       rows,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Admin payments stats error:', error);
-    return NextResponse.json({ error: 'Ошибка при загрузке статистики платежей' }, { status: 500 });
+    const message = error?.message ? `: ${error.message}` : '';
+    return NextResponse.json({ error: `Ошибка при загрузке статистики платежей${message}` }, { status: 500 });
   }
 }

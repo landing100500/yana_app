@@ -87,6 +87,68 @@ async function ensureAuthSchema() {
   }
 }
 
+async function ensurePaymentsSchema() {
+  const queryInterface = sequelize.getQueryInterface();
+  try {
+    const paymentsTable = await queryInterface.describeTable('payments');
+
+    if (!paymentsTable.planCode) {
+      await queryInterface.addColumn('payments', 'planCode', {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: 'free',
+      });
+    }
+    if (!paymentsTable.amountValue) {
+      await queryInterface.addColumn('payments', 'amountValue', {
+        type: DataTypes.STRING(16),
+        allowNull: false,
+        defaultValue: '0.00',
+      });
+    }
+    if (!paymentsTable.currency) {
+      await queryInterface.addColumn('payments', 'currency', {
+        type: DataTypes.STRING(3),
+        allowNull: false,
+        defaultValue: 'RUB',
+      });
+    }
+    if (!paymentsTable.status) {
+      await queryInterface.addColumn('payments', 'status', {
+        type: DataTypes.STRING(16),
+        allowNull: false,
+        defaultValue: 'pending',
+      });
+    }
+    if (!paymentsTable.idempotenceKey) {
+      await queryInterface.addColumn('payments', 'idempotenceKey', {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      });
+    }
+    if (!paymentsTable.yookassaPaymentId) {
+      await queryInterface.addColumn('payments', 'yookassaPaymentId', {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      });
+    }
+    if (!paymentsTable.paidAt) {
+      await queryInterface.addColumn('payments', 'paidAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+  } catch (error: any) {
+    const message = String(error?.message || '').toLowerCase();
+    // Таблица может отсутствовать до sync() — это нормальный кейс.
+    if (message.includes('does not exist') || message.includes('unknown table') || message.includes('no such table')) {
+      return;
+    }
+    console.error('Failed to ensure payments schema:', error);
+    throw error;
+  }
+}
+
 let initPromise: Promise<void> | null = null;
 let dbReady = false;
 
@@ -104,6 +166,7 @@ export async function initDatabase(): Promise<void> {
       console.log('Database connection established successfully.');
 
       await ensureAuthSchema();
+      await ensurePaymentsSchema();
 
       // sync без alter — только создание отсутствующих таблиц
       await sequelize.sync({ force: false });
