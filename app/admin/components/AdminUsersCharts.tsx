@@ -87,6 +87,10 @@ export default function AdminUsersCharts() {
   const [loadingAdminCharts, setLoadingAdminCharts] = useState(false);
   const [selectedAdminChartId, setSelectedAdminChartId] = useState<number | null>(null);
   const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
+  const [deleteModalUser, setDeleteModalUser] = useState<User | null>(null);
+  const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -275,6 +279,59 @@ export default function AdminUsersCharts() {
     }
   };
 
+  const openDeleteUserModal = (user: User) => {
+    setDeleteModalUser(user);
+    setDeleteAdminPassword('');
+    setDeleteError(null);
+  };
+
+  const closeDeleteUserModal = () => {
+    if (deleteSubmitting) return;
+    setDeleteModalUser(null);
+    setDeleteAdminPassword('');
+    setDeleteError(null);
+  };
+
+  const handleDeleteUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deleteModalUser) return;
+    if (!deleteAdminPassword.trim()) {
+      setDeleteError('Введите пароль админки');
+      return;
+    }
+    if (!confirm('Вы уверены? Будет удалена ВСЯ информация по пользователю из всех баз данных.')) {
+      return;
+    }
+
+    try {
+      setDeleteSubmitting(true);
+      setDeleteError(null);
+      const response = await fetch(`/api/admin/users/${deleteModalUser.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: deleteAdminPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDeleteError(data.error || 'Не удалось удалить пользователя');
+        return;
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== deleteModalUser.id));
+      if (selectedUserId === deleteModalUser.id) {
+        setSelectedUserId(null);
+        setSelectedUser(null);
+        setCharts([]);
+        setSelectedChart(null);
+      }
+      closeDeleteUserModal();
+    } catch (err) {
+      setDeleteError('Ошибка сети при удалении пользователя');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -436,6 +493,7 @@ export default function AdminUsersCharts() {
                 <th>Карты пользователя</th>
                 <th>Дата регистрации</th>
                 <th>Последнее посещение</th>
+                <th>Удалить</th>
               </tr>
             </thead>
             <tbody>
@@ -477,10 +535,53 @@ export default function AdminUsersCharts() {
                   </td>
                   <td>{new Date(user.createdAt).toLocaleString('ru-RU')}</td>
                   <td>{user.lastVisitAt ? new Date(user.lastVisitAt).toLocaleString('ru-RU') : '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className={styles.deleteUserIconButton}
+                      title="Удалить пользователя"
+                      onClick={() => openDeleteUserModal(user)}
+                    >
+                      🗑
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {deleteModalUser && (
+        <div className={styles.modalOverlay} onClick={closeDeleteUserModal}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>Удаление пользователя</h2>
+            <p className={styles.modalHint}>
+              Пользователь: {deleteModalUser.name} ({deleteModalUser.email || deleteModalUser.phone || `#${deleteModalUser.id}`})
+            </p>
+            <form onSubmit={handleDeleteUserSubmit} className={styles.modalForm}>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Пароль админки</label>
+                <input
+                  type="password"
+                  value={deleteAdminPassword}
+                  onChange={(e) => setDeleteAdminPassword(e.target.value)}
+                  className={styles.modalInput}
+                  placeholder="Введите пароль"
+                  required
+                />
+              </div>
+              {deleteError && <div className={styles.createError}>{deleteError}</div>}
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.modalCancel} onClick={closeDeleteUserModal} disabled={deleteSubmitting}>
+                  Отмена
+                </button>
+                <button type="submit" className={styles.modalSubmit} disabled={deleteSubmitting}>
+                  {deleteSubmitting ? 'Удаление...' : 'Удалить'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

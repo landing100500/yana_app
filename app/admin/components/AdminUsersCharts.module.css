@@ -117,7 +117,7 @@
 .usersTable {
   width: 100%;
   border-collapse: collapse;
-  min-width: 920px;
+  min-width: 1020px;
 }
 
 .usersTable th,
@@ -150,6 +150,24 @@
 
 .linkButton:hover {
   color: #ddd6fe;
+}
+
+.deleteUserIconButton {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteUserIconButton:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fff;
 }
 
 .chartsList {

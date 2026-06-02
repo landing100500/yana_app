@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import AdminUsersCharts from './components/AdminUsersCharts';
 import AdminChatHistory from './components/AdminChatHistory';
+import AdminPaymentsStats from './components/AdminPaymentsStats';
 
 interface Section {
   id: string;
@@ -15,7 +16,7 @@ interface Section {
   enabled_for_agent?: boolean;
 }
 
-type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms';
+type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms' | 'statistics';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -525,6 +526,12 @@ export default function AdminPage() {
             >
               Алгоритмы
             </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'statistics' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('statistics')}
+            >
+              Статистика
+            </button>
           </nav>
 
           <div className={styles.agentSections}>
@@ -798,7 +805,7 @@ export default function AdminPage() {
             <AdminUsersCharts />
           ) : currentView === 'chat-history' ? (
             <AdminChatHistory />
-          ) : (
+          ) : currentView === 'algorithms' ? (
             <div className={styles.adminPanel}>
               <h1 className={styles.title}>Алгоритмы</h1>
               <p className={styles.subtitle}>
@@ -827,6 +834,11 @@ export default function AdminPage() {
                 )}
               </div>
               {error && currentView === 'algorithms' && <div className={styles.error}>{error}</div>}
+            </div>
+          ) : (
+            <div className={styles.adminPanel}>
+              <h1 className={styles.title}>Статистика</h1>
+              <AdminPaymentsStats />
             </div>
           )}
         </div>
