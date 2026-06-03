@@ -1313,6 +1313,19 @@
   font-family: inherit;
 }
 
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus,
+.input:autofill,
+.input:autofill:hover,
+.input:autofill:focus {
+  -webkit-text-fill-color: var(--dark-gray) !important;
+  caret-color: var(--dark-gray);
+  -webkit-box-shadow: 0 0 0 1000px var(--light-beige) inset !important;
+  box-shadow: 0 0 0 1000px var(--light-beige) inset !important;
+  transition: background-color 50000s ease-in-out 0s;
+}
+
 .input:focus {
   outline: none;
   border-color: var(--purple);

@@ -102,7 +102,7 @@ export default function SetupPinPage() {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} darkUi`}>
       <div className={styles.starsContainer}>
         {stars.map((star) => {
           const centerX = 50;

@@ -69,7 +69,7 @@ export default function ChartComparisonPage() {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} darkUi`}>
       <div className={styles.inner}>
         <button className={styles.backButton} onClick={() => router.push('/chat')}>← Назад</button>
         <h1>Сравнение карт</h1>

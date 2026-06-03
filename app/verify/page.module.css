@@ -116,6 +116,7 @@
   font-weight: 600;
   border: 2px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
+  background-color: #2d2540;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);

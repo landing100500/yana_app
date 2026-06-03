@@ -72,7 +72,7 @@ export default function Home() {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} darkUi`}>
       <div className={styles.starsContainer}>
         {stars.map((star) => {
           // Вычисляем направление к центру

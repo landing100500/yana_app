@@ -450,7 +450,7 @@ export default function AdminPage() {
 
   if (authenticated === null) {
     return (
-      <div className={styles.container}>
+      <div className={`${styles.container} darkUi`}>
         <div className={styles.loading}>Загрузка...</div>
       </div>
     );
@@ -458,7 +458,7 @@ export default function AdminPage() {
 
   if (!authenticated) {
     return (
-      <div className={styles.container}>
+      <div className={`${styles.container} darkUi`}>
         <div className={styles.card}>
           <h1 className={styles.title}>Вход администратора</h1>
           <form onSubmit={handleLogin} className={styles.form}>
@@ -493,7 +493,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} darkUi`}>
       <div className={styles.adminLayout}>
         {/* Боковое меню */}
         <div className={styles.sidebar}>

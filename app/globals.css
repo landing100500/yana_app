@@ -46,6 +46,44 @@ input, textarea {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/*
+ * Dark auth/admin surfaces: OS "light" color-scheme and autofill often paint
+ * inputs solid white while our fields use light text — intermittent white-on-white.
+ */
+.darkUi {
+  color-scheme: dark;
+}
+
+.darkUi select option {
+  background-color: #2d1f3d;
+  color: #ffffff;
+}
+
+.darkUi input:-webkit-autofill,
+.darkUi input:-webkit-autofill:hover,
+.darkUi input:-webkit-autofill:focus,
+.darkUi textarea:-webkit-autofill,
+.darkUi textarea:-webkit-autofill:hover,
+.darkUi textarea:-webkit-autofill:focus,
+.darkUi select:-webkit-autofill,
+.darkUi select:-webkit-autofill:hover,
+.darkUi select:-webkit-autofill:focus,
+.darkUi input:autofill,
+.darkUi input:autofill:hover,
+.darkUi input:autofill:focus,
+.darkUi textarea:autofill,
+.darkUi textarea:autofill:hover,
+.darkUi textarea:autofill:focus,
+.darkUi select:autofill,
+.darkUi select:autofill:hover,
+.darkUi select:autofill:focus {
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.95) !important;
+  caret-color: rgba(255, 255, 255, 0.95);
+  -webkit-box-shadow: 0 0 0 1000px #2d2540 inset !important;
+  box-shadow: 0 0 0 1000px #2d2540 inset !important;
+  transition: background-color 50000s ease-in-out 0s;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 600;

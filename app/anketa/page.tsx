@@ -315,7 +315,7 @@ export default function AnketaPage() {
   })();
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} darkUi`}>
       <div className={styles.starsContainer}>
         {stars.map((star) => (
           <div

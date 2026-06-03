@@ -128,6 +128,7 @@
   border-radius: 12px;
   font-size: 1rem;
   color: rgba(255, 255, 255, 0.95);
+  background-color: #2d2540;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
@@ -473,9 +474,17 @@
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: #2d2540;
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.95);
   font-size: 0.9rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.agentConnectRow .select option {
+  background-color: #2d1f3d;
+  color: #ffffff;
 }
 
 .buttonSmall {
