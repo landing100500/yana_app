@@ -102,11 +102,11 @@ export default function AdminPaymentsStats() {
           <>
             <label className={styles.filterLabel}>
               От
-              <DatePicker value={fromDate} onChange={setFromDate} className={styles.datePicker} />
+              <DatePicker value={fromDate} onChange={setFromDate} theme="dark" className={styles.input} />
             </label>
             <label className={styles.filterLabel}>
               До
-              <DatePicker value={toDate} onChange={setToDate} className={styles.datePicker} />
+              <DatePicker value={toDate} onChange={setToDate} theme="dark" className={styles.input} />
             </label>
           </>
         )}

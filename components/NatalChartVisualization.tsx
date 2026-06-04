@@ -713,7 +713,7 @@ export default function NatalChartVisualization({ chart, chartId }: Props) {
               <p className={styles.transitsWarning}>Нет ID карты — откройте раздел «Карта» из личного кабинета.</p>
             ) : (
               <>
-                <div className={styles.transitControls}>
+                <div className={`${styles.transitControls} darkUi`}>
                   <label className={styles.transitLabel}>
                     Дата
                     <DatePicker

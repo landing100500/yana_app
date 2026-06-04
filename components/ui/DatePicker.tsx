@@ -45,7 +45,12 @@ function clampDate(date: Date, min?: string, max?: string): Date {
 interface DatePickerProps {
   value: string;
   onChange: (value: string) => void;
+  /** Стили поля ввода (как у .input / .modalInput на странице). */
   className?: string;
+  /** Обёртка, например для ширины в сетке фильтров. */
+  wrapperClassName?: string;
+  /** Если className не передан — светлая или тёмная тема по умолчанию. */
+  theme?: 'light' | 'dark';
   required?: boolean;
   disabled?: boolean;
   min?: string;
@@ -57,12 +62,15 @@ export default function DatePicker({
   value,
   onChange,
   className = '',
+  wrapperClassName = '',
+  theme = 'light',
   required,
   disabled,
   min,
   max,
   placeholder = 'ДД.ММ.ГГГГ',
 }: DatePickerProps) {
+  const isDark = theme === 'dark';
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -130,12 +138,30 @@ export default function DatePicker({
     return false;
   };
 
+  const inputClassName = [
+    styles.inputField,
+    className || (isDark ? styles.defaultInputDark : styles.defaultInput),
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const calendarBtnClass = isDark ? `${styles.calendarBtn} ${styles.calendarBtnDark}` : styles.calendarBtn;
+  const popoverClass = isDark ? `${styles.popover} ${styles.popoverDark}` : styles.popover;
+  const navBtnClass = isDark ? `${styles.navBtn} ${styles.navBtnDark}` : styles.navBtn;
+  const selectClass = isDark ? `${styles.select} ${styles.selectDark}` : styles.select;
+  const weekdaysClass = isDark ? `${styles.weekdays} ${styles.weekdaysDark}` : styles.weekdays;
+
+  const useDarkUi = isDark || Boolean(className);
+
   return (
-    <div ref={rootRef} className={`${styles.root} ${className}`}>
+    <div
+      ref={rootRef}
+      className={`${styles.root} ${useDarkUi ? 'darkUi' : ''} ${wrapperClassName}`.trim()}
+    >
       <div className={styles.inputRow}>
         <input
           type="text"
-          className={styles.input}
+          className={inputClassName}
           value={text}
           placeholder={placeholder}
           required={required}
@@ -154,7 +180,7 @@ export default function DatePicker({
         />
         <button
           type="button"
-          className={styles.calendarBtn}
+          className={calendarBtnClass}
           disabled={disabled}
           aria-label="Открыть календарь"
           onClick={() => setOpen((v) => !v)}
@@ -169,14 +195,14 @@ export default function DatePicker({
       </datalist>
 
       {open && !disabled && (
-        <div className={styles.popover} role="dialog" aria-label="Выбор даты">
+        <div className={popoverClass} role="dialog" aria-label="Выбор даты">
           <div className={styles.nav}>
-            <button type="button" className={styles.navBtn} onClick={() => setViewMonth((m) => subMonths(m, 1))}>
+            <button type="button" className={navBtnClass} onClick={() => setViewMonth((m) => subMonths(m, 1))}>
               ‹
             </button>
             <div className={styles.selects}>
               <select
-                className={styles.select}
+                className={selectClass}
                 value={viewMonth.getMonth()}
                 onChange={(e) =>
                   setViewMonth(new Date(viewMonth.getFullYear(), Number(e.target.value), 1))
@@ -189,7 +215,7 @@ export default function DatePicker({
                 ))}
               </select>
               <select
-                className={styles.select}
+                className={selectClass}
                 value={viewMonth.getFullYear()}
                 onChange={(e) =>
                   setViewMonth(new Date(Number(e.target.value), viewMonth.getMonth(), 1))
@@ -202,12 +228,12 @@ export default function DatePicker({
                 ))}
               </select>
             </div>
-            <button type="button" className={styles.navBtn} onClick={() => setViewMonth((m) => addMonths(m, 1))}>
+            <button type="button" className={navBtnClass} onClick={() => setViewMonth((m) => addMonths(m, 1))}>
               ›
             </button>
           </div>
 
-          <div className={styles.weekdays}>
+          <div className={weekdaysClass}>
             {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => (
               <span key={d}>{d}</span>
             ))}

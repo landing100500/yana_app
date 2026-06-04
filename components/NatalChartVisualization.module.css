@@ -601,6 +601,8 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.25);
   color: rgba(255, 255, 255, 0.9);
+  caret-color: rgba(255, 255, 255, 0.9);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.9);
   font-size: 0.9rem;
 }
 

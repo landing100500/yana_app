@@ -356,7 +356,7 @@ export default function NatalChartPage() {
       </div>
       {isCreateModalOpen && (
         <div className={styles.modalOverlay} onClick={() => !isCalculating && setIsCreateModalOpen(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div className={`${styles.modal} darkUi`} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>Карта другого человека</h2>
             <form onSubmit={handleCreateOtherPersonChart} className={styles.modalForm}>
               <div className={styles.modalRow}>

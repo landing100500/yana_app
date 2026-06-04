@@ -9,15 +9,65 @@
   align-items: stretch;
 }
 
-.input {
+/* Только layout; цвета — из className родителя или defaultInput* */
+.inputField {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.inputField:-webkit-autofill,
+.inputField:-webkit-autofill:hover,
+.inputField:-webkit-autofill:focus,
+.inputField:autofill,
+.inputField:autofill:hover,
+.inputField:autofill:focus {
+  -webkit-text-fill-color: inherit !important;
+  caret-color: inherit;
+  transition: background-color 50000s ease-in-out 0s;
+}
+
+.defaultInput {
+  padding: 10px 12px;
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 8px;
+  color: #1a1625;
+  background-color: #f3f4f6;
+  caret-color: #1a1625;
+  -webkit-text-fill-color: #1a1625;
+}
+
+.defaultInput::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+.defaultInputDark {
   padding: 10px 12px;
-  font-size: 16px;
-  background: #fff;
-  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  background-color: rgba(255, 255, 255, 0.06);
+  caret-color: rgba(255, 255, 255, 0.95);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.95);
+  color-scheme: dark;
+}
+
+.defaultInputDark::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 1;
+}
+
+.defaultInputDark:-webkit-autofill,
+.defaultInputDark:-webkit-autofill:hover,
+.defaultInputDark:-webkit-autofill:focus {
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.95) !important;
+  caret-color: rgba(255, 255, 255, 0.95);
+  -webkit-box-shadow: 0 0 0 1000px rgba(45, 37, 64, 0.95) inset !important;
+  box-shadow: 0 0 0 1000px rgba(45, 37, 64, 0.95) inset !important;
 }
 
 .calendarBtn {
@@ -25,10 +75,17 @@
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 8px;
   padding: 0 12px;
-  background: #f9fafb;
+  background: #e5e7eb;
+  color: #1a1625;
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
+}
+
+.calendarBtnDark {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .calendarBtn:disabled {
@@ -46,7 +103,16 @@
   border-radius: 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   background: #fff;
+  color: #1a1625;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+.popoverDark {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #1f2937;
+  color: #f3f4f6;
+  color-scheme: dark;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 .nav {
@@ -60,11 +126,17 @@
 .navBtn {
   border: none;
   background: #f3f4f6;
+  color: #1a1625;
   border-radius: 8px;
   width: 32px;
   height: 32px;
   cursor: pointer;
   font-size: 18px;
+}
+
+.navBtnDark {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
 }
 
 .selects {
@@ -81,6 +153,13 @@
   padding: 6px 8px;
   font-size: 14px;
   background: #fff;
+  color: #1a1625;
+}
+
+.selectDark {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #111827;
+  color: #f3f4f6;
 }
 
 .weekdays {
@@ -91,6 +170,10 @@
   font-size: 12px;
   color: #6b7280;
   text-align: center;
+}
+
+.weekdaysDark {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .grid {
@@ -108,12 +191,17 @@
   border: none;
   border-radius: 8px;
   background: transparent;
+  color: inherit;
   cursor: pointer;
   font-size: 14px;
 }
 
 .day:hover:not(:disabled) {
   background: #eff6ff;
+}
+
+.popoverDark .day:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.25);
 }
 
 .daySelected {
