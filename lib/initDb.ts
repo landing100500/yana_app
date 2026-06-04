@@ -55,6 +55,12 @@ async function ensureAuthSchema() {
         allowNull: true,
       });
     }
+    if (!usersTable.planManuallyAssignedAt) {
+      await queryInterface.addColumn('users', 'planManuallyAssignedAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
     if (!usersTable.freeWindowStartedAt) {
       await queryInterface.addColumn('users', 'freeWindowStartedAt', {
         type: DataTypes.DATE,

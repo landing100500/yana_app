@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import styles from './page.module.css';
+import DatePicker from '@/components/ui/DatePicker';
 
 interface AnketaData {
   gender: string | null;
@@ -237,11 +238,10 @@ export default function AnketaPage() {
 
       case 'date':
         return (
-          <input
-            type="date"
+          <DatePicker
             className={styles.input}
-            value={value as string || ''}
-            onChange={(e) => handleInputChange(e.target.value)}
+            value={(value as string) || ''}
+            onChange={handleInputChange}
             max={new Date().toISOString().split('T')[0]}
           />
         );

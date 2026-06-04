@@ -12,6 +12,8 @@
     "migrate-chat-request-logs": "tsx scripts/run-chat-request-logs-migration.ts",
     "migrate-phone-otp": "tsx scripts/run-phone-otp-migration.ts",
     "migrate-user-memories": "tsx scripts/run-user-memories-migration.ts",
+    "migrate-plan-manual-assigned": "tsx scripts/run-plan-manual-assigned-migration.ts",
+    "backfill-plan-manual-assigned": "tsx scripts/backfill-plan-manual-assigned.ts",
     "update-natal-charts": "tsx scripts/update-natal-charts-migration.ts",
     "fix-natal-charts": "tsx scripts/fix-natal-charts-columns.ts",
     "remove-userid-unique": "tsx scripts/remove-userid-unique.ts",

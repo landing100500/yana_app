@@ -1,0 +1,127 @@
+.root {
+  position: relative;
+  width: 100%;
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 16px;
+  background: #fff;
+  color: inherit;
+}
+
+.calendarBtn {
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.calendarBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(320px, 100vw - 24px);
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.navBtn {
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.selects {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.emptyCell {
+  aspect-ratio: 1;
+}
+
+.day {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.day:hover:not(:disabled) {
+  background: #eff6ff;
+}
+
+.daySelected {
+  background: #2563eb;
+  color: #fff;
+}
+
+.day:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

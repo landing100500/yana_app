@@ -10,6 +10,7 @@ interface UserAttributes {
   planCode?: string;
   planAssignedAt?: Date | null;
   planExpiresAt?: Date | null;
+  planManuallyAssignedAt?: Date | null;
   freeWindowStartedAt?: Date | null;
   freeMinutesUsed?: number;
   reminderLastSentAt?: Date | null;
@@ -29,6 +30,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public planCode?: string;
   public planAssignedAt?: Date | null;
   public planExpiresAt?: Date | null;
+  public planManuallyAssignedAt?: Date | null;
   public freeWindowStartedAt?: Date | null;
   public freeMinutesUsed?: number;
   public reminderLastSentAt?: Date | null;
@@ -72,6 +74,10 @@ User.init(
       allowNull: true,
     },
     planExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    planManuallyAssignedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },

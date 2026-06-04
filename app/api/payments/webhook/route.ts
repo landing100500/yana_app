@@ -41,6 +41,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error('YooKassa webhook error:', error);
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 }

@@ -35,6 +35,38 @@
   font-size: 14px;
 }
 
+.datePicker :global(.input) {
+  background: #111827;
+  color: #f3f4f6;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.datePicker :global(.calendarBtn) {
+  background: #1f2937;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.datePicker :global(.popover) {
+  background: #111827;
+  color: #f3f4f6;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.datePicker :global(.select),
+.datePicker :global(.navBtn) {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.datePicker :global(.day:hover:not(:disabled)) {
+  background: rgba(37, 99, 235, 0.25);
+}
+
+.manualRow td {
+  color: #fcd34d;
+}
+
 .select,
 .input {
   border: 1px solid rgba(255, 255, 255, 0.18);

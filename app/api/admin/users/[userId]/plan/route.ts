@@ -46,7 +46,8 @@ export async function PUT(
     if (planCode === 'free') {
       (user as any).freeWindowStartedAt = new Date();
       (user as any).freeMinutesUsed = 0;
-    } else if (planCode === 'hours24') {
+    } else {
+      (user as any).planManuallyAssignedAt = new Date();
       (user as any).freeWindowStartedAt = null;
     }
     await user.save();

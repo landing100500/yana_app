@@ -4,6 +4,8 @@ import { Op } from 'sequelize';
 import { initDatabase } from '@/lib/initDb';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
+import { findManualAssignmentUsersInPeriod } from '@/lib/plan-manual-stats';
+import { formatRubAmount } from '@/lib/yookassa';
 import { PLAN_CONFIGS, PlanCode } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +58,11 @@ function getPlanTitle(planCode: string) {
   return PLAN_CONFIGS[key]?.title || planCode;
 }
 
+function getPlanPriceRub(planCode: string): number {
+  const key = planCode as PlanCode;
+  return PLAN_CONFIGS[key]?.priceRub ?? 0;
+}
+
 export async function GET(request: NextRequest) {
   try {
     await initDatabase();
@@ -87,11 +94,14 @@ export async function GET(request: NextRequest) {
       order: [['paidAt', 'DESC']],
     });
 
+    const manualUsers = await findManualAssignmentUsersInPeriod(from, to);
+
     const userIds = Array.from(
       new Set(
-        payments
-          .map((payment: any) => Number(payment.userId))
-          .filter((id) => Number.isFinite(id) && id > 0)
+        [
+          ...payments.map((payment: any) => Number(payment.userId)),
+          ...manualUsers.map((user: any) => Number(user.id)),
+        ].filter((id) => Number.isFinite(id) && id > 0)
       )
     );
 
@@ -108,7 +118,7 @@ export async function GET(request: NextRequest) {
       userById.set(Number(user.id), user);
     }
 
-    const rows = payments.map((payment: any) => {
+    const paymentRows = payments.map((payment: any) => {
       const amount = Number(payment.amountValue);
       const safeAmount = Number.isFinite(amount) ? amount : 0;
       const user = userById.get(Number(payment.userId)) || null;
@@ -120,7 +130,8 @@ export async function GET(request: NextRequest) {
         currency: payment.currency,
         planCode: payment.planCode,
         planTitle: getPlanTitle(payment.planCode),
-        description: `Оплата тарифа "${getPlanTitle(payment.planCode)}"`,
+        description: `Оплата тарифа «${getPlanTitle(payment.planCode)}»`,
+        isManual: false,
         yookassaPaymentId: payment.yookassaPaymentId,
         user: {
           id: user?.id ?? null,
@@ -131,14 +142,46 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const totalAmountRub = rows.reduce((sum, row) => sum + row.amountRub, 0);
+    const manualRows = (manualUsers as any[]).map((manualUser) => {
+      const user = userById.get(Number(manualUser.id)) || manualUser;
+      const planCode = String(manualUser.planCode || '');
+      const planTitle = getPlanTitle(planCode);
+      const amountRub = getPlanPriceRub(planCode);
+      return {
+        id: -Number(manualUser.id),
+        paidAt: manualUser.manualEventAt,
+        amountValue: formatRubAmount(amountRub),
+        amountRub,
+        currency: 'RUB',
+        planCode,
+        planTitle,
+        description: `Тариф «${planTitle}» — добавлен вручную`,
+        isManual: true,
+        yookassaPaymentId: null,
+        user: {
+          id: user?.id ?? null,
+          name: user?.name ?? null,
+          email: user?.email ?? null,
+          phone: user?.phone ?? null,
+        },
+      };
+    });
+
+    const rows = [...paymentRows, ...manualRows].sort((a, b) => {
+      const aTime = new Date(a.paidAt).getTime();
+      const bTime = new Date(b.paidAt).getTime();
+      return bTime - aTime;
+    });
+
+    const totalAmountRub = [...paymentRows, ...manualRows].reduce((sum, row) => sum + row.amountRub, 0);
 
     return NextResponse.json({
       period,
       from: from.toISOString(),
       to: to.toISOString(),
       totalAmountRub,
-      totalPayments: rows.length,
+      totalPayments: paymentRows.length,
+      totalManualAssignments: manualRows.length,
       rows,
     });
   } catch (error: any) {

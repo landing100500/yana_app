@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
 import CircularProgressLoader from '@/components/ui/CircularProgressLoader';
+import DatePicker from '@/components/ui/DatePicker';
 import { loadNatalChartPage, readNatalChartPageCache } from '@/lib/natal-chart-page-load';
 const ACTIVE_CHART_STORAGE_KEY = 'active_natal_chart_id';
 
@@ -370,12 +371,12 @@ export default function NatalChartPage() {
               </div>
               <div className={styles.modalRow}>
                 <label className={styles.modalLabel}>Дата рождения</label>
-                <input
+                <DatePicker
                   className={styles.modalInput}
-                  type="date"
                   required
                   value={createForm.birthDate}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, birthDate: e.target.value }))}
+                  onChange={(birthDate) => setCreateForm((f) => ({ ...f, birthDate }))}
+                  max={new Date().toISOString().split('T')[0]}
                 />
               </div>
               <div className={styles.modalRow}>

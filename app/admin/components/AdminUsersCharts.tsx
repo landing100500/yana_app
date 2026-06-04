@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import styles from './AdminUsersCharts.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
+import DatePicker from '@/components/ui/DatePicker';
 
 interface User {
   id: number;
@@ -615,12 +616,12 @@ export default function AdminUsersCharts() {
               </div>
               <div className={styles.modalRow}>
                 <label className={styles.modalLabel}>Дата рождения</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={createForm.birthDate}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, birthDate: e.target.value }))}
+                  onChange={(birthDate) => setCreateForm((f) => ({ ...f, birthDate }))}
                   className={styles.modalInput}
                   required
+                  max={new Date().toISOString().split('T')[0]}
                 />
               </div>
               <div className={styles.modalRow}>

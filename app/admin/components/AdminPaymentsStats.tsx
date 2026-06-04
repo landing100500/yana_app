@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import DatePicker from '@/components/ui/DatePicker';
 import styles from './AdminPaymentsStats.module.css';
 
 type Period = 'week' | 'month' | 'custom';
@@ -14,6 +15,7 @@ interface PaymentRow {
   planCode: string;
   planTitle: string;
   description: string;
+  isManual?: boolean;
   yookassaPaymentId?: string | null;
   user: {
     id: number | null;
@@ -29,6 +31,7 @@ interface PaymentsStatsResponse {
   to: string;
   totalAmountRub: number;
   totalPayments: number;
+  totalManualAssignments?: number;
   rows: PaymentRow[];
 }
 
@@ -99,11 +102,11 @@ export default function AdminPaymentsStats() {
           <>
             <label className={styles.filterLabel}>
               От
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={styles.input} />
+              <DatePicker value={fromDate} onChange={setFromDate} className={styles.datePicker} />
             </label>
             <label className={styles.filterLabel}>
               До
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={styles.input} />
+              <DatePicker value={toDate} onChange={setToDate} className={styles.datePicker} />
             </label>
           </>
         )}
@@ -118,6 +121,9 @@ export default function AdminPaymentsStats() {
       {stats && (
         <div className={styles.summary}>
           <div>Успешных покупок: <strong>{stats.totalPayments}</strong></div>
+          {(stats.totalManualAssignments ?? 0) > 0 && (
+            <div>Добавлено вручную: <strong>{stats.totalManualAssignments}</strong></div>
+          )}
           <div>Сумма за период: <strong>{stats.totalAmountRub.toLocaleString('ru-RU')} ₽</strong></div>
           <div>
             Период: <strong>{new Date(stats.from).toLocaleDateString('ru-RU')} - {new Date(stats.to).toLocaleDateString('ru-RU')}</strong>
@@ -126,7 +132,7 @@ export default function AdminPaymentsStats() {
       )}
 
       {!loading && stats && stats.rows.length === 0 ? (
-        <div className={styles.empty}>За выбранный период успешных оплат нет.</div>
+        <div className={styles.empty}>За выбранный период оплат и ручных назначений нет.</div>
       ) : (
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -135,19 +141,21 @@ export default function AdminPaymentsStats() {
                 <th>Дата оплаты</th>
                 <th>Пользователь</th>
                 <th>Контакт</th>
-                <th>За что оплата</th>
+                <th>За что</th>
                 <th>Сумма</th>
+                <th>Примечание</th>
                 <th>ID платежа</th>
               </tr>
             </thead>
             <tbody>
               {(stats?.rows || []).map((row) => (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.isManual ? styles.manualRow : undefined}>
                   <td>{new Date(row.paidAt).toLocaleString('ru-RU')}</td>
                   <td>{row.user.name || (row.user.id ? `User #${row.user.id}` : 'Удалённый пользователь')}</td>
                   <td>{row.user.email || row.user.phone || '—'}</td>
                   <td>{row.description}</td>
                   <td>{row.amountRub.toLocaleString('ru-RU')} ₽</td>
+                  <td>{row.isManual ? 'Добавлен вручную' : '—'}</td>
                   <td>{row.yookassaPaymentId || '—'}</td>
                 </tr>
               ))}

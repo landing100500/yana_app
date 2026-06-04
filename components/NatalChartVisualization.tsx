@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './NatalChartVisualization.module.css';
 import VedicChartCanvas from './VedicChartCanvas';
+import DatePicker from '@/components/ui/DatePicker';
 import {
   calculateMahadashas,
   formatDashaDateLocal,
@@ -715,11 +716,10 @@ export default function NatalChartVisualization({ chart, chartId }: Props) {
                 <div className={styles.transitControls}>
                   <label className={styles.transitLabel}>
                     Дата
-                    <input
-                      type="date"
+                    <DatePicker
                       className={styles.transitInput}
                       value={transitDate}
-                      onChange={(e) => setTransitDate(e.target.value)}
+                      onChange={setTransitDate}
                     />
                   </label>
                   <label className={styles.transitLabel}>
