@@ -5,52 +5,101 @@
   margin-top: 20px;
 }
 
-.titleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
 .title {
   font-size: 2rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
-  margin: 0;
+  margin: 0 0 1.5rem 0;
 }
 
-.primaryButton {
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
-  color: var(--white);
-  border: none;
+.statsSection {
+  margin-bottom: 2rem;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 10px;
-  font-size: 1rem;
+}
+
+.statLabel {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.statValue {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #a7f3d0;
+}
+
+.filtersSection {
+  margin-bottom: 2rem;
+}
+
+.filters {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.filterLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.75);
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
 }
 
-.primaryButton:hover {
-  opacity: 0.95;
-  transform: translateY(-1px);
+.filterInput {
+  padding: 0.65rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1rem;
+  min-width: 220px;
 }
 
-.primaryButtonSmall {
-  margin-top: 1rem;
-  padding: 0.6rem 1.2rem;
-  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
-  color: var(--white);
-  border: none;
+.filterInput:focus {
+  outline: none;
+  border-color: rgba(155, 143, 184, 0.6);
+}
+
+.clearFiltersButton {
+  padding: 0.65rem 1.2rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   font-size: 0.95rem;
   cursor: pointer;
 }
 
-.primaryButtonSmall:hover {
-  opacity: 0.95;
+.clearFiltersButton:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.filteredCount {
+  font-size: 1rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .header {
@@ -313,10 +362,6 @@
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 1rem 0;
-}
-
-.adminChartsSection {
-  margin-bottom: 2.5rem;
 }
 
 .modalForm {

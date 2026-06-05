@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import styles from './AdminUsersCharts.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
-import DatePicker from '@/components/ui/DatePicker';
+
+type PlanCode = 'free' | 'hours24' | 'optimal' | 'professional';
 
 interface User {
   id: number;
@@ -11,7 +12,7 @@ interface User {
   phone?: string | null;
   name: string;
   tariff: string;
-  planCode?: 'free' | 'hours24' | 'optimal' | 'professional';
+  planCode?: PlanCode;
   planExpiresAt?: string | null;
   createdAt: string;
   chartCount: number;
@@ -64,6 +65,13 @@ interface ChartData {
   dashas?: any[];
 }
 
+const PLAN_OPTIONS: { value: PlanCode; label: string }[] = [
+  { value: 'free', label: 'Бесплатный' },
+  { value: 'hours24', label: '24 часа' },
+  { value: 'optimal', label: 'Оптимальный' },
+  { value: 'professional', label: 'Профессиональный' },
+];
+
 export default function AdminUsersCharts() {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -74,28 +82,43 @@ export default function AdminUsersCharts() {
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [loadingChart, setLoadingChart] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createForm, setCreateForm] = useState({
-    name: '',
-    gender: 'female',
-    birthDate: '',
-    birthTime: '',
-    birthPlace: '',
-  });
-  const [adminCharts, setAdminCharts] = useState<Chart[]>([]);
-  const [loadingAdminCharts, setLoadingAdminCharts] = useState(false);
-  const [selectedAdminChartId, setSelectedAdminChartId] = useState<number | null>(null);
+  const [emailFilter, setEmailFilter] = useState('');
+  const [planFilter, setPlanFilter] = useState<'all' | PlanCode>('all');
   const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
   const [deleteModalUser, setDeleteModalUser] = useState<User | null>(null);
   const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const planStats = useMemo(() => {
+    const counts: Record<PlanCode, number> = {
+      free: 0,
+      hours24: 0,
+      optimal: 0,
+      professional: 0,
+    };
+    for (const user of users) {
+      const code = user.planCode || 'free';
+      if (code in counts) counts[code]++;
+      else counts.free++;
+    }
+    return counts;
+  }, [users]);
+
+  const filteredUsers = useMemo(() => {
+    let result = users;
+    const email = emailFilter.trim().toLowerCase();
+    if (email) {
+      result = result.filter((u) => (u.email || '').toLowerCase().includes(email));
+    }
+    if (planFilter !== 'all') {
+      result = result.filter((u) => (u.planCode || 'free') === planFilter);
+    }
+    return result;
+  }, [users, emailFilter, planFilter]);
+
   useEffect(() => {
     loadUsers();
-    loadAdminCharts();
   }, []);
 
   useEffect(() => {
@@ -103,9 +126,9 @@ export default function AdminUsersCharts() {
       loadUserCharts(selectedUserId);
     } else {
       setCharts([]);
-      if (!selectedAdminChartId) setSelectedChart(null);
+      setSelectedChart(null);
     }
-  }, [selectedUserId, selectedAdminChartId]);
+  }, [selectedUserId]);
 
   const loadUsers = async () => {
     try {
@@ -149,19 +172,6 @@ export default function AdminUsersCharts() {
     }
   };
 
-  const loadAdminCharts = async () => {
-    try {
-      setLoadingAdminCharts(true);
-      const response = await fetch('/api/admin/admin-natal-charts');
-      const data = await response.json();
-      if (response.ok) setAdminCharts(data.charts || []);
-    } catch {
-      setAdminCharts([]);
-    } finally {
-      setLoadingAdminCharts(false);
-    }
-  };
-
   const loadChart = async (chartId: number) => {
     try {
       setLoadingChart(true);
@@ -187,37 +197,12 @@ export default function AdminUsersCharts() {
   };
 
   const handleChartClick = (chartId: number) => {
-    setSelectedAdminChartId(null);
     loadChart(chartId);
-  };
-
-  const loadAdminChart = async (id: number) => {
-    try {
-      setLoadingChart(true);
-      setError(null);
-      const response = await fetch(`/api/admin/admin-natal-charts/${id}`);
-      const data = await response.json();
-      if (response.ok) {
-        setSelectedChart(data.chart);
-        setSelectedAdminChartId(id);
-      } else {
-        setError(data.error || 'Ошибка при загрузке карты');
-      }
-    } catch (err: any) {
-      setError('Ошибка при загрузке карты');
-    } finally {
-      setLoadingChart(false);
-    }
-  };
-
-  const handleAdminChartClick = (chartId: number) => {
-    loadAdminChart(chartId);
   };
 
   const handleBack = () => {
     if (selectedChart) {
       setSelectedChart(null);
-      setSelectedAdminChartId(null);
     } else if (selectedUserId) {
       setSelectedUserId(null);
       setSelectedUser(null);
@@ -225,7 +210,7 @@ export default function AdminUsersCharts() {
     }
   };
 
-  const handlePlanChange = async (userId: number, planCode: 'free' | 'hours24' | 'optimal' | 'professional') => {
+  const handlePlanChange = async (userId: number, planCode: PlanCode) => {
     try {
       setUpdatingPlanUserId(userId);
       const response = await fetch(`/api/admin/users/${userId}/plan`, {
@@ -243,40 +228,6 @@ export default function AdminUsersCharts() {
       alert('Ошибка сети при обновлении тарифа');
     } finally {
       setUpdatingPlanUserId(null);
-    }
-  };
-
-  const handleCreateChartSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createForm.name.trim() || !createForm.birthDate || !createForm.birthTime || !createForm.birthPlace.trim()) {
-      setCreateError('Заполните все поля');
-      return;
-    }
-    setCreateSubmitting(true);
-    setCreateError(null);
-    try {
-      const response = await fetch('/api/admin/natal-chart/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createForm.name.trim(),
-          birthDate: createForm.birthDate,
-          birthTime: createForm.birthTime,
-          birthPlace: createForm.birthPlace.trim(),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setCreateError(data.error || 'Ошибка при создании карты');
-        return;
-      }
-      setModalOpen(false);
-      setCreateForm({ name: '', gender: 'female', birthDate: '', birthTime: '', birthPlace: '' });
-      loadAdminCharts();
-    } catch (err: any) {
-      setCreateError(err.message || 'Ошибка сети');
-    } finally {
-      setCreateSubmitting(false);
     }
   };
 
@@ -346,7 +297,7 @@ export default function AdminUsersCharts() {
       <div className={styles.container}>
         <div className={styles.header}>
           <button onClick={handleBack} className={styles.backButton}>
-            ← Назад {selectedAdminChartId ? 'к списку карт из админки' : ''}
+            ← Назад
           </button>
           <h1 className={styles.title}>Карта: {selectedChart.name}</h1>
         </div>
@@ -377,81 +328,21 @@ export default function AdminUsersCharts() {
         ) : charts.length === 0 ? (
           <div className={styles.empty}>У пользователя нет карт</div>
         ) : (
-          <>
-            <div className={styles.chartsList}>
-              {charts.map((chart) => (
-                <div
-                  key={chart.id}
-                  className={styles.chartCard}
-                  onClick={() => handleChartClick(chart.id)}
-                >
-                  <div className={styles.chartCardHeader}>
-                    <div className={styles.chartCardUserRow}>
-                      <span className={styles.chartCardUserName}>{selectedUser?.name}</span>
-                      <span className={styles.chartCardUserPhone}>{selectedUser?.phone}</span>
-                    </div>
-                    <span className={chart.createdByAdmin ? styles.badgeAdmin : styles.badgeUser}>
-                      {chart.createdByAdmin ? 'Создана в админке' : 'При входе в сервис'}
-                    </span>
-                    <h3 className={styles.chartCardTitle}>{chart.name}</h3>
-                  </div>
-                  <div className={styles.chartCardInfo}>
-                    <div className={styles.chartCardRow}>
-                      <span className={styles.chartCardLabel}>Дата:</span>
-                      <span className={styles.chartCardValue}>{chart.chartDate}</span>
-                    </div>
-                    <div className={styles.chartCardRow}>
-                      <span className={styles.chartCardLabel}>Время:</span>
-                      <span className={styles.chartCardValue}>{chart.chartTime}</span>
-                    </div>
-                    <div className={styles.chartCardRow}>
-                      <span className={styles.chartCardLabel}>Город:</span>
-                      <span className={styles.chartCardValue}>{chart.chartCity}</span>
-                    </div>
-                    <div className={styles.chartCardRow}>
-                      <span className={styles.chartCardLabel}>Создана:</span>
-                      <span className={styles.chartCardValue}>
-                        {new Date(chart.createdAt).toLocaleString('ru-RU')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button type="button" className={styles.primaryButtonSmall} onClick={() => setModalOpen(true)}>
-              Рассчитать карту
-            </button>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.container}>
-      <div className={styles.titleRow}>
-        <h1 className={styles.title}>Пользователи</h1>
-        <button type="button" className={styles.primaryButton} onClick={() => setModalOpen(true)}>
-          Рассчитать карту
-        </button>
-      </div>
-      {error && <div className={styles.error}>{error}</div>}
-      <section className={styles.adminChartsSection}>
-        <h2 className={styles.sectionTitle}>Карты, созданные в админке</h2>
-        {loadingAdminCharts ? (
-          <div className={styles.loading}>Загрузка...</div>
-        ) : adminCharts.length === 0 ? (
-          <div className={styles.empty}>Пока нет карт. Нажмите «Рассчитать карту».</div>
-        ) : (
           <div className={styles.chartsList}>
-            {adminCharts.map((chart) => (
+            {charts.map((chart) => (
               <div
                 key={chart.id}
                 className={styles.chartCard}
-                onClick={() => handleAdminChartClick(chart.id)}
+                onClick={() => handleChartClick(chart.id)}
               >
                 <div className={styles.chartCardHeader}>
-                  <span className={styles.badgeAdmin}>Из админки</span>
+                  <div className={styles.chartCardUserRow}>
+                    <span className={styles.chartCardUserName}>{selectedUser?.name}</span>
+                    <span className={styles.chartCardUserPhone}>{selectedUser?.phone}</span>
+                  </div>
+                  <span className={chart.createdByAdmin ? styles.badgeAdmin : styles.badgeUser}>
+                    {chart.createdByAdmin ? 'Создана в админке' : 'При входе в сервис'}
+                  </span>
                   <h3 className={styles.chartCardTitle}>{chart.name}</h3>
                 </div>
                 <div className={styles.chartCardInfo}>
@@ -478,11 +369,85 @@ export default function AdminUsersCharts() {
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      <h1 className={styles.title}>Пользователи</h1>
+
+      {error && <div className={styles.error}>{error}</div>}
+
+      <section className={styles.statsSection}>
+        <h2 className={styles.sectionTitle}>Статистика по тарифам</h2>
+        <div className={styles.statsGrid}>
+          {PLAN_OPTIONS.map((plan) => (
+            <div key={plan.value} className={styles.statCard}>
+              <span className={styles.statLabel}>{plan.label}</span>
+              <span className={styles.statValue}>{planStats[plan.value]}</span>
+            </div>
+          ))}
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Всего</span>
+            <span className={styles.statValue}>{users.length}</span>
+          </div>
+        </div>
       </section>
 
-      <h2 className={styles.sectionTitle}>Пользователи сервиса</h2>
-      {users.length === 0 ? (
-        <div className={styles.empty}>Пользователей не найдено</div>
+      <section className={styles.filtersSection}>
+        <h2 className={styles.sectionTitle}>Поиск и фильтр</h2>
+        <div className={styles.filters}>
+          <label className={styles.filterLabel}>
+            E-mail
+            <input
+              type="text"
+              value={emailFilter}
+              onChange={(e) => setEmailFilter(e.target.value)}
+              className={styles.filterInput}
+              placeholder="user@example.com"
+            />
+          </label>
+          <label className={styles.filterLabel}>
+            Тариф
+            <select
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value as 'all' | PlanCode)}
+              className={styles.filterInput}
+            >
+              <option value="all">Все тарифы</option>
+              {PLAN_OPTIONS.map((plan) => (
+                <option key={plan.value} value={plan.value}>
+                  {plan.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(emailFilter || planFilter !== 'all') && (
+            <button
+              type="button"
+              className={styles.clearFiltersButton}
+              onClick={() => {
+                setEmailFilter('');
+                setPlanFilter('all');
+              }}
+            >
+              Сбросить
+            </button>
+          )}
+        </div>
+      </section>
+
+      <h2 className={styles.sectionTitle}>
+        Пользователи сервиса
+        {(emailFilter || planFilter !== 'all') && (
+          <span className={styles.filteredCount}> — {filteredUsers.length} из {users.length}</span>
+        )}
+      </h2>
+      {filteredUsers.length === 0 ? (
+        <div className={styles.empty}>
+          {users.length === 0 ? 'Пользователей не найдено' : 'Нет пользователей по заданным фильтрам'}
+        </div>
       ) : (
         <div className={styles.tableWrap}>
           <table className={styles.usersTable}>
@@ -498,7 +463,7 @@ export default function AdminUsersCharts() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   <td>{user.name}</td>
                   <td>{user.email || user.phone || '—'}</td>
@@ -507,17 +472,13 @@ export default function AdminUsersCharts() {
                       value={user.planCode || 'free'}
                       className={styles.modalInput}
                       disabled={updatingPlanUserId === user.id}
-                      onChange={(e) =>
-                        handlePlanChange(
-                          user.id,
-                          e.target.value as 'free' | 'hours24' | 'optimal' | 'professional'
-                        )
-                      }
+                      onChange={(e) => handlePlanChange(user.id, e.target.value as PlanCode)}
                     >
-                      <option value="free">Бесплатный</option>
-                      <option value="hours24">24 часа</option>
-                      <option value="optimal">Оптимальный</option>
-                      <option value="professional">Профессиональный</option>
+                      {PLAN_OPTIONS.map((plan) => (
+                        <option key={plan.value} value={plan.value}>
+                          {plan.label}
+                        </option>
+                      ))}
                     </select>
                     {user.planExpiresAt && (
                       <div className={styles.chartCardValue}>
@@ -579,79 +540,6 @@ export default function AdminUsersCharts() {
                 </button>
                 <button type="submit" className={styles.modalSubmit} disabled={deleteSubmitting}>
                   {deleteSubmitting ? 'Удаление...' : 'Удалить'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modalOpen && (
-        <div className={styles.modalOverlay} onClick={() => !createSubmitting && setModalOpen(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.modalTitle}>Рассчитать карту</h2>
-            <p className={styles.modalHint}>Карта сохраняется отдельно и не привязана к пользователям сервиса.</p>
-            <form onSubmit={handleCreateChartSubmit} className={styles.modalForm}>
-              <div className={styles.modalRow}>
-                <label className={styles.modalLabel}>Имя</label>
-                <input
-                  type="text"
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                  className={styles.modalInput}
-                  placeholder="Имя для карты"
-                  required
-                />
-              </div>
-              <div className={styles.modalRow}>
-                <label className={styles.modalLabel}>Пол</label>
-                <select
-                  value={createForm.gender}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, gender: e.target.value }))}
-                  className={styles.modalInput}
-                >
-                  <option value="female">Женский</option>
-                  <option value="male">Мужской</option>
-                </select>
-              </div>
-              <div className={styles.modalRow}>
-                <label className={styles.modalLabel}>Дата рождения</label>
-                <DatePicker
-                  value={createForm.birthDate}
-                  onChange={(birthDate) => setCreateForm((f) => ({ ...f, birthDate }))}
-                  className={styles.modalInput}
-                  required
-                  max={new Date().toISOString().split('T')[0]}
-                />
-              </div>
-              <div className={styles.modalRow}>
-                <label className={styles.modalLabel}>Время рождения</label>
-                <input
-                  type="time"
-                  value={createForm.birthTime}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, birthTime: e.target.value }))}
-                  className={styles.modalInput}
-                  required
-                />
-              </div>
-              <div className={styles.modalRow}>
-                <label className={styles.modalLabel}>Место рождения</label>
-                <input
-                  type="text"
-                  value={createForm.birthPlace}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, birthPlace: e.target.value }))}
-                  className={styles.modalInput}
-                  placeholder="Город, страна"
-                  required
-                />
-              </div>
-              {createError && <div className={styles.createError}>{createError}</div>}
-              <div className={styles.modalActions}>
-                <button type="button" className={styles.modalCancel} onClick={() => setModalOpen(false)} disabled={createSubmitting}>
-                  Отмена
-                </button>
-                <button type="submit" className={styles.modalSubmit} disabled={createSubmitting}>
-                  {createSubmitting ? 'Расчёт...' : 'Рассчитать'}
                 </button>
               </div>
             </form>
