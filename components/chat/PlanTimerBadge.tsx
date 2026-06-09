@@ -9,6 +9,7 @@ type Plan = {
   expiresAt: string | null;
   hasUnlimitedTime: boolean;
   remainingSeconds: number | null;
+  remainingAiRequests?: number | null;
 };
 
 type Props = {
@@ -16,12 +17,16 @@ type Props = {
   className?: 'desktop' | 'mobile';
 };
 
-function formatTimer(plan: Plan, remainingSeconds: number | null): string {
+function formatBadge(plan: Plan, remainingSeconds: number | null): string {
   if (plan.hasUnlimitedTime) {
     if (plan.expiresAt) {
       return `Доступ до ${new Date(plan.expiresAt).toLocaleDateString('ru-RU')}`;
     }
     return 'Безлимитный доступ';
+  }
+  if (plan.code === 'free') {
+    const count = Math.max(0, plan.remainingAiRequests ?? 0);
+    return `Осталось запросов: ${count}`;
   }
   const sec = Math.max(0, remainingSeconds ?? plan.remainingSeconds ?? 0);
   const hh = Math.floor(sec / 3600);
@@ -32,12 +37,13 @@ function formatTimer(plan: Plan, remainingSeconds: number | null): string {
 
 /** Таймер тарифа в отдельном компоненте — не перерисовывает всю страницу чата */
 export default function PlanTimerBadge({ plan, className = 'desktop' }: Props) {
+  const usesTimer = !plan.hasUnlimitedTime && plan.code !== 'free';
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(
-    plan.hasUnlimitedTime ? null : (plan.remainingSeconds ?? 0)
+    usesTimer ? (plan.remainingSeconds ?? 0) : null
   );
 
   useEffect(() => {
-    if (plan.hasUnlimitedTime) return;
+    if (!usesTimer) return;
     const id = window.setInterval(() => {
       setRemainingSeconds((prev) => {
         if (prev === null) return prev;
@@ -45,13 +51,15 @@ export default function PlanTimerBadge({ plan, className = 'desktop' }: Props) {
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [plan.hasUnlimitedTime]);
+  }, [usesTimer]);
+
+  const label = formatBadge(plan, remainingSeconds);
 
   if (className === 'mobile') {
     return (
       <div className={styles.mobilePlanTimerBadge}>
         <strong>{plan.title}</strong>
-        <span>{formatTimer(plan, remainingSeconds)}</span>
+        <span>{label}</span>
       </div>
     );
   }
@@ -59,7 +67,7 @@ export default function PlanTimerBadge({ plan, className = 'desktop' }: Props) {
   return (
     <div className={styles.planTimerBadge}>
       <strong>{plan.title}</strong>
-      <span>{formatTimer(plan, remainingSeconds)}</span>
+      <span>{label}</span>
     </div>
   );
 }

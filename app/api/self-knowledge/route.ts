@@ -5,7 +5,7 @@ import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 import { openai } from '@/lib/openai';
-import { ensureFreePlanWindow } from '@/lib/subscription';
+import { consumeFreeAiRequest, ensureFreePlanWindow } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
     if (blockState.blocked) {
       return NextResponse.json({ error: blockState.message, planBlocked: true }, { status: 403 });
     }
+    const isFreePlan = blockState.snapshot.code === 'free';
 
     // Опционально: ответить только на один вопрос (1–19)
     let questionNumber: number | null = null;
@@ -422,6 +423,10 @@ ${predictionMemoryBlock}
           if (questionNumber !== null && nextQuestionText) {
             const followUp = `\n\nПродолжим? Хочешь, разберем следующий вопрос: "${nextQuestionText}"`;
             controller.enqueue(new TextEncoder().encode(followUp));
+          }
+
+          if (isFreePlan) {
+            await consumeFreeAiRequest(currentUser);
           }
 
           controller.close();

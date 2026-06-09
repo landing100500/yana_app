@@ -375,6 +375,34 @@
   margin: 0 0 1rem 0;
 }
 
+.modalHint {
+  margin: -0.5rem 0 1rem 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.editChartButton {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+  padding: 0.5rem 0.9rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: var(--white);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.editChartButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.editChartButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .modalForm {
   display: flex;
   flex-direction: column;

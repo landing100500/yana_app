@@ -9,7 +9,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'ЯСНА - ИИ Психолог-предсказатель',
   description:
-    'Ясность и решение любой ситуации, твои 60 минут в подарок. Ведическая карта + подсознание',
+    'Ясность и решение любой ситуации, 10 запросов к ИИ в подарок. Ведическая карта + подсознание',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

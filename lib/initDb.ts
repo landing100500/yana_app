@@ -74,6 +74,13 @@ async function ensureAuthSchema() {
         defaultValue: 0,
       });
     }
+    if (!usersTable.freeAiRequestsUsed) {
+      await queryInterface.addColumn('users', 'freeAiRequestsUsed', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0,
+      });
+    }
     if (!usersTable.reminderLastSentAt) {
       await queryInterface.addColumn('users', 'reminderLastSentAt', {
         type: DataTypes.DATE,

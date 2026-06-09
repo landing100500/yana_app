@@ -11,9 +11,9 @@ export function getTariffsLinkMarkdown(label = 'перейти к тарифам
   return `[${label}](${TARIFFS_PATH})`;
 }
 
-export function buildSessionEndedUpsellMessage(options?: { includeSeeYouIn7Days?: boolean }): string {
-  const lines = [
-    'Наша сессия без оплаты на сегодня окончена, мы можем продолжить и решить твои вопросы за 24 часа, оплата 900 рублей.',
+export function buildSessionEndedUpsellMessage(): string {
+  return [
+    'Бесплатные запросы к ИИ закончились. Мы можем продолжить и решить твои вопросы за 24 часа, оплата 900 рублей.',
     '',
     'Доступ на 30 дней, + 5 карт, + совместимость между ними. Стань экспертом для близких прямо сейчас и мы вместе решим их вопросы. Оплата 9900 рублей.',
     '',
@@ -21,13 +21,7 @@ export function buildSessionEndedUpsellMessage(options?: { includeSeeYouIn7Days?
     '',
     'Какой тариф выбираем?',
     getTariffsLinkMarkdown('Выбрать тариф'),
-  ];
-
-  if (options?.includeSeeYouIn7Days) {
-    lines.push('', 'Увидимся через 7 дней у нас будет 60 минут без оплаты.');
-  }
-
-  return lines.join('\n');
+  ].join('\n');
 }
 
 export function buildFreePromoEndedMessage(userName?: string | null): string {
@@ -40,6 +34,6 @@ export function buildFreePromoEndedMessage(userName?: string | null): string {
     'Тарифы:',
     getTariffsLinkMarkdown('Посмотреть тарифы'),
     '',
-    buildSessionEndedUpsellMessage({ includeSeeYouIn7Days: false }),
+    buildSessionEndedUpsellMessage(),
   ].join('\n');
 }

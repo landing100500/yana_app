@@ -12,6 +12,8 @@ export type BootstrapProfile = {
     expiresAt: string | null;
     hasUnlimitedTime: boolean;
     remainingSeconds: number | null;
+    remainingAiRequests: number | null;
+    freeAiRequestsLimit: number | null;
     chartComparison: boolean;
   };
 };

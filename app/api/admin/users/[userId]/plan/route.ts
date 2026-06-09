@@ -44,11 +44,9 @@ export async function PUT(
     (user as any).planAssignedAt = assignedAt;
     (user as any).planExpiresAt = expiresAt;
     if (planCode === 'free') {
-      (user as any).freeWindowStartedAt = new Date();
-      (user as any).freeMinutesUsed = 0;
+      (user as any).freeAiRequestsUsed = 0;
     } else {
       (user as any).planManuallyAssignedAt = new Date();
-      (user as any).freeWindowStartedAt = null;
     }
     await user.save();
 

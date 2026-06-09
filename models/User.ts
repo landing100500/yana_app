@@ -13,6 +13,7 @@ interface UserAttributes {
   planManuallyAssignedAt?: Date | null;
   freeWindowStartedAt?: Date | null;
   freeMinutesUsed?: number;
+  freeAiRequestsUsed?: number;
   reminderLastSentAt?: Date | null;
   reminderDayIndex?: number;
   createdAt?: Date;
@@ -33,6 +34,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public planManuallyAssignedAt?: Date | null;
   public freeWindowStartedAt?: Date | null;
   public freeMinutesUsed?: number;
+  public freeAiRequestsUsed?: number;
   public reminderLastSentAt?: Date | null;
   public reminderDayIndex?: number;
   public readonly createdAt!: Date;
@@ -86,6 +88,11 @@ User.init(
       allowNull: true,
     },
     freeMinutesUsed: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    freeAiRequestsUsed: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 0,

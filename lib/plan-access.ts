@@ -12,6 +12,9 @@ import {
 
 export function isChatTimeBlocked(snapshot: UserPlanSnapshot): boolean {
   if (snapshot.hasUnlimitedTime) return false;
+  if (snapshot.code === 'free') {
+    return (snapshot.remainingAiRequests ?? 0) <= 0;
+  }
   return (snapshot.remainingSeconds ?? 0) <= 0;
 }
 
@@ -34,14 +37,14 @@ export async function buildChatBlockMessage(user: User, snapshot: UserPlanSnapsh
   const hasPaid = await userHasSucceededPayment(user.id);
 
   if (hasPaid && snapshot.code !== 'free') {
-    return buildSessionEndedUpsellMessage({ includeSeeYouIn7Days: false });
+    return buildSessionEndedUpsellMessage();
   }
 
   if (snapshot.code === 'free' && isFreePromoPeriodEnded(user) && !hasPaid) {
     return buildFreePromoEndedMessage(user.name);
   }
 
-  return buildSessionEndedUpsellMessage({ includeSeeYouIn7Days: snapshot.code === 'free' });
+  return buildSessionEndedUpsellMessage();
 }
 
 export async function getChatBlockState(user: User) {

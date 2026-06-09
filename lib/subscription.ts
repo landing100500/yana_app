@@ -3,6 +3,7 @@ import User from '@/models/User';
 export type PlanCode = 'free' | 'hours24' | 'optimal' | 'professional';
 
 export const FREE_PROMO_MONTHS = 4;
+export const FREE_AI_REQUESTS_LIMIT = 10;
 
 export interface PlanConfig {
   code: PlanCode;
@@ -14,8 +15,8 @@ export interface PlanConfig {
   hasUnlimitedTime: boolean;
   /** Минуты сессии от planAssignedAt (тариф «24 часа»). */
   sessionMinutesFromPlanStart?: number;
-  freeMinutesPerWindow?: number;
-  freeWindowDays?: number;
+  /** Лимит запросов к ИИ на бесплатном тарифе. */
+  freeAiRequestsLimit?: number;
 }
 
 export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
@@ -27,8 +28,7 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
     maxCharts: 0,
     chartComparison: false,
     hasUnlimitedTime: false,
-    freeMinutesPerWindow: 60,
-    freeWindowDays: 7,
+    freeAiRequestsLimit: FREE_AI_REQUESTS_LIMIT,
   },
   hours24: {
     code: 'hours24',
@@ -69,9 +69,8 @@ export interface UserPlanSnapshot {
   chartComparison: boolean;
   hasUnlimitedTime: boolean;
   remainingSeconds: number | null;
-  freeWindowEndsAt: string | null;
-  freeMinutesUsed: number | null;
-  freeMinutesPerWindow: number | null;
+  remainingAiRequests: number | null;
+  freeAiRequestsLimit: number | null;
 }
 
 export interface ChartLikeForFreeze {
@@ -110,27 +109,18 @@ export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
   const isExpired = isLimitedPlan && expiresAtDate ? expiresAtDate.getTime() <= nowMs() : false;
   const activeCode: PlanCode = isExpired ? 'free' : code;
   const activeConfig = getPlanConfig(activeCode);
-  const freeWindowStartedAt = getDate((user as any).freeWindowStartedAt);
   const planAssignedAt = getDate((user as any).planAssignedAt);
   let remainingSeconds: number | null = null;
-  let freeWindowEndsAt: string | null = null;
+  let remainingAiRequests: number | null = null;
 
   if (!activeConfig.hasUnlimitedTime) {
     if (activeConfig.sessionMinutesFromPlanStart && planAssignedAt) {
       const sessionMs = activeConfig.sessionMinutesFromPlanStart * 60 * 1000;
       const elapsed = nowMs() - planAssignedAt.getTime();
       remainingSeconds = Math.max(0, Math.floor((sessionMs - Math.max(0, elapsed)) / 1000));
-    } else if (activeConfig.freeMinutesPerWindow && activeConfig.freeWindowDays) {
-      const cycleMs = activeConfig.freeWindowDays * 24 * 60 * 60 * 1000;
-      const sessionMs = activeConfig.freeMinutesPerWindow * 60 * 1000;
-      const startedAtMs = freeWindowStartedAt?.getTime() ?? nowMs();
-      const elapsed = nowMs() - startedAtMs;
-      if (elapsed <= sessionMs) {
-        remainingSeconds = Math.max(0, Math.floor((sessionMs - Math.max(0, elapsed)) / 1000));
-      } else {
-        remainingSeconds = 0;
-      }
-      freeWindowEndsAt = new Date(startedAtMs + cycleMs).toISOString();
+    } else if (activeConfig.freeAiRequestsLimit != null) {
+      const used = Number((user as any).freeAiRequestsUsed) || 0;
+      remainingAiRequests = Math.max(0, activeConfig.freeAiRequestsLimit - used);
     }
   }
 
@@ -143,25 +133,22 @@ export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
     chartComparison: activeConfig.chartComparison,
     hasUnlimitedTime: activeConfig.hasUnlimitedTime,
     remainingSeconds,
-    freeWindowEndsAt,
-    freeMinutesUsed: null,
-    freeMinutesPerWindow: activeCode === 'free' ? activeConfig.freeMinutesPerWindow ?? null : null,
+    remainingAiRequests,
+    freeAiRequestsLimit: activeCode === 'free' ? activeConfig.freeAiRequestsLimit ?? null : null,
   };
 }
 
-export async function ensureFreePlanWindow(user: User): Promise<void> {
-  const code = normalizePlanCode((user as any).planCode);
-  if (code !== 'free') return;
-  const cfg = getPlanConfig('free');
-  const cycleMs = (cfg.freeWindowDays ?? 7) * 24 * 60 * 60 * 1000;
-  const start = getDate((user as any).freeWindowStartedAt);
-  const now = new Date();
-  const shouldReset = !start || now.getTime() < start.getTime() || now.getTime() - start.getTime() >= cycleMs;
-  if (shouldReset) {
-    (user as any).freeWindowStartedAt = now;
-    (user as any).freeMinutesUsed = 0;
-    await user.save();
-  }
+/** @deprecated Оставлено для совместимости вызовов — окно по минутам больше не используется. */
+export async function ensureFreePlanWindow(_user: User): Promise<void> {
+  // no-op
+}
+
+export async function consumeFreeAiRequest(user: User): Promise<void> {
+  const snapshot = getUserPlanSnapshot(user);
+  if (snapshot.code !== 'free') return;
+  const used = Number((user as any).freeAiRequestsUsed) || 0;
+  (user as any).freeAiRequestsUsed = used + 1;
+  await user.save();
 }
 
 export function canCreateMoreCharts(snapshot: UserPlanSnapshot, existingChartCount: number): boolean {

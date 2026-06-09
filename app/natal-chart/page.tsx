@@ -97,11 +97,16 @@ export default function NatalChartPage() {
   const [plan, setPlan] = useState<PlanInfo | null>(initialCache?.plan ?? null);
   const [activeChartId, setActiveChartId] = useState<number | null>(initialCache?.activeChartId ?? null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
     birthDate: '',
     birthTime: '',
     birthPlace: '',
+  });
+  const [editForm, setEditForm] = useState({
+    chartTime: '',
+    chartCity: '',
   });
 
   useEffect(() => {
@@ -163,6 +168,42 @@ export default function NatalChartPage() {
       setIsCreateModalOpen(false);
     } catch (err: any) {
       setError(err.message || 'Ошибка при создании карты');
+    } finally {
+      setIsCalculating(false);
+      setCalculationProgress('');
+    }
+  };
+
+  const openEditModal = () => {
+    if (!selectedChart) return;
+    setEditForm({
+      chartTime: selectedChart.chartTime.slice(0, 5),
+      chartCity: selectedChart.chartCity,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditChart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChart) return;
+    try {
+      setIsCalculating(true);
+      setError(null);
+      setCalculationProgress('Пересчёт натальной карты...');
+      const response = await fetch(`/api/natal-chart/${selectedChart.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chartTime: editForm.chartTime,
+          chartCity: editForm.chartCity.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Ошибка при обновлении карты');
+      await loadCharts({ silent: true });
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при обновлении карты');
     } finally {
       setIsCalculating(false);
       setCalculationProgress('');
@@ -348,12 +389,58 @@ export default function NatalChartPage() {
                 <span className={styles.infoLabel}>Место:</span>
                 <span className={styles.infoValue}>{selectedChart.chartCity}</span>
               </div>
+              <button
+                type="button"
+                className={styles.editChartButton}
+                onClick={openEditModal}
+                disabled={isCalculating}
+              >
+                Изменить время и город
+              </button>
             </div>
 
             <NatalChartVisualization chart={selectedChart} chartId={selectedChart.id} />
           </div>
         )}
       </div>
+      {isEditModalOpen && selectedChart && (
+        <div className={styles.modalOverlay} onClick={() => !isCalculating && setIsEditModalOpen(false)}>
+          <div className={`${styles.modal} darkUi`} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>Изменить время и город</h2>
+            <p className={styles.modalHint}>Дата рождения остаётся прежней. Карта будет пересчитана по новым данным.</p>
+            <form onSubmit={handleEditChart} className={styles.modalForm}>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Время рождения</label>
+                <input
+                  className={styles.modalInput}
+                  type="time"
+                  required
+                  value={editForm.chartTime}
+                  onChange={(e) => setEditForm((f) => ({ ...f, chartTime: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel}>Город рождения</label>
+                <input
+                  className={styles.modalInput}
+                  type="text"
+                  required
+                  value={editForm.chartCity}
+                  onChange={(e) => setEditForm((f) => ({ ...f, chartCity: e.target.value }))}
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.modalCancel} onClick={() => setIsEditModalOpen(false)} disabled={isCalculating}>
+                  Отмена
+                </button>
+                <button type="submit" className={styles.modalSubmit} disabled={isCalculating}>
+                  {isCalculating ? 'Пересчёт...' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {isCreateModalOpen && (
         <div className={styles.modalOverlay} onClick={() => !isCalculating && setIsCreateModalOpen(false)}>
           <div className={`${styles.modal} darkUi`} onClick={(e) => e.stopPropagation()}>

@@ -28,7 +28,7 @@ import {
   buildPersonalityReadingAlgorithmBlock,
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
-import { ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
+import { consumeFreeAiRequest, ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
@@ -693,6 +693,10 @@ export async function POST(request: NextRequest) {
       role: 'assistant',
       content: response,
     });
+
+    if (planBefore.code === 'free') {
+      await consumeFreeAiRequest(currentUser);
+    }
 
     const sectionRefsMap = new Map<string, string>();
     relevantChunks.forEach((chunk) => {

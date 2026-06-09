@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
+import UserAnketa from '@/models/UserAnketa';
+import { recalculateChartFromBirthInput } from '@/lib/natal-chart-recalculate';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-production';
 
@@ -16,6 +18,87 @@ async function getUserId(request: NextRequest) {
     return decoded.userId;
   } catch {
     return null;
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await initDatabase();
+
+    const userId = await getUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+    }
+
+    const chartId = parseInt(params.id, 10);
+    if (isNaN(chartId)) {
+      return NextResponse.json({ error: 'Неверный ID карты' }, { status: 400 });
+    }
+
+    const chart = await NatalChart.findOne({
+      where: { id: chartId, userId },
+    });
+    if (!chart) {
+      return NextResponse.json({ error: 'Карта не найдена' }, { status: 404 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const chartTime = typeof body.chartTime === 'string' ? body.chartTime.trim() : '';
+    const chartCity = typeof body.chartCity === 'string' ? body.chartCity.trim() : '';
+
+    if (!chartTime || !chartCity) {
+      return NextResponse.json(
+        { error: 'Укажите время и город рождения.' },
+        { status: 400 }
+      );
+    }
+
+    let recalculated;
+    try {
+      recalculated = await recalculateChartFromBirthInput({
+        chartDate: chart.chartDate,
+        chartTime,
+        chartCity,
+      });
+    } catch (calcError: any) {
+      return NextResponse.json(
+        {
+          error: calcError.message || 'Не удалось пересчитать карту.',
+          suggestion: 'Проверьте формат времени (HH:MM) и название города.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const { chartData, ...updateFields } = recalculated;
+    await chart.update(updateFields);
+
+    if ((chart as any).isMain) {
+      const anketa = await UserAnketa.findOne({ where: { userId } });
+      if (anketa) {
+        anketa.birthTime = recalculated.chartTime;
+        anketa.birthCity = recalculated.chartCity;
+        await anketa.save();
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      chart: {
+        ...chart.toJSON(),
+        navamsha: chartData.navamsha,
+        dashas: chartData.dashas,
+      },
+    });
+  } catch (error: any) {
+    console.error('Update natal chart error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Ошибка при обновлении натальной карты' },
+      { status: 500 }
+    );
   }
 }
 

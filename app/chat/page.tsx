@@ -46,6 +46,8 @@ interface UserProfile {
     expiresAt: string | null;
     hasUnlimitedTime: boolean;
     remainingSeconds: number | null;
+    remainingAiRequests: number | null;
+    freeAiRequestsLimit: number | null;
     chartComparison: boolean;
   };
 }
@@ -627,6 +629,7 @@ export default function ChatPage() {
           }),
         }).catch((e) => console.error('Error saving message:', e));
       }
+      refreshUserProfile();
     } catch (err: any) {
       const errorMessage: Message = {
         id: Date.now().toString(),

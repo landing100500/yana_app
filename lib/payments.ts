@@ -27,10 +27,7 @@ async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
   (user as any).planExpiresAt = expiresAt;
   (user as any).planManuallyAssignedAt = null;
   if (planCode === 'free') {
-    (user as any).freeWindowStartedAt = assignedAt;
-    (user as any).freeMinutesUsed = 0;
-  } else {
-    (user as any).freeWindowStartedAt = null;
+    (user as any).freeAiRequestsUsed = 0;
   }
   await user.save();
 }

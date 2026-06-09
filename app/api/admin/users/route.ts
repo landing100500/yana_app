@@ -28,7 +28,7 @@ export async function GET() {
 
     // Получаем всех пользователей с количеством карт
     const users = await User.findAll({
-      attributes: ['id', 'phone', 'email', 'name', 'createdAt', 'planCode', 'planExpiresAt', 'freeMinutesUsed', 'freeWindowStartedAt'],
+      attributes: ['id', 'phone', 'email', 'name', 'createdAt', 'planCode', 'planExpiresAt', 'freeAiRequestsUsed'],
       include: [
         {
           model: NatalChart,
