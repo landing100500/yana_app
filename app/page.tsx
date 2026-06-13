@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
-import { PHONE_PLACEHOLDER } from '@/lib/phone';
+import { formatPhoneValidationError, isValidPhoneLength, PHONE_PLACEHOLDER } from '@/lib/phone';
 import SiteFooter from '@/components/SiteFooter';
 import styles from './page.module.css';
 
@@ -40,6 +40,11 @@ export default function Home() {
       return;
     }
 
+    if (!isValidPhoneLength(phoneValue)) {
+      setError(formatPhoneValidationError());
+      return;
+    }
+
     if (!agreed) {
       setError('Необходимо согласие с политикой конфиденциальности и публичной офертой');
       return;
@@ -61,6 +66,9 @@ export default function Home() {
         localStorage.setItem('tempEmail', cleanEmail);
         localStorage.setItem('tempPhone', phoneValue);
         router.push('/verify');
+      } else if (response.status === 409 && data.redirectTo) {
+        setError(data.error || 'У вас уже есть аккаунт');
+        setIsLoading(false);
       } else {
         setError(data.error || 'Произошла ошибка');
         setIsLoading(false);
@@ -116,8 +124,8 @@ export default function Home() {
       </div>
 
       <div className={styles.authCard}>
-        <h1 className={styles.title}>Добро пожаловать</h1>
-        <p className={styles.subtitle}>Введите email и телефон для входа</p>
+        <h1 className={styles.title}>Регистрация</h1>
+        <p className={styles.subtitle}>Введите email и телефон — мы отправим код для создания аккаунта</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
@@ -175,15 +183,13 @@ export default function Home() {
                 <span></span>
               </span>
             ) : (
-              'Продолжить'
+              'Получить код на email'
             )}
           </button>
         </form>
 
         <div className={styles.links}>
-          <a href="/login" className={styles.link}>Вход по паролю</a>
-          <span className={styles.separator}>•</span>
-          <a href="/reset" className={styles.link}>Забыли пароль?</a>
+          <a href="/login" className={styles.navLink}>Уже есть аккаунт? Войти</a>
         </div>
       </div>
 

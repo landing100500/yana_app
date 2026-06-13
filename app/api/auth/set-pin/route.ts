@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (user.password) {
-      return NextResponse.json({ error: 'Код уже установлен. Войдите через «Вход по паролю».' }, { status: 409 });
+      return NextResponse.json({ error: 'Код уже установлен. Войдите по email и коду доступа.' }, { status: 409 });
     }
 
     const password = await bcrypt.hash(String(pin), 10);

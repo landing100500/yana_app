@@ -91,8 +91,8 @@ export default function ResetPage() {
         })}
       </div>
       <div className={styles.card}>
-        <h1 className={styles.title}>Сброс пароля</h1>
-        <p className={styles.subtitle}>Введите email для восстановления</p>
+        <h1 className={styles.title}>Восстановление кода</h1>
+        <p className={styles.subtitle}>Введите email — отправим код для создания нового кода доступа</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
@@ -125,9 +125,7 @@ export default function ResetPage() {
         </form>
 
         <div className={styles.links}>
-          <a href="/" className={styles.link}>Вход по email</a>
-          <span className={styles.separator}>•</span>
-          <a href="/login" className={styles.link}>Вход по паролю</a>
+          <a href="/login" className={styles.navLink}>Вспомнили код? Войти</a>
         </div>
       </div>
       <SiteFooter className={styles.siteFooter} showInstallLink />

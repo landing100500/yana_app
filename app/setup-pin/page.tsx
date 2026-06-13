@@ -131,7 +131,9 @@ export default function SetupPinPage() {
       </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Код доступа</h1>
-        <p className={styles.subtitle}>Придумайте 4 цифры для входа в приложение</p>
+        <p className={styles.subtitle}>
+          Придумайте 4 цифры для входа в приложение. Проверка почты нужна только один раз — дальше вы будете входить по этому коду.
+        </p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.65)', fontSize: '0.9rem', marginBottom: '-0.5rem' }}>

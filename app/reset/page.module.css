@@ -207,6 +207,22 @@
   }
 }
 
+.navLink {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(155, 143, 184, 0.5);
+}
+
+.navLink:hover {
+  color: rgba(155, 143, 184, 1);
+  text-decoration-color: rgba(155, 143, 184, 0.9);
+}
+
 .links {
   margin-top: 2rem;
   text-align: center;

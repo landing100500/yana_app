@@ -155,7 +155,7 @@ export default function ChatPage() {
           }
         }
         clearSessionCaches();
-        router.push('/');
+        router.push('/login');
         return;
       }
       
@@ -177,7 +177,7 @@ export default function ChatPage() {
     } catch (err) {
       console.error('Auth check error:', err);
       clearSessionCaches();
-      router.push('/');
+      router.push('/login');
     }
   }, [router]);
 
@@ -404,12 +404,12 @@ export default function ChatPage() {
       });
       localStorage.removeItem('auth_token_backup');
       clearSessionCaches();
-      router.push('/');
+      router.push('/login');
     } catch (err) {
       console.error('Logout error:', err);
       localStorage.removeItem('auth_token_backup');
       clearSessionCaches();
-      router.push('/');
+      router.push('/login');
     }
   };
 

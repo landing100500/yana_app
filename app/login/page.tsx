@@ -91,7 +91,7 @@ export default function LoginPage() {
       </div>
       <div className={styles.card}>
         <h1 className={styles.title}>Вход</h1>
-        <p className={styles.subtitle}>Email и 4-значный код доступа</p>
+        <p className={styles.subtitle}>Email и код доступа из 4 цифр</p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.inputGroup}>
@@ -139,9 +139,11 @@ export default function LoginPage() {
         </form>
 
         <div className={styles.links}>
-          <a href="/" className={styles.link}>Вход по email</a>
-          <span className={styles.separator}>•</span>
-          <a href="/reset" className={styles.link}>Забыли пароль?</a>
+          <a href="/reset" className={styles.link}>Забыли код?</a>
+        </div>
+
+        <div className={styles.navBlock}>
+          <a href="/" className={styles.navLink}>Нет аккаунта? Зарегистрироваться</a>
         </div>
       </div>
       <SiteFooter className={styles.siteFooter} showInstallLink />
