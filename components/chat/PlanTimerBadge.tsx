@@ -8,6 +8,7 @@ type Plan = {
   title: string;
   expiresAt: string | null;
   hasUnlimitedTime: boolean;
+  hasDailyTimeLimit?: boolean;
   remainingSeconds: number | null;
   remainingAiRequests?: number | null;
 };
@@ -32,7 +33,11 @@ function formatBadge(plan: Plan, remainingSeconds: number | null): string {
   const hh = Math.floor(sec / 3600);
   const mm = Math.floor((sec % 3600) / 60);
   const ss = sec % 60;
-  return `Осталось: ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  const timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  if (plan.hasDailyTimeLimit) {
+    return `Сегодня осталось: ${timeStr}`;
+  }
+  return `Осталось: ${timeStr}`;
 }
 
 /** Таймер тарифа в отдельном компоненте — не перерисовывает всю страницу чата */

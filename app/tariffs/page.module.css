@@ -20,65 +20,6 @@
   margin-bottom: 1rem;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1rem;
-}
-
-.card {
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: calc(1rem + 20px);
-  background: rgba(255, 255, 255, 0.04);
-  display: flex;
-  flex-direction: column;
-}
-
-.card h3 {
-  font-size: 1.1rem;
-  margin: 0 0 0.25rem 0;
-}
-
-.card ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.card li {
-  position: relative;
-  padding-left: 0.85rem;
-  margin-bottom: 0.35rem;
-  font-size: 0.88rem;
-  line-height: 1.4;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.card li::before {
-  content: '•';
-  position: absolute;
-  left: 0;
-  color: rgba(155, 143, 184, 0.9);
-}
-
-.price {
-  font-weight: 700;
-  font-size: 1.2rem;
-  margin: 0.25rem 0 0.6rem 0;
-}
-
-.button {
-  border: none;
-  border-radius: 10px;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.9rem;
-  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
-  color: var(--white);
-  cursor: pointer;
-  margin-top: 120px;
-}
-
 .currentPlanLine {
   margin: 0 0 1.25rem 0;
 }
@@ -91,11 +32,6 @@
 .currentPlanValue {
   color: #f2b6cf;
   font-weight: 700;
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .notice {
@@ -120,6 +56,165 @@
   border: 1px solid rgba(237, 137, 54, 0.45);
 }
 
+.tableWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.compareTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.compareTable th,
+.compareTable td {
+  padding: 0.75rem 0.6rem;
+  text-align: center;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.compareTable thead th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.compareTable thead th.featureCol {
+  background: #1f1a2e;
+}
+
+.featureCol {
+  width: 140px;
+  min-width: 120px;
+  text-align: left !important;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.85);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #1a1625;
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.25);
+}
+
+.planCol {
+  width: calc((100% - 140px) / 5);
+  font-size: 0.86rem;
+}
+
+.planColCurrent {
+  background: rgba(155, 143, 184, 0.1);
+}
+
+.planHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.planTitle {
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.25;
+  color: var(--white);
+}
+
+.planPrice {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #f2b6cf;
+}
+
+.currentBadge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(155, 143, 184, 0.95);
+  background: rgba(155, 143, 184, 0.15);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  margin-top: 0.15rem;
+}
+
+.check {
+  color: #68d391;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.dash {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 1.1rem;
+}
+
+.featureText {
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.35;
+  font-size: 0.84rem;
+}
+
+.actionRow td,
+.actionRow th {
+  border-bottom: none;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.82rem;
+  width: 100%;
+  max-width: 130px;
+  min-width: 88px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--dark-purple) 100%);
+  color: var(--white);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.buttonLoading {
+  cursor: wait;
+}
+
+.spinner {
+  display: block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: buttonSpin 0.65s linear infinite;
+}
+
+@keyframes buttonSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.freeLabel {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .offerNote {
   margin-top: 1.5rem;
   font-size: 0.85rem;
@@ -135,39 +230,57 @@
   color: rgba(212, 197, 232, 1);
 }
 
-@media (min-width: 1024px) {
-  .inner {
-    max-width: 920px;
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem 0.75rem 0;
   }
 
-  .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.65rem;
+  .featureCol {
+    width: 110px;
+    min-width: 100px;
+    font-size: 0.8rem;
+    padding-left: 0.75rem;
+    z-index: 4;
+    background: #1a1625;
+    box-shadow: 8px 0 14px rgba(0, 0, 0, 0.45);
   }
 
-  .card {
-    padding: 0.85rem 0.65rem;
+  .compareTable thead th.featureCol {
+    background: #1f1a2e;
+    z-index: 5;
   }
 
-  .card h3 {
-    font-size: 1.05rem;
+  .planCol {
+    font-size: 0.8rem;
   }
 
-  .card li {
-    font-size: 0.84rem;
+  .planTitle {
+    font-size: 0.78rem;
   }
 
-  .price {
-    font-size: 1.15rem;
+  .planPrice {
+    font-size: 0.92rem;
+  }
+
+  .featureText {
+    font-size: 0.76rem;
   }
 
   .button {
-    font-size: 0.88rem;
+    font-size: 0.75rem;
+    padding: 0.45rem 0.4rem;
+    max-width: 100px;
+    min-width: 72px;
+    min-height: 34px;
   }
 }
 
-@media (max-width: 768px) {
-  .container {
-    padding: 1rem;
+@media (min-width: 1024px) {
+  .inner {
+    max-width: 1100px;
+  }
+
+  .compareTable {
+    min-width: 100%;
   }
 }

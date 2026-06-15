@@ -5,7 +5,7 @@ import { Op } from 'sequelize';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import { initDatabase } from '@/lib/initDb';
-import { ensureFreePlanWindow, getUserPlanSnapshot } from '@/lib/subscription';
+import { ensureFreePlanWindow, getUserPlanSnapshot, syncPlanDailyUsage } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       }
 
       await ensureFreePlanWindow(user);
+      await syncPlanDailyUsage(user);
       const plan = getUserPlanSnapshot(user);
       return NextResponse.json({
         email: user.email || null,

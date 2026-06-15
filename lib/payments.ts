@@ -1,15 +1,7 @@
 import Payment from '@/models/Payment';
 import User from '@/models/User';
-import { assignPlanDates, getUserPlanSnapshot, PlanCode } from '@/lib/subscription';
+import { assignPlanDates, getUserPlanSnapshot, normalizePlanCode, PlanCode, resetPlanDailyUsage } from '@/lib/subscription';
 import { getYookassaPayment } from '@/lib/yookassa';
-
-function normalizePlanCode(value: unknown): PlanCode {
-  const raw = String(value || '').toLowerCase();
-  if (raw === 'hours24' || raw === 'optimal' || raw === 'professional' || raw === 'free') {
-    return raw;
-  }
-  return 'free';
-}
 
 function paymentAmountsMatch(local: string, remote: string): boolean {
   const a = Number.parseFloat(String(local).replace(',', '.'));
@@ -29,6 +21,7 @@ async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
   if (planCode === 'free') {
     (user as any).freeAiRequestsUsed = 0;
   }
+  resetPlanDailyUsage(user);
   await user.save();
 }
 

@@ -6,17 +6,93 @@ import SiteFooter from '@/components/SiteFooter';
 import Link from 'next/link';
 import styles from './page.module.css';
 
+type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
+type PaidPlanCode = Exclude<PlanCode, 'free'>;
+
 interface PlanSnapshot {
-  code: 'free' | 'hours24' | 'optimal' | 'professional';
+  code: PlanCode;
   title: string;
 }
-
-type PaidPlanCode = 'hours24' | 'optimal' | 'professional';
 
 type PaymentNotice = {
   type: 'success' | 'pending' | 'error';
   message: string;
 };
+
+type FeatureValue = string | boolean;
+
+interface PlanColumn {
+  code: PlanCode;
+  title: string;
+  price: string;
+  paid: boolean;
+}
+
+interface FeatureRow {
+  label: string;
+  values: Record<PlanCode, FeatureValue>;
+}
+
+const PLAN_COLUMNS: PlanColumn[] = [
+  { code: 'free', title: 'Бесплатный', price: '0 ₽', paid: false },
+  { code: 'hours24', title: '24 часа', price: '900 ₽', paid: true },
+  { code: 'optimalLight', title: 'Оптимальный Лайт', price: '2 990 ₽', paid: true },
+  { code: 'optimal', title: 'Оптимальный', price: '9 900 ₽', paid: true },
+  { code: 'professional', title: 'Профессиональный', price: '49 000 ₽', paid: true },
+];
+
+const FEATURE_ROWS: FeatureRow[] = [
+  {
+    label: 'Срок доступа',
+    values: {
+      free: 'Бессрочно',
+      hours24: '24 часа',
+      optimalLight: '30 дней',
+      optimal: '30 дней',
+      professional: '180 дней',
+    },
+  },
+  {
+    label: 'Время в Ясне',
+    values: {
+      free: '10 запросов к ИИ',
+      hours24: '24 ч сессия',
+      optimalLight: '1 ч в сутки',
+      optimal: 'Без ограничений',
+      professional: 'Без ограничений',
+    },
+  },
+  {
+    label: 'Создание карт',
+    values: {
+      free: false,
+      hours24: false,
+      optimalLight: 'До 5 карт',
+      optimal: 'До 5 карт',
+      professional: 'Без ограничений',
+    },
+  },
+  {
+    label: 'Сравнение карт',
+    values: {
+      free: false,
+      hours24: false,
+      optimalLight: true,
+      optimal: true,
+      professional: true,
+    },
+  },
+];
+
+function renderFeatureValue(value: FeatureValue) {
+  if (value === true) {
+    return <span className={styles.check} aria-label="Да">✓</span>;
+  }
+  if (value === false) {
+    return <span className={styles.dash} aria-label="Нет">—</span>;
+  }
+  return <span className={styles.featureText}>{value}</span>;
+}
 
 export default function TariffsPageContent() {
   const router = useRouter();
@@ -154,33 +230,6 @@ export default function TariffsPageContent() {
     }
   };
 
-  const plans = [
-    {
-      code: 'free',
-      title: 'Бесплатный',
-      price: '0 ₽',
-      items: ['10 запросов к ИИ', 'Карты создавать нельзя', 'Сравнение карт недоступно'],
-    },
-    {
-      code: 'hours24',
-      title: '24 часа',
-      price: '900 ₽',
-      items: ['24 часа доступа к Ясне', 'Таймер сессии', 'Карты создавать нельзя', 'Сравнение карт недоступно'],
-    },
-    {
-      code: 'optimal',
-      title: 'Оптимальный',
-      price: '9 900 ₽',
-      items: ['Доступ 30 дней', 'Время не ограничено', 'Сравнение карт', 'До 5 карт'],
-    },
-    {
-      code: 'professional',
-      title: 'Профессиональный',
-      price: '49 000 ₽',
-      items: ['Доступ 180 дней', 'Время не ограничено', 'Сравнение карт', 'Карт без ограничений'],
-    },
-  ] as const;
-
   return (
     <div className={styles.container}>
       <div className={styles.inner}>
@@ -205,29 +254,72 @@ export default function TariffsPageContent() {
           </div>
         )}
 
-        <div className={styles.grid}>
-          {plans.map((plan) => (
-            <div key={plan.code} className={styles.card}>
-              <h3>{plan.title}</h3>
-              <p className={styles.price}>{plan.price}</p>
-              <ul>
-                {plan.items.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-              {plan.code !== 'free' && (
-                <button
-                  className={styles.button}
-                  disabled={currentPlan?.code === plan.code || loadingPlan === plan.code}
-                  onClick={() => handleSelectPlan(plan.code as PaidPlanCode)}
-                >
-                  {loadingPlan === plan.code
-                    ? 'Переход к оплате...'
-                    : currentPlan?.code === plan.code
-                      ? 'Текущий тариф'
-                      : 'Оплатить'}
-                </button>
-              )}
-            </div>
-          ))}
+        <div className={styles.tableWrap}>
+          <table className={styles.compareTable}>
+            <thead>
+              <tr>
+                <th className={styles.featureCol} scope="col">Возможности</th>
+                {PLAN_COLUMNS.map((plan) => (
+                  <th
+                    key={plan.code}
+                    scope="col"
+                    className={`${styles.planCol} ${currentPlan?.code === plan.code ? styles.planColCurrent : ''}`}
+                  >
+                    <div className={styles.planHeader}>
+                      <span className={styles.planTitle}>{plan.title}</span>
+                      <span className={styles.planPrice}>{plan.price}</span>
+                      {currentPlan?.code === plan.code && (
+                        <span className={styles.currentBadge}>Ваш тариф</span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FEATURE_ROWS.map((row) => (
+                <tr key={row.label}>
+                  <th className={styles.featureCol} scope="row">{row.label}</th>
+                  {PLAN_COLUMNS.map((plan) => (
+                    <td
+                      key={plan.code}
+                      className={`${styles.planCol} ${currentPlan?.code === plan.code ? styles.planColCurrent : ''}`}
+                    >
+                      {renderFeatureValue(row.values[plan.code])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className={styles.actionRow}>
+                <th className={styles.featureCol} scope="row" />
+                {PLAN_COLUMNS.map((plan) => (
+                  <td
+                    key={plan.code}
+                    className={`${styles.planCol} ${currentPlan?.code === plan.code ? styles.planColCurrent : ''}`}
+                  >
+                    {plan.paid ? (
+                      <button
+                        className={`${styles.button} ${loadingPlan === plan.code ? styles.buttonLoading : ''}`}
+                        disabled={currentPlan?.code === plan.code || loadingPlan === plan.code}
+                        onClick={() => handleSelectPlan(plan.code as PaidPlanCode)}
+                        aria-busy={loadingPlan === plan.code}
+                      >
+                        {loadingPlan === plan.code ? (
+                          <span className={styles.spinner} aria-label="Переход к оплате" />
+                        ) : currentPlan?.code === plan.code ? (
+                          'Текущий'
+                        ) : (
+                          'Оплатить'
+                        )}
+                      </button>
+                    ) : (
+                      <span className={styles.freeLabel}>По умолчанию</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <p className={styles.offerNote}>

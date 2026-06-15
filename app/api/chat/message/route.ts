@@ -28,7 +28,7 @@ import {
   buildPersonalityReadingAlgorithmBlock,
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
-import { consumeFreeAiRequest, ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot } from '@/lib/subscription';
+import { consumeFreeAiRequest, ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot, syncPlanDailyUsage } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
@@ -195,6 +195,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
     await ensureFreePlanWindow(currentUser);
+    await syncPlanDailyUsage(currentUser);
     const blockState = await getChatBlockState(currentUser);
     if (blockState.blocked) {
       return NextResponse.json({ error: blockState.message, planBlocked: true }, { status: 403 });

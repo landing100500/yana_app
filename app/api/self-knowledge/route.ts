@@ -5,7 +5,7 @@ import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 import { openai } from '@/lib/openai';
-import { consumeFreeAiRequest, ensureFreePlanWindow } from '@/lib/subscription';
+import { consumeFreeAiRequest, ensureFreePlanWindow, syncPlanDailyUsage } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { SELF_KNOWLEDGE_QUESTION_TITLES } from '@/lib/self-knowledge-questions';
@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
     await ensureFreePlanWindow(currentUser);
+    await syncPlanDailyUsage(currentUser);
     const blockState = await getChatBlockState(currentUser);
     if (blockState.blocked) {
       return NextResponse.json({ error: blockState.message, planBlocked: true }, { status: 403 });

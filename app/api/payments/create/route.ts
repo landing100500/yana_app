@@ -5,13 +5,13 @@ import { getAuthenticatedUserId } from '@/lib/auth-user';
 import { getAppBaseUrl } from '@/lib/app-url';
 import { createYookassaPayment, formatRubAmount } from '@/lib/yookassa';
 import { buildSubscriptionReceipt } from '@/lib/yookassa-receipt';
-import { getPlanConfig, PlanCode } from '@/lib/subscription';
+import { getPlanConfig, normalizePlanCode, PlanCode } from '@/lib/subscription';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
 
 export const dynamic = 'force-dynamic';
 
-const PAID_PLANS: PlanCode[] = ['hours24', 'optimal', 'professional'];
+const PAID_PLANS: PlanCode[] = ['hours24', 'optimalLight', 'optimal', 'professional'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const planCode = String(body?.planCode || '').toLowerCase() as PlanCode;
+    const planCode = normalizePlanCode(body?.planCode);
     if (!PAID_PLANS.includes(planCode)) {
       return NextResponse.json({ error: 'Неверный тариф для оплаты' }, { status: 400 });
     }

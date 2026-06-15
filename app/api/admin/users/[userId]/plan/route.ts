@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { initDatabase } from '@/lib/initDb';
 import User from '@/models/User';
-import { assignPlanDates, getUserPlanSnapshot, PlanCode } from '@/lib/subscription';
+import { assignPlanDates, getUserPlanSnapshot, parsePlanCode, resetPlanDailyUsage } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +28,8 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const requestedCode = String(body?.planCode || '').toLowerCase();
-    if (!['free', 'hours24', 'optimal', 'professional'].includes(requestedCode)) {
+    const planCode = parsePlanCode(body?.planCode);
+    if (!planCode) {
       return NextResponse.json({ error: 'Неверный тариф' }, { status: 400 });
     }
 
@@ -38,7 +38,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
 
-    const planCode = requestedCode as PlanCode;
     const { assignedAt, expiresAt } = assignPlanDates(planCode);
     (user as any).planCode = planCode;
     (user as any).planAssignedAt = assignedAt;
@@ -48,6 +47,7 @@ export async function PUT(
     } else {
       (user as any).planManuallyAssignedAt = new Date();
     }
+    resetPlanDailyUsage(user);
     await user.save();
 
     return NextResponse.json({

@@ -2,7 +2,7 @@ import { Op } from 'sequelize';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
 
-export const PAID_PLAN_CODES = ['hours24', 'optimal', 'professional'] as const;
+export const PAID_PLAN_CODES = ['hours24', 'optimalLight', 'optimal', 'professional'] as const;
 
 /** Оплата в ±48 ч от planAssignedAt считается выдачей тарифа через ЮKassa. */
 export const PLAN_PAYMENT_MATCH_WINDOW_MS = 48 * 60 * 60 * 1000;

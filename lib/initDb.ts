@@ -81,6 +81,25 @@ async function ensureAuthSchema() {
         defaultValue: 0,
       });
     }
+    if (!usersTable.planDailySecondsUsed) {
+      await queryInterface.addColumn('users', 'planDailySecondsUsed', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0,
+      });
+    }
+    if (!usersTable.planDailyWindowDate) {
+      await queryInterface.addColumn('users', 'planDailyWindowDate', {
+        type: DataTypes.STRING(10),
+        allowNull: true,
+      });
+    }
+    if (!usersTable.planDailyLastTickAt) {
+      await queryInterface.addColumn('users', 'planDailyLastTickAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
     if (!usersTable.reminderLastSentAt) {
       await queryInterface.addColumn('users', 'reminderLastSentAt', {
         type: DataTypes.DATE,

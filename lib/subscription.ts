@@ -1,9 +1,11 @@
 import User from '@/models/User';
 
-export type PlanCode = 'free' | 'hours24' | 'optimal' | 'professional';
+export type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
 
 export const FREE_PROMO_MONTHS = 4;
 export const FREE_AI_REQUESTS_LIMIT = 10;
+
+const MOSCOW_TZ = 'Europe/Moscow';
 
 export interface PlanConfig {
   code: PlanCode;
@@ -15,6 +17,8 @@ export interface PlanConfig {
   hasUnlimitedTime: boolean;
   /** Минуты сессии от planAssignedAt (тариф «24 часа»). */
   sessionMinutesFromPlanStart?: number;
+  /** Лимит минут в сутки (тариф «Оптимальный Лайт»). */
+  dailyMinutesLimit?: number;
   /** Лимит запросов к ИИ на бесплатном тарифе. */
   freeAiRequestsLimit?: number;
 }
@@ -39,6 +43,16 @@ export const PLAN_CONFIGS: Record<PlanCode, PlanConfig> = {
     chartComparison: false,
     hasUnlimitedTime: false,
     sessionMinutesFromPlanStart: 24 * 60,
+  },
+  optimalLight: {
+    code: 'optimalLight',
+    title: 'Оптимальный Лайт',
+    priceRub: 2990,
+    durationDays: 30,
+    maxCharts: 5,
+    chartComparison: true,
+    hasUnlimitedTime: false,
+    dailyMinutesLimit: 60,
   },
   optimal: {
     code: 'optimal',
@@ -71,6 +85,8 @@ export interface UserPlanSnapshot {
   remainingSeconds: number | null;
   remainingAiRequests: number | null;
   freeAiRequestsLimit: number | null;
+  /** true для тарифов с дневным лимитом времени */
+  hasDailyTimeLimit?: boolean;
 }
 
 export interface ChartLikeForFreeze {
@@ -83,11 +99,26 @@ function nowMs(): number {
   return Date.now();
 }
 
-function normalizePlanCode(value: unknown): PlanCode {
-  if (value === 'hours24' || value === 'optimal' || value === 'professional' || value === 'free') {
-    return value;
+function getMoscowDateKey(date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: MOSCOW_TZ }).format(date);
+}
+
+export function normalizePlanCode(value: unknown): PlanCode {
+  const raw = String(value || '').toLowerCase();
+  if (raw === 'optimallight') return 'optimalLight';
+  if (raw === 'hours24' || raw === 'optimal' || raw === 'professional' || raw === 'free') {
+    return raw;
   }
   return 'free';
+}
+
+export function parsePlanCode(value: unknown): PlanCode | null {
+  const raw = String(value || '').toLowerCase();
+  if (raw === 'optimallight') return 'optimalLight';
+  if (raw === 'hours24' || raw === 'optimal' || raw === 'professional' || raw === 'free') {
+    return raw;
+  }
+  return null;
 }
 
 export function getPlanConfig(codeLike: unknown): PlanConfig {
@@ -101,6 +132,53 @@ function getDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function getDailySecondsUsed(user: User, today: string): number {
+  const windowDate = String((user as any).planDailyWindowDate || '');
+  if (windowDate !== today) return 0;
+
+  const storedSeconds = Number((user as any).planDailySecondsUsed) || 0;
+  const lastTick = getDate((user as any).planDailyLastTickAt);
+  if (!lastTick) return storedSeconds;
+
+  const elapsed = Math.floor((nowMs() - lastTick.getTime()) / 1000);
+  return storedSeconds + Math.max(0, elapsed);
+}
+
+export function resetPlanDailyUsage(user: User): void {
+  (user as any).planDailySecondsUsed = 0;
+  (user as any).planDailyWindowDate = getMoscowDateKey();
+  (user as any).planDailyLastTickAt = new Date();
+}
+
+/** Синхронизирует учёт дневного времени (МСК) и сохраняет пользователя при изменениях. */
+export async function syncPlanDailyUsage(user: User): Promise<void> {
+  const code = normalizePlanCode((user as any).planCode);
+  const config = getPlanConfig(code);
+  if (!config.dailyMinutesLimit) return;
+
+  const today = getMoscowDateKey();
+  const windowDate = String((user as any).planDailyWindowDate || '');
+  let dirty = false;
+
+  if (windowDate !== today) {
+    resetPlanDailyUsage(user);
+    dirty = true;
+  } else {
+    const limitSeconds = config.dailyMinutesLimit * 60;
+    const usedBefore = getDailySecondsUsed(user, today);
+    const cappedUsed = Math.min(usedBefore, limitSeconds);
+    const storedSeconds = Number((user as any).planDailySecondsUsed) || 0;
+
+    if (cappedUsed !== storedSeconds || !getDate((user as any).planDailyLastTickAt)) {
+      (user as any).planDailySecondsUsed = cappedUsed;
+      (user as any).planDailyLastTickAt = new Date();
+      dirty = true;
+    }
+  }
+
+  if (dirty) await user.save();
+}
+
 export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
   const code = normalizePlanCode((user as any).planCode);
   const config = getPlanConfig(code);
@@ -112,9 +190,15 @@ export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
   const planAssignedAt = getDate((user as any).planAssignedAt);
   let remainingSeconds: number | null = null;
   let remainingAiRequests: number | null = null;
+  const hasDailyTimeLimit = !!activeConfig.dailyMinutesLimit;
 
   if (!activeConfig.hasUnlimitedTime) {
-    if (activeConfig.sessionMinutesFromPlanStart && planAssignedAt) {
+    if (activeConfig.dailyMinutesLimit) {
+      const today = getMoscowDateKey();
+      const usedSeconds = getDailySecondsUsed(user, today);
+      const limitSeconds = activeConfig.dailyMinutesLimit * 60;
+      remainingSeconds = Math.max(0, limitSeconds - usedSeconds);
+    } else if (activeConfig.sessionMinutesFromPlanStart && planAssignedAt) {
       const sessionMs = activeConfig.sessionMinutesFromPlanStart * 60 * 1000;
       const elapsed = nowMs() - planAssignedAt.getTime();
       remainingSeconds = Math.max(0, Math.floor((sessionMs - Math.max(0, elapsed)) / 1000));
@@ -135,6 +219,7 @@ export function getUserPlanSnapshot(user: User): UserPlanSnapshot {
     remainingSeconds,
     remainingAiRequests,
     freeAiRequestsLimit: activeCode === 'free' ? activeConfig.freeAiRequestsLimit ?? null : null,
+    hasDailyTimeLimit,
   };
 }
 

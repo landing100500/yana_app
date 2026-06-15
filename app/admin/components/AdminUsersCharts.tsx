@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import styles from './AdminUsersCharts.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
 
-type PlanCode = 'free' | 'hours24' | 'optimal' | 'professional';
+type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
 
 interface User {
   id: number;
@@ -68,6 +68,7 @@ interface ChartData {
 const PLAN_OPTIONS: { value: PlanCode; label: string }[] = [
   { value: 'free', label: 'Бесплатный' },
   { value: 'hours24', label: '24 часа' },
+  { value: 'optimalLight', label: 'Оптимальный Лайт' },
   { value: 'optimal', label: 'Оптимальный' },
   { value: 'professional', label: 'Профессиональный' },
 ];
@@ -94,6 +95,7 @@ export default function AdminUsersCharts() {
     const counts: Record<PlanCode, number> = {
       free: 0,
       hours24: 0,
+      optimalLight: 0,
       optimal: 0,
       professional: 0,
     };

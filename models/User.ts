@@ -14,6 +14,9 @@ interface UserAttributes {
   freeWindowStartedAt?: Date | null;
   freeMinutesUsed?: number;
   freeAiRequestsUsed?: number;
+  planDailySecondsUsed?: number;
+  planDailyWindowDate?: string | null;
+  planDailyLastTickAt?: Date | null;
   reminderLastSentAt?: Date | null;
   reminderDayIndex?: number;
   createdAt?: Date;
@@ -35,6 +38,9 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public freeWindowStartedAt?: Date | null;
   public freeMinutesUsed?: number;
   public freeAiRequestsUsed?: number;
+  public planDailySecondsUsed?: number;
+  public planDailyWindowDate?: string | null;
+  public planDailyLastTickAt?: Date | null;
   public reminderLastSentAt?: Date | null;
   public reminderDayIndex?: number;
   public readonly createdAt!: Date;
@@ -96,6 +102,19 @@ User.init(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 0,
+    },
+    planDailySecondsUsed: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    planDailyWindowDate: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+    },
+    planDailyLastTickAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     reminderLastSentAt: {
       type: DataTypes.DATE,

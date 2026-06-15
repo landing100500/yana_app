@@ -7,10 +7,11 @@ export type BootstrapProfile = {
   email: string | null;
   name?: string;
   plan?: {
-    code: 'free' | 'hours24' | 'optimal' | 'professional';
+    code: 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
     title: string;
     expiresAt: string | null;
     hasUnlimitedTime: boolean;
+    hasDailyTimeLimit?: boolean;
     remainingSeconds: number | null;
     remainingAiRequests: number | null;
     freeAiRequestsLimit: number | null;
