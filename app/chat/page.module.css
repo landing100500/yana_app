@@ -3,6 +3,8 @@
   height: 100vh;
   background: var(--light-beige);
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .planTimerBadge {
@@ -367,6 +369,7 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  min-width: 0;
 }
 
 .header {
@@ -577,11 +580,13 @@
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   margin-top: 0;
+  min-width: 0;
 }
 
 .activeChartFloatingBadge {
@@ -1008,6 +1013,7 @@
 .message {
   display: flex;
   max-width: 80%;
+  min-width: 0;
   animation: fadeIn 0.3s ease;
 }
 
@@ -1044,16 +1050,37 @@
   font-weight: 400;
   letter-spacing: -0.011em;
   line-height: 1.5;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   word-wrap: break-word;
+  word-break: break-word;
   white-space: pre-wrap;
-}
-
-.messageContent p {
-  margin: 0;
+  box-sizing: border-box;
 }
 
 .messageContent > div {
   margin-bottom: 1.5rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.messageContent p {
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.messageContent :global(.chatInlineLink) {
+  color: var(--purple);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .messageContent > div:last-child {
@@ -1077,13 +1104,6 @@
   line-height: 1.6;
   font-weight: 400;
   color: var(--dark-gray);
-}
-
-.messageContent :global(.chatInlineLink) {
-  color: var(--purple);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .messageContent :global(.chatInlineLink:hover) {

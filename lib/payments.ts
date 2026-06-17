@@ -25,11 +25,6 @@ async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
   await user.save();
 }
 
-function isPaidPlanActiveForUser(user: User, planCode: PlanCode): boolean {
-  const snapshot = getUserPlanSnapshot(user);
-  return snapshot.code === planCode;
-}
-
 export async function activatePlanForPayment(payment: Payment): Promise<Payment> {
   const user = await User.findByPk(payment.userId);
   if (!user) {
@@ -37,12 +32,7 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
   }
 
   const planCode = normalizePlanCode(payment.planCode);
-  const planAlreadyActive =
-    payment.status === 'succeeded' && isPaidPlanActiveForUser(user, planCode);
-
-  if (!planAlreadyActive) {
-    await applyPlanToUser(user, planCode);
-  }
+  await applyPlanToUser(user, planCode);
 
   if (payment.status !== 'succeeded') {
     payment.status = 'succeeded';

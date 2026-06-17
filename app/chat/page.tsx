@@ -18,6 +18,7 @@ import {
   isSessionAuthenticated,
   markSessionAuthenticated,
 } from '@/lib/client-page-cache';
+import { onPlanUpdated, resumePendingPaymentPoll } from '@/lib/payment-poll-client';
 import styles from './page.module.css';
 
 const VoiceInputButton = dynamic(() => import('./VoiceInputButton'), { ssr: false });
@@ -396,6 +397,34 @@ export default function ChatPage() {
       console.error('Failed to load user profile');
     }
   };
+
+  useEffect(() => {
+    if (!isAuthChecked) return;
+
+    const unsubscribe = onPlanUpdated(() => {
+      refreshUserProfile();
+      refreshAvailableCharts();
+    });
+
+    resumePendingPaymentPoll({
+      onSucceeded: () => {
+        refreshUserProfile();
+        refreshAvailableCharts();
+      },
+    });
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshUserProfile();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isAuthChecked]);
 
   const handleLogout = async () => {
     try {

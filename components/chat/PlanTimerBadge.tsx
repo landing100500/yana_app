@@ -48,15 +48,23 @@ export default function PlanTimerBadge({ plan, className = 'desktop' }: Props) {
   );
 
   useEffect(() => {
+    if (usesTimer) {
+      setRemainingSeconds(plan.remainingSeconds ?? 0);
+      return;
+    }
+    setRemainingSeconds(null);
+  }, [plan.code, plan.remainingSeconds, usesTimer]);
+
+  useEffect(() => {
     if (!usesTimer) return;
     const id = window.setInterval(() => {
       setRemainingSeconds((prev) => {
-        if (prev === null) return prev;
+        if (prev === null) return plan.remainingSeconds ?? 0;
         return prev > 0 ? prev - 1 : 0;
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [usesTimer]);
+  }, [usesTimer, plan.code, plan.remainingSeconds]);
 
   const label = formatBadge(plan, remainingSeconds);
 

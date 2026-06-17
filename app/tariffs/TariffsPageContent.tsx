@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
 import Link from 'next/link';
+import { onPlanUpdated, pollPaymentUntilSettled } from '@/lib/payment-poll-client';
 import styles from './page.module.css';
 
 type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
@@ -100,10 +101,23 @@ export default function TariffsPageContent() {
   const [currentPlan, setCurrentPlan] = useState<PlanSnapshot | null>(null);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
-  const pollRef = useRef<number | null>(null);
 
   const loadProfile = useCallback(async () => {
-    const res = await fetch('/api/auth/profile', { credentials: 'include' });
+    let res = await fetch('/api/auth/profile', { credentials: 'include' });
+    if (res.status === 401) {
+      const backupToken = localStorage.getItem('auth_token_backup');
+      if (backupToken) {
+        const restoreRes = await fetch('/api/auth/set-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: backupToken }),
+          credentials: 'include',
+        });
+        if (restoreRes.ok) {
+          res = await fetch('/api/auth/profile', { credentials: 'include' });
+        }
+      }
+    }
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.plan) setCurrentPlan(data.plan);
     return res.ok;
@@ -117,36 +131,27 @@ export default function TariffsPageContent() {
     const paymentId = searchParams.get('payment');
     if (!paymentId) return;
 
-    let attempts = 0;
-    const maxAttempts = 20;
+    let cancelled = false;
 
-    const pollStatus = async () => {
-      attempts += 1;
-      const res = await fetch(`/api/payments/status?id=${encodeURIComponent(paymentId)}`, {
-        credentials: 'include',
-      });
-      const data = await res.json().catch(() => ({}));
+    setPaymentNotice({
+      type: 'pending',
+      message: 'Проверяем статус оплаты...',
+    });
 
-      if (!res.ok) {
-        setPaymentNotice({
-          type: 'error',
-          message: data?.error || 'Не удалось проверить статус оплаты',
-        });
-        router.replace('/tariffs');
-        return;
-      }
+    pollPaymentUntilSettled(paymentId).then((result) => {
+      if (cancelled) return;
 
-      if (data.status === 'succeeded') {
-        if (data.plan) setCurrentPlan(data.plan);
+      if (result.status === 'succeeded') {
+        if (result.plan) setCurrentPlan(result.plan as PlanSnapshot);
         setPaymentNotice({
           type: 'success',
-          message: `Оплата прошла успешно. Активирован тариф «${data.plan?.title || ''}».`,
+          message: `Оплата прошла успешно. Активирован тариф «${result.plan?.title || ''}».`,
         });
         router.replace('/tariffs');
         return;
       }
 
-      if (data.status === 'canceled') {
+      if (result.status === 'canceled') {
         setPaymentNotice({
           type: 'error',
           message: 'Оплата отменена. Тариф не изменён.',
@@ -155,28 +160,33 @@ export default function TariffsPageContent() {
         return;
       }
 
-      if (attempts >= maxAttempts) {
+      if (result.status === 'pending') {
         setPaymentNotice({
           type: 'pending',
-          message: 'Платёж ещё обрабатывается. Обновите страницу через минуту.',
+          message: result.message || 'Платёж ещё обрабатывается. Обновите страницу через минуту.',
         });
         router.replace('/tariffs');
         return;
       }
 
-      pollRef.current = window.setTimeout(pollStatus, 3000);
-    };
-
-    setPaymentNotice({
-      type: 'pending',
-      message: 'Проверяем статус оплаты...',
+      setPaymentNotice({
+        type: 'error',
+        message: result.message || 'Не удалось проверить статус оплаты',
+      });
+      router.replace('/tariffs');
     });
-    pollStatus();
 
     return () => {
-      if (pollRef.current) window.clearTimeout(pollRef.current);
+      cancelled = true;
     };
   }, [router, searchParams]);
+
+  useEffect(() => {
+    return onPlanUpdated((plan) => {
+      if (plan) setCurrentPlan(plan as PlanSnapshot);
+      loadProfile();
+    });
+  }, [loadProfile]);
 
   const handleSelectPlan = async (planCode: PaidPlanCode) => {
     setLoadingPlan(planCode);
