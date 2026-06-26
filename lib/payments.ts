@@ -1,7 +1,11 @@
+import { Op, Transaction } from 'sequelize';
+import sequelize from '@/lib/db';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
 import { assignPlanDates, getUserPlanSnapshot, normalizePlanCode, PlanCode, resetPlanDailyUsage } from '@/lib/subscription';
 import { getYookassaPayment } from '@/lib/yookassa';
+
+const PENDING_RECONCILE_DAYS = 14;
 
 function paymentAmountsMatch(local: string, remote: string): boolean {
   const a = Number.parseFloat(String(local).replace(',', '.'));
@@ -21,7 +25,11 @@ function isRemotePaymentSuccessful(remote: Awaited<ReturnType<typeof getYookassa
   return remote.status === 'succeeded' || remote.paid === true;
 }
 
-async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
+async function applyPlanToUser(
+  user: User,
+  planCode: PlanCode,
+  transaction?: Transaction
+): Promise<void> {
   const { assignedAt, expiresAt } = assignPlanDates(planCode);
   (user as any).planCode = planCode;
   (user as any).planAssignedAt = assignedAt;
@@ -31,39 +39,47 @@ async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
     (user as any).freeAiRequestsUsed = 0;
   }
   resetPlanDailyUsage(user);
-  await user.save();
+  await user.save({ transaction });
 }
 
 export async function activatePlanForPayment(payment: Payment): Promise<Payment> {
-  const user = await User.findByPk(payment.userId);
-  if (!user) {
-    throw new Error('User not found for payment');
-  }
-
-  const planCode = normalizePlanCode(payment.planCode);
-  const paymentAlreadySettled = payment.status === 'succeeded';
-  const planAlreadyActive = isPlanActiveForUser(user, planCode);
-
-  if (paymentAlreadySettled && planAlreadyActive) {
-    if (!payment.paidAt) {
-      payment.paidAt = new Date();
-      await payment.save();
+  return sequelize.transaction(async (transaction) => {
+    const lockedPayment = await Payment.findByPk(payment.id, {
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (!lockedPayment) {
+      throw new Error('Payment not found');
     }
-    return payment;
-  }
 
-  await applyPlanToUser(user, planCode);
+    const user = await User.findByPk(lockedPayment.userId, {
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (!user) {
+      throw new Error('User not found for payment');
+    }
 
-  if (!paymentAlreadySettled) {
-    payment.status = 'succeeded';
-    payment.paidAt = payment.paidAt ?? new Date();
-    await payment.save();
-  } else if (!payment.paidAt) {
-    payment.paidAt = new Date();
-    await payment.save();
-  }
+    const planCode = normalizePlanCode(lockedPayment.planCode);
+    const paymentAlreadySettled = lockedPayment.status === 'succeeded';
 
-  return payment;
+    if (paymentAlreadySettled) {
+      if (!isPlanActiveForUser(user, planCode)) {
+        await applyPlanToUser(user, planCode, transaction);
+      }
+      if (!lockedPayment.paidAt) {
+        lockedPayment.paidAt = new Date();
+        await lockedPayment.save({ transaction });
+      }
+      return lockedPayment;
+    }
+
+    await applyPlanToUser(user, planCode, transaction);
+    lockedPayment.status = 'succeeded';
+    lockedPayment.paidAt = lockedPayment.paidAt ?? new Date();
+    await lockedPayment.save({ transaction });
+    return lockedPayment;
+  });
 }
 
 function validateRemotePayment(payment: Payment, remote: Awaited<ReturnType<typeof getYookassaPayment>>) {
@@ -147,7 +163,35 @@ export async function findPaymentByYookassaId(yookassaPaymentId: string): Promis
   }
 }
 
+/** Синхронизирует незавершённые платежи пользователя с ЮKassa (после оплаты без return_url / webhook). */
+export async function reconcileUserPendingPayments(userId: number): Promise<void> {
+  const since = new Date(Date.now() - PENDING_RECONCILE_DAYS * 24 * 60 * 60 * 1000);
+  const pendingPayments = await Payment.findAll({
+    where: {
+      userId,
+      status: 'pending',
+      yookassaPaymentId: { [Op.ne]: null },
+      createdAt: { [Op.gt]: since },
+    },
+    order: [['id', 'DESC']],
+    limit: 10,
+  });
+
+  for (const payment of pendingPayments) {
+    try {
+      await syncPaymentWithYookassa(payment);
+    } catch (error) {
+      console.error('Payment reconcile failed', {
+        paymentId: payment.id,
+        userId,
+        error,
+      });
+    }
+  }
+}
+
 export async function getPaymentStatusPayload(payment: Payment, user: User) {
+  await reconcileUserPendingPayments(user.id);
   const synced = await syncPaymentWithYookassa(payment);
   await user.reload();
   return {

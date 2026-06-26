@@ -28,6 +28,7 @@ import {
   buildPersonalityReadingAlgorithmBlock,
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
+import { reconcileUserPendingPayments } from '@/lib/payments';
 import { consumeFreeAiRequest, ensureFreePlanWindow, getFrozenChartIdsForPlan, getUserPlanSnapshot, syncPlanDailyUsage } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
 import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
@@ -194,6 +195,8 @@ export async function POST(request: NextRequest) {
     if (!currentUser) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
+    await reconcileUserPendingPayments(userId);
+    await currentUser.reload();
     await ensureFreePlanWindow(currentUser);
     await syncPlanDailyUsage(currentUser);
     const blockState = await getChatBlockState(currentUser);

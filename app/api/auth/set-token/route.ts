@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { initDatabase } from '@/lib/initDb';
+import { ensureSessionForToken } from '@/lib/auth-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +10,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'yasna-secret-key-change-in-product
 
 export async function POST(request: NextRequest) {
   try {
+    await initDatabase();
+
     const { token } = await request.json();
 
     if (!token) {
@@ -17,20 +21,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем валидность токена
+    let decoded: { userId: number };
     try {
-      jwt.verify(token, JWT_SECRET);
-    } catch (jwtError) {
+      decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    } catch {
       return NextResponse.json(
         { error: 'Invalid token' },
         { status: 401 }
       );
     }
 
+    await ensureSessionForToken(decoded.userId, token);
+
     const cookieStore = await cookies();
     const response = NextResponse.json({ success: true });
 
-    // Устанавливаем cookie
     response.cookies.set('auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -56,4 +61,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

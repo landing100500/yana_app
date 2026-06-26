@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import { Op } from 'sequelize';
 import User from '@/models/User';
-import Session from '@/models/Session';
 import { initDatabase } from '@/lib/initDb';
+import { ensureSessionForToken } from '@/lib/auth-session';
+import { reconcileUserPendingPayments } from '@/lib/payments';
 import { ensureFreePlanWindow, getUserPlanSnapshot, syncPlanDailyUsage } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
@@ -28,22 +28,7 @@ export async function GET(request: NextRequest) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
 
-      const session = await Session.findOne({
-        where: {
-          token,
-          userId: decoded.userId,
-          expiresAt: {
-            [Op.gt]: new Date(),
-          },
-        },
-      });
-
-      if (!session) {
-        return NextResponse.json(
-          { error: 'Сессия не найдена' },
-          { status: 401 }
-        );
-      }
+      await ensureSessionForToken(decoded.userId, token);
 
       const user = await User.findByPk(decoded.userId);
 
@@ -53,6 +38,9 @@ export async function GET(request: NextRequest) {
           { status: 404 }
         );
       }
+
+      await reconcileUserPendingPayments(decoded.userId);
+      await user.reload();
 
       await ensureFreePlanWindow(user);
       await syncPlanDailyUsage(user);
