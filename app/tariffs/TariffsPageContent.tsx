@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
 import Link from 'next/link';
-import { onPlanUpdated, pollPaymentUntilSettled } from '@/lib/payment-poll-client';
+import {
+  getPendingPaymentId,
+  onPlanUpdated,
+  pollPaymentUntilSettled,
+  resumePendingPaymentPoll,
+  setPendingPaymentId,
+} from '@/lib/payment-poll-client';
 import styles from './page.module.css';
 
 type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
@@ -127,6 +133,45 @@ export default function TariffsPageContent() {
     loadProfile();
   }, [loadProfile]);
 
+  const handlePaymentPollResult = useCallback(
+    (result: Awaited<ReturnType<typeof pollPaymentUntilSettled>>, clearQuery = false) => {
+      if (result.status === 'succeeded') {
+        if (result.plan) setCurrentPlan(result.plan as PlanSnapshot);
+        setPaymentNotice({
+          type: 'success',
+          message: `Оплата прошла успешно. Активирован тариф «${result.plan?.title || ''}».`,
+        });
+        if (clearQuery) router.replace('/tariffs');
+        return;
+      }
+
+      if (result.status === 'canceled') {
+        setPaymentNotice({
+          type: 'error',
+          message: 'Оплата отменена. Тариф не изменён.',
+        });
+        if (clearQuery) router.replace('/tariffs');
+        return;
+      }
+
+      if (result.status === 'pending') {
+        setPaymentNotice({
+          type: 'pending',
+          message: result.message || 'Платёж ещё обрабатывается. Доступ откроется автоматически.',
+        });
+        if (clearQuery) router.replace('/tariffs');
+        return;
+      }
+
+      setPaymentNotice({
+        type: 'error',
+        message: result.message || 'Не удалось проверить статус оплаты',
+      });
+      if (clearQuery) router.replace('/tariffs');
+    },
+    [router]
+  );
+
   useEffect(() => {
     const paymentId = searchParams.get('payment');
     if (!paymentId) return;
@@ -140,46 +185,37 @@ export default function TariffsPageContent() {
 
     pollPaymentUntilSettled(paymentId).then((result) => {
       if (cancelled) return;
-
-      if (result.status === 'succeeded') {
-        if (result.plan) setCurrentPlan(result.plan as PlanSnapshot);
-        setPaymentNotice({
-          type: 'success',
-          message: `Оплата прошла успешно. Активирован тариф «${result.plan?.title || ''}».`,
-        });
-        router.replace('/tariffs');
-        return;
-      }
-
-      if (result.status === 'canceled') {
-        setPaymentNotice({
-          type: 'error',
-          message: 'Оплата отменена. Тариф не изменён.',
-        });
-        router.replace('/tariffs');
-        return;
-      }
-
-      if (result.status === 'pending') {
-        setPaymentNotice({
-          type: 'pending',
-          message: result.message || 'Платёж ещё обрабатывается. Обновите страницу через минуту.',
-        });
-        router.replace('/tariffs');
-        return;
-      }
-
-      setPaymentNotice({
-        type: 'error',
-        message: result.message || 'Не удалось проверить статус оплаты',
-      });
-      router.replace('/tariffs');
+      handlePaymentPollResult(result, true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams]);
+  }, [handlePaymentPollResult, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('payment')) return;
+
+    const pendingId = getPendingPaymentId();
+    if (!pendingId) return;
+
+    resumePendingPaymentPoll({
+      onSucceeded: (plan) => {
+        if (plan) setCurrentPlan(plan as PlanSnapshot);
+        handlePaymentPollResult({ status: 'succeeded', plan });
+        loadProfile();
+      },
+      onCanceled: () => {
+        handlePaymentPollResult({ status: 'canceled' });
+      },
+      onPending: (message) => {
+        handlePaymentPollResult({ status: 'pending', message });
+      },
+      onError: (message) => {
+        handlePaymentPollResult({ status: 'error', message });
+      },
+    });
+  }, [handlePaymentPollResult, loadProfile, searchParams]);
 
   useEffect(() => {
     return onPlanUpdated((plan) => {
@@ -222,6 +258,9 @@ export default function TariffsPageContent() {
         return;
       }
 
+      if (data.paymentId) {
+        setPendingPaymentId(data.paymentId);
+      }
       window.location.href = data.confirmationUrl;
     } catch (error: any) {
       if (error?.name === 'AbortError') {

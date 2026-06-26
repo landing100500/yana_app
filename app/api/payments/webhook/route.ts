@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
-import Payment from '@/models/Payment';
-import { syncPaymentWithYookassa } from '@/lib/payments';
+import { findPaymentByYookassaId, syncPaymentWithYookassa } from '@/lib/payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    const payment = await Payment.findOne({ where: { yookassaPaymentId } });
+    const payment = await findPaymentByYookassaId(yookassaPaymentId);
     if (!payment) {
       console.warn('YooKassa webhook: payment not found', yookassaPaymentId);
       return NextResponse.json({ received: true });

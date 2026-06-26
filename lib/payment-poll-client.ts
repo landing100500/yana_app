@@ -103,8 +103,11 @@ export function pollPaymentUntilSettled(
     return activePollPromise;
   }
 
-  const maxAttempts = options?.maxAttempts ?? 40;
-  const intervalMs = options?.intervalMs ?? 3000;
+  const maxAttempts = options?.maxAttempts ?? 60;
+  const getIntervalMs = (attempt: number) => {
+    if (options?.intervalMs) return options.intervalMs;
+    return attempt <= 15 ? 1000 : 3000;
+  };
 
   activePollPaymentId = id;
   const pollPromise = new Promise<PaymentPollResult>((resolve) => {
@@ -128,7 +131,7 @@ export function pollPaymentUntilSettled(
 
         if (!res.ok) {
           if (attempts < maxAttempts && (res.status >= 500 || res.status === 401)) {
-            timerId = window.setTimeout(poll, intervalMs);
+            timerId = window.setTimeout(poll, getIntervalMs(attempts));
             return;
           }
           clearPendingPaymentId();
@@ -160,13 +163,13 @@ export function pollPaymentUntilSettled(
           return;
         }
 
-        timerId = window.setTimeout(poll, intervalMs);
+        timerId = window.setTimeout(poll, getIntervalMs(attempts));
       } catch {
         if (attempts >= maxAttempts) {
           finish({ status: 'error', message: 'Ошибка сети при проверке оплаты' });
           return;
         }
-        timerId = window.setTimeout(poll, intervalMs);
+        timerId = window.setTimeout(poll, getIntervalMs(attempts));
       }
     };
 

@@ -12,6 +12,15 @@ function paymentAmountsMatch(local: string, remote: string): boolean {
   return Math.abs(a - b) < 0.01;
 }
 
+function isPlanActiveForUser(user: User, planCode: PlanCode): boolean {
+  return getUserPlanSnapshot(user).code === planCode;
+}
+
+function isRemotePaymentSuccessful(remote: Awaited<ReturnType<typeof getYookassaPayment>>): boolean {
+  if (remote.status === 'canceled') return false;
+  return remote.status === 'succeeded' || remote.paid === true;
+}
+
 async function applyPlanToUser(user: User, planCode: PlanCode): Promise<void> {
   const { assignedAt, expiresAt } = assignPlanDates(planCode);
   (user as any).planCode = planCode;
@@ -32,9 +41,20 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
   }
 
   const planCode = normalizePlanCode(payment.planCode);
+  const paymentAlreadySettled = payment.status === 'succeeded';
+  const planAlreadyActive = isPlanActiveForUser(user, planCode);
+
+  if (paymentAlreadySettled && planAlreadyActive) {
+    if (!payment.paidAt) {
+      payment.paidAt = new Date();
+      await payment.save();
+    }
+    return payment;
+  }
+
   await applyPlanToUser(user, planCode);
 
-  if (payment.status !== 'succeeded') {
+  if (!paymentAlreadySettled) {
     payment.status = 'succeeded';
     payment.paidAt = payment.paidAt ?? new Date();
     await payment.save();
@@ -68,6 +88,8 @@ function validateRemotePayment(payment: Payment, remote: Awaited<ReturnType<type
 }
 
 export async function syncPaymentWithYookassa(payment: Payment): Promise<Payment> {
+  await payment.reload();
+
   if (payment.status === 'canceled') {
     return payment;
   }
@@ -82,7 +104,7 @@ export async function syncPaymentWithYookassa(payment: Payment): Promise<Payment
   const remote = await getYookassaPayment(payment.yookassaPaymentId);
   validateRemotePayment(payment, remote);
 
-  if (remote.status === 'succeeded') {
+  if (isRemotePaymentSuccessful(remote)) {
     return activatePlanForPayment(payment);
   }
 
@@ -97,6 +119,32 @@ export async function syncPaymentWithYookassa(payment: Payment): Promise<Payment
   }
 
   return payment;
+}
+
+export async function findPaymentByYookassaId(yookassaPaymentId: string): Promise<Payment | null> {
+  let payment = await Payment.findOne({ where: { yookassaPaymentId } });
+  if (payment) return payment;
+
+  try {
+    const remote = await getYookassaPayment(yookassaPaymentId);
+    const localPaymentId = Number(remote.metadata?.payment_id);
+    if (!Number.isFinite(localPaymentId) || localPaymentId <= 0) {
+      return null;
+    }
+
+    payment = await Payment.findByPk(localPaymentId);
+    if (!payment) return null;
+
+    if (!payment.yookassaPaymentId) {
+      payment.yookassaPaymentId = yookassaPaymentId;
+      await payment.save();
+    }
+
+    return payment;
+  } catch (error) {
+    console.warn('YooKassa payment lookup failed', yookassaPaymentId, error);
+    return null;
+  }
 }
 
 export async function getPaymentStatusPayload(payment: Payment, user: User) {
