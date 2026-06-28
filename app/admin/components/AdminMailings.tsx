@@ -19,10 +19,19 @@ interface MailCampaign {
   audienceListId?: number | null;
   previousCampaignId?: number | null;
   status: string;
+  scheduledAt?: string | null;
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
   createdAt: string;
+}
+
+interface SearchUser {
+  id: number;
+  email: string | null;
+  name: string | null;
+  planCode?: string;
+  createdAt?: string;
 }
 
 interface MailList {
@@ -86,6 +95,21 @@ function toInputDate(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
+function toDatetimeLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${h}:${min}`;
+}
+
+function defaultScheduleDatetime() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setSeconds(0, 0);
+  return toDatetimeLocal(d);
+}
+
 const PLAN_OPTIONS = Object.values(PLAN_CONFIGS).map((p) => ({ code: p.code, title: p.title }));
 
 const emptyStep = (): SequenceStep => ({
@@ -120,6 +144,19 @@ export default function AdminMailings() {
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [listMembers, setListMembers] = useState<Array<{ userId: number; user?: { email?: string; name?: string } }>>([]);
   const [enrollListId, setEnrollListId] = useState<number | ''>('');
+
+  const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
+  const [userSearchEmail, setUserSearchEmail] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<SearchUser[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set());
+  const [bulkFromListId, setBulkFromListId] = useState<number | ''>('');
+  const [bulkPlanCode, setBulkPlanCode] = useState<PlanCode>('free');
+  const [bulkRegFrom, setBulkRegFrom] = useState('');
+  const [bulkRegTo, setBulkRegTo] = useState('');
+  const [listAddLoading, setListAddLoading] = useState(false);
+
+  const [campaignSendMode, setCampaignSendMode] = useState<'now' | 'schedule'>('now');
+  const [campaignScheduledAt, setCampaignScheduledAt] = useState(defaultScheduleDatetime);
 
   const [spamResult, setSpamResult] = useState<{
     score: number;
@@ -201,32 +238,88 @@ export default function AdminMailings() {
       audienceType: 'all',
       audiencePlanCode: 'free',
     });
+    setCampaignSendMode('now');
+    setCampaignScheduledAt(defaultScheduleDatetime());
     setSpamResult(null);
   };
 
-  const saveCampaign = async () => {
+  const validateScheduleDatetime = (value: string): string | null => {
+    if (!value) return 'Укажите дату и время отправки';
+    const at = new Date(value);
+    if (Number.isNaN(at.getTime())) return 'Некорректная дата';
+    if (at.getTime() <= Date.now()) return 'Время отправки не может быть в прошлом';
+    return null;
+  };
+
+  const saveCampaignDraft = async (): Promise<MailCampaign | null> => {
     if (!editingCampaign?.name || !editingCampaign.subject || !editingCampaign.htmlBody) {
       setError('Заполните название, тему и текст');
-      return;
+      return null;
     }
+    const isNew = !editingCampaign.id;
+    const url = isNew ? '/api/admin/mail/campaigns' : `/api/admin/mail/campaigns/${editingCampaign.id}`;
+    const res = await fetch(url, {
+      method: isNew ? 'POST' : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingCampaign),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'Ошибка сохранения');
+      return null;
+    }
+    return data.campaign as MailCampaign;
+  };
+
+  const saveCampaign = async () => {
     setLoading(true);
     setError(null);
     try {
-      const isNew = !editingCampaign.id;
-      const url = isNew ? '/api/admin/mail/campaigns' : `/api/admin/mail/campaigns/${editingCampaign.id}`;
-      const res = await fetch(url, {
-        method: isNew ? 'POST' : 'PATCH',
+      const saved = await saveCampaignDraft();
+      if (!saved) return;
+      setEditingCampaign(null);
+      await loadCampaigns();
+      showMsg('Рассылка сохранена');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const launchCampaign = async (schedule: boolean) => {
+    if (schedule) {
+      const err = validateScheduleDatetime(campaignScheduledAt);
+      if (err) {
+        setError(err);
+        return;
+      }
+    } else if (!confirm('Запустить рассылку сейчас? Письма пойдут через очередь.')) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const saved = await saveCampaignDraft();
+      if (!saved?.id) return;
+
+      const body = schedule ? { scheduledAt: new Date(campaignScheduledAt).toISOString() } : {};
+      const res = await fetch(`/api/admin/mail/campaigns/${saved.id}/send`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingCampaign),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Ошибка сохранения');
+        setError(data.error || 'Ошибка запуска');
         return;
       }
       setEditingCampaign(null);
       await loadCampaigns();
-      showMsg('Рассылка сохранена');
+      if (schedule) {
+        showMsg(`Отправка запланирована на ${new Date(campaignScheduledAt).toLocaleString('ru-RU')}`);
+      } else {
+        showMsg(`В очередь добавлено: ${data.queued} писем`);
+      }
     } finally {
       setLoading(false);
     }
@@ -236,7 +329,11 @@ export default function AdminMailings() {
     if (!confirm('Запустить рассылку? Письма будут отправлены через очередь.')) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/mail/campaigns/${id}/send`, { method: 'POST' });
+      const res = await fetch(`/api/admin/mail/campaigns/${id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Ошибка запуска');
@@ -247,6 +344,81 @@ export default function AdminMailings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const cancelCampaignSchedule = async (id: number) => {
+    if (!confirm('Отменить запланированную отправку?')) return;
+    const res = await fetch(`/api/admin/mail/campaigns/${id}/cancel-schedule`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      showMsg('Отправка отменена, рассылка в черновике');
+      await loadCampaigns();
+    } else {
+      setError(data.error || 'Ошибка');
+    }
+  };
+
+  const searchUsersForList = async () => {
+    if (!selectedListId) return;
+    setListAddLoading(true);
+    try {
+      const params = new URLSearchParams({
+        excludeListId: String(selectedListId),
+        limit: '100',
+      });
+      if (userSearchEmail.trim()) params.set('email', userSearchEmail.trim());
+      const res = await fetch(`/api/admin/mail/users-search?${params}`);
+      const data = await res.json();
+      if (res.ok) {
+        setUserSearchResults(data.users || []);
+        setSelectedUserIds(new Set());
+      } else {
+        setError(data.error || 'Ошибка поиска');
+      }
+    } finally {
+      setListAddLoading(false);
+    }
+  };
+
+  const toggleUserSelection = (userId: number) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const bulkAddToList = async (payload: Record<string, unknown>) => {
+    if (!selectedListId) return;
+    setListAddLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/mail/lists/${selectedListId}/members/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось добавить');
+        return;
+      }
+      showMsg(`Добавлено: ${data.added} из ${data.matched}`);
+      await loadListMembers(selectedListId);
+      await loadLists();
+      setSelectedUserIds(new Set());
+    } finally {
+      setListAddLoading(false);
+    }
+  };
+
+  const addSelectedUsersToList = async () => {
+    if (selectedUserIds.size === 0) {
+      setError('Выберите пользователей');
+      return;
+    }
+    await bulkAddToList({ userIds: Array.from(selectedUserIds) });
   };
 
   const addCampaignToList = async (campaignId: number, listId: number) => {
@@ -375,6 +547,7 @@ export default function AdminMailings() {
   const statusLabel = (s: string) => {
     const map: Record<string, string> = {
       draft: 'Черновик',
+      scheduled: 'Запланирована',
       queued: 'В очереди',
       sending: 'Отправляется',
       sent: 'Отправлено',
@@ -468,7 +641,7 @@ export default function AdminMailings() {
                       <th>Название</th>
                       <th>Аудитория</th>
                       <th>Статус</th>
-                      <th>Отправлено</th>
+                      <th>Прогресс / Время</th>
                       <th>Действия</th>
                     </tr>
                   </thead>
@@ -484,18 +657,44 @@ export default function AdminMailings() {
                         </td>
                         <td>{statusLabel(c.status)}</td>
                         <td>
-                          {c.sentCount}/{c.totalRecipients}
-                          {c.failedCount > 0 && ` (${c.failedCount} ошибок)`}
+                          {c.status === 'scheduled' && c.scheduledAt
+                            ? new Date(c.scheduledAt).toLocaleString('ru-RU')
+                            : `${c.sentCount}/${c.totalRecipients}`}
+                          {c.failedCount > 0 && c.status !== 'scheduled' && ` (${c.failedCount} ошибок)`}
                         </td>
                         <td className={styles.actions}>
-                          {(c.status === 'draft' || c.status === 'failed') && (
+                          {c.status === 'scheduled' && (
+                            <button
+                              type="button"
+                              className={styles.btnSmall}
+                              onClick={() => cancelCampaignSchedule(c.id)}
+                            >
+                              Отменить
+                            </button>
+                          )}
+                          {(c.status === 'draft' || c.status === 'failed' || c.status === 'scheduled') && (
                             <>
-                              <button type="button" className={styles.btnSmall} onClick={() => setEditingCampaign(c)}>
+                              <button
+                                type="button"
+                                className={styles.btnSmall}
+                                onClick={() => {
+                                  setEditingCampaign(c);
+                                  if (c.scheduledAt) {
+                                    setCampaignSendMode('schedule');
+                                    setCampaignScheduledAt(toDatetimeLocal(new Date(c.scheduledAt)));
+                                  } else {
+                                    setCampaignSendMode('now');
+                                    setCampaignScheduledAt(defaultScheduleDatetime());
+                                  }
+                                }}
+                              >
                                 Изменить
                               </button>
-                              <button type="button" className={styles.btnSmallPrimary} onClick={() => sendCampaign(c.id)}>
-                                Отправить
-                              </button>
+                              {c.status !== 'scheduled' && (
+                                <button type="button" className={styles.btnSmallPrimary} onClick={() => sendCampaign(c.id)}>
+                                  Отправить
+                                </button>
+                              )}
                             </>
                           )}
                           {c.status === 'sent' && lists.length > 0 && (
@@ -658,11 +857,68 @@ export default function AdminMailings() {
               )}
               <div className={styles.row}>
                 <button type="button" className={styles.btnPrimary} onClick={saveCampaign} disabled={loading}>
-                  Сохранить
+                  Сохранить черновик
                 </button>
                 <button type="button" className={styles.btnSecondary} onClick={() => setEditingCampaign(null)}>
                   Отмена
                 </button>
+              </div>
+
+              <div className={styles.scheduleBox}>
+                <h3>Отправка</h3>
+                <div className={styles.row}>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      checked={campaignSendMode === 'now'}
+                      onChange={() => setCampaignSendMode('now')}
+                    />
+                    Отправить сейчас
+                  </label>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      checked={campaignSendMode === 'schedule'}
+                      onChange={() => setCampaignSendMode('schedule')}
+                    />
+                    Запланировать
+                  </label>
+                </div>
+                {campaignSendMode === 'schedule' && (
+                  <label className={styles.label}>
+                    Дата и время
+                    <input
+                      type="datetime-local"
+                      className={styles.input}
+                      value={campaignScheduledAt}
+                      onChange={(e) => setCampaignScheduledAt(e.target.value)}
+                    />
+                    {validateScheduleDatetime(campaignScheduledAt) && (
+                      <span className={styles.fieldError}>{validateScheduleDatetime(campaignScheduledAt)}</span>
+                    )}
+                  </label>
+                )}
+                <div className={styles.row}>
+                  {campaignSendMode === 'now' ? (
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={loading}
+                      onClick={() => launchCampaign(false)}
+                    >
+                      Отправить сейчас
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={loading || !!validateScheduleDatetime(campaignScheduledAt)}
+                      onClick={() => launchCampaign(true)}
+                    >
+                      Запланировать отправку
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -909,32 +1165,197 @@ export default function AdminMailings() {
             ))}
           </div>
           {selectedListId && (
-            <div className={styles.tableWrap}>
-              <h3>Участники списка</h3>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Имя</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {listMembers.map((m) => (
-                    <tr key={m.userId}>
-                      <td>{m.user?.email || '—'}</td>
-                      <td>{m.user?.name || '—'}</td>
-                    </tr>
+            <>
+              <div className={styles.addMembersPanel}>
+                <h3>Добавить в список</h3>
+                <div className={styles.addModeTabs}>
+                  {(['search', 'list', 'plan', 'dates'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`${styles.tab} ${listAddMode === mode ? styles.tabActive : ''}`}
+                      onClick={() => setListAddMode(mode)}
+                    >
+                      {mode === 'search' && 'По email'}
+                      {mode === 'list' && 'Из списка'}
+                      {mode === 'plan' && 'По тарифу'}
+                      {mode === 'dates' && 'По дате регистрации'}
+                    </button>
                   ))}
-                  {listMembers.length === 0 && (
+                </div>
+
+                {listAddMode === 'search' && (
+                  <div className={styles.addModeBody}>
+                    <div className={styles.row}>
+                      <input
+                        className={styles.input}
+                        placeholder="Начало email, например ivan@"
+                        value={userSearchEmail}
+                        onChange={(e) => setUserSearchEmail(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && searchUsersForList()}
+                      />
+                      <button
+                        type="button"
+                        className={styles.btnSecondary}
+                        onClick={searchUsersForList}
+                        disabled={listAddLoading}
+                      >
+                        Найти
+                      </button>
+                    </div>
+                    {userSearchResults.length > 0 && (
+                      <>
+                        <div className={styles.userPickList}>
+                          {userSearchResults.map((u) => (
+                            <label key={u.id} className={styles.userPickRow}>
+                              <input
+                                type="checkbox"
+                                checked={selectedUserIds.has(u.id)}
+                                onChange={() => toggleUserSelection(u.id)}
+                              />
+                              <span>{u.email}</span>
+                              <span className={styles.hint}>{u.name || '—'}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.btnPrimary}
+                          disabled={listAddLoading || selectedUserIds.size === 0}
+                          onClick={addSelectedUsersToList}
+                        >
+                          Добавить выбранных ({selectedUserIds.size})
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {listAddMode === 'list' && (
+                  <div className={styles.addModeBody}>
+                    <select
+                      className={styles.input}
+                      value={bulkFromListId}
+                      onChange={(e) => setBulkFromListId(e.target.value ? Number(e.target.value) : '')}
+                    >
+                      <option value="">Выберите список</option>
+                      {lists
+                        .filter((l) => l.id !== selectedListId)
+                        .map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name} ({l.memberCount ?? 0})
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={!bulkFromListId || listAddLoading}
+                      onClick={() => bulkAddToList({ fromListId: bulkFromListId })}
+                    >
+                      Добавить всех из списка
+                    </button>
+                  </div>
+                )}
+
+                {listAddMode === 'plan' && (
+                  <div className={styles.addModeBody}>
+                    <select
+                      className={styles.input}
+                      value={bulkPlanCode}
+                      onChange={(e) => setBulkPlanCode(e.target.value as PlanCode)}
+                    >
+                      {PLAN_OPTIONS.map((p) => (
+                        <option key={p.code} value={p.code}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={listAddLoading}
+                      onClick={() => bulkAddToList({ planCode: bulkPlanCode })}
+                    >
+                      Добавить всех с этим тарифом
+                    </button>
+                  </div>
+                )}
+
+                {listAddMode === 'dates' && (
+                  <div className={styles.addModeBody}>
+                    <div className={styles.row}>
+                      <label className={styles.filterLabel}>
+                        Зарегистрированы от
+                        <DatePicker value={bulkRegFrom} onChange={setBulkRegFrom} theme="dark" className={styles.input} />
+                      </label>
+                      <label className={styles.filterLabel}>
+                        до
+                        <DatePicker value={bulkRegTo} onChange={setBulkRegTo} theme="dark" className={styles.input} />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={listAddLoading || (!bulkRegFrom && !bulkRegTo)}
+                      onClick={() =>
+                        bulkAddToList({
+                          registeredFrom: bulkRegFrom || undefined,
+                          registeredTo: bulkRegTo || undefined,
+                        })
+                      }
+                    >
+                      Добавить по датам регистрации
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.tableWrap}>
+                <h3>Участники списка</h3>
+                <table className={styles.table}>
+                  <thead>
                     <tr>
-                      <td colSpan={2} className={styles.empty}>
-                        Список пуст. Добавьте получателей после рассылки (кнопка «→ В список») или вручную через API.
-                      </td>
+                      <th>Email</th>
+                      <th>Имя</th>
+                      <th></th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {listMembers.map((m) => (
+                      <tr key={m.userId}>
+                        <td>{m.user?.email || '—'}</td>
+                        <td>{m.user?.name || '—'}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className={styles.btnSmallDanger}
+                            onClick={async () => {
+                              await fetch(`/api/admin/mail/lists/${selectedListId}/members`, {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId: m.userId }),
+                              });
+                              await loadListMembers(selectedListId);
+                              await loadLists();
+                            }}
+                          >
+                            Удалить
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {listMembers.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className={styles.empty}>
+                          Список пуст — добавьте получателей выше
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

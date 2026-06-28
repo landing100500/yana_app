@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailCampaign from '@/models/MailCampaign';
-import { queueCampaign } from '@/lib/mail-marketing';
+import { queueCampaign, scheduleCampaign, validateScheduledAt } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +17,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const campaign = await MailCampaign.findByPk(Number(id));
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { scheduledAt } = body as { scheduledAt?: string };
+
+    if (scheduledAt) {
+      const at = new Date(scheduledAt);
+      validateScheduledAt(at);
+      const scheduled = await scheduleCampaign(campaign.id, at);
+      return NextResponse.json({
+        success: true,
+        scheduled: true,
+        scheduledAt: scheduled.scheduledAt?.toISOString(),
+      });
     }
 
     const result = await queueCampaign(campaign.id);

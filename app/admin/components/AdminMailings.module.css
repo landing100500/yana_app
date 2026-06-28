@@ -414,3 +414,67 @@
   color: rgba(255, 255, 255, 0.75);
   font-size: 0.9rem;
 }
+
+.addMembersPanel {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.addMembersPanel h3 {
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 1rem;
+}
+
+.addModeTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.addModeBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.userPickList {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.userPickRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.scheduleBox {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border-radius: 12px;
+  border: 1px solid rgba(155, 143, 184, 0.25);
+  background: rgba(155, 143, 184, 0.08);
+}
+
+.scheduleBox h3 {
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+.fieldError {
+  color: #ffb3b3;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}

@@ -110,10 +110,59 @@ export async function resolveCampaignRecipientIds(campaign: MailCampaign): Promi
   return mailable;
 }
 
-export async function queueCampaign(campaignId: number): Promise<{ queued: number }> {
+export function validateScheduledAt(scheduledAt: Date): void {
+  if (Number.isNaN(scheduledAt.getTime())) {
+    throw new Error('Некорректная дата отправки');
+  }
+  if (scheduledAt.getTime() <= Date.now()) {
+    throw new Error('Время отправки не может быть в прошлом');
+  }
+}
+
+export async function scheduleCampaign(campaignId: number, scheduledAt: Date): Promise<MailCampaign> {
+  validateScheduledAt(scheduledAt);
+
   const campaign = await MailCampaign.findByPk(campaignId);
   if (!campaign) throw new Error('Campaign not found');
   if (campaign.status !== 'draft' && campaign.status !== 'failed') {
+    throw new Error('Запланировать можно только черновик');
+  }
+
+  await campaign.update({ status: 'scheduled', scheduledAt });
+  return campaign;
+}
+
+export async function processDueScheduledCampaigns(): Promise<number> {
+  const due = await MailCampaign.findAll({
+    where: {
+      status: 'scheduled',
+      scheduledAt: { [Op.lte]: new Date() },
+    },
+    order: [['scheduledAt', 'ASC']],
+    limit: 10,
+  });
+
+  let activated = 0;
+  for (const campaign of due) {
+    await queueCampaign(campaign.id);
+    activated++;
+  }
+  return activated;
+}
+
+export async function cancelScheduledCampaign(campaignId: number): Promise<void> {
+  const campaign = await MailCampaign.findByPk(campaignId);
+  if (!campaign) throw new Error('Campaign not found');
+  if (campaign.status !== 'scheduled') {
+    throw new Error('Рассылка не запланирована');
+  }
+  await campaign.update({ status: 'draft', scheduledAt: null });
+}
+
+export async function queueCampaign(campaignId: number): Promise<{ queued: number }> {
+  const campaign = await MailCampaign.findByPk(campaignId);
+  if (!campaign) throw new Error('Campaign not found');
+  if (campaign.status !== 'draft' && campaign.status !== 'failed' && campaign.status !== 'scheduled') {
     throw new Error('Campaign already queued or sent');
   }
 
@@ -199,11 +248,14 @@ export async function processMailQueue(limit = BATCH_SIZE): Promise<{
   sendsSent: number;
   sendsFailed: number;
   sequencesProcessed: number;
+  scheduledActivated: number;
 }> {
   let sendsSent = 0;
   let sendsFailed = 0;
   let campaignsProcessed = 0;
   let sequencesProcessed = 0;
+
+  const scheduledActivated = await processDueScheduledCampaigns();
 
   const pendingSends = await MailSend.findAll({
     where: { status: 'pending' },
@@ -282,7 +334,7 @@ export async function processMailQueue(limit = BATCH_SIZE): Promise<{
     await sleep(SEND_DELAY_MS);
   }
 
-  return { campaignsProcessed, sendsSent, sendsFailed, sequencesProcessed };
+  return { campaignsProcessed, sendsSent, sendsFailed, sequencesProcessed, scheduledActivated };
 }
 
 function calculateNextSendAt(from: Date, step: MailSequenceStep): Date {

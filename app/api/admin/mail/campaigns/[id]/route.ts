@@ -3,6 +3,7 @@ import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailCampaign from '@/models/MailCampaign';
 import MailSend from '@/models/MailSend';
+import { validateScheduledAt } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    if (campaign.status !== 'draft' && campaign.status !== 'failed') {
+    if (campaign.status !== 'draft' && campaign.status !== 'failed' && campaign.status !== 'scheduled') {
       return NextResponse.json({ error: 'Cannot edit campaign in current status' }, { status: 400 });
     }
 
@@ -56,11 +57,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       'audiencePlanCode',
       'audienceListId',
       'previousCampaignId',
+      'scheduledAt',
     ] as const;
 
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
+    }
+
+    if (body.scheduledAt === null) {
+      updates.scheduledAt = null;
+    } else if (body.scheduledAt) {
+      const at = new Date(body.scheduledAt);
+      validateScheduledAt(at);
+      updates.scheduledAt = at;
     }
 
     await campaign.update(updates);
@@ -84,6 +94,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
     if (campaign.status === 'sending' || campaign.status === 'queued') {
       return NextResponse.json({ error: 'Cannot delete active campaign' }, { status: 400 });
+    }
+
+    if (campaign.status === 'scheduled') {
+      await campaign.update({ status: 'draft', scheduledAt: null });
     }
 
     await MailSend.destroy({ where: { campaignId: campaign.id, status: 'pending' } });
