@@ -15,6 +15,14 @@ import EmailOtp from '@/models/EmailOtp';
 import EmailSendLog from '@/models/EmailSendLog';
 import Payment from '@/models/Payment';
 import '@/models/AppSetting';
+import '@/models/MailSubscriber';
+import '@/models/MailList';
+import '@/models/MailListMember';
+import '@/models/MailCampaign';
+import '@/models/MailSend';
+import '@/models/MailSequence';
+import '@/models/MailSequenceStep';
+import '@/models/MailSequenceEnrollment';
 
 async function ensureAuthSchema() {
   const queryInterface = sequelize.getQueryInterface();

@@ -1,0 +1,1171 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import DatePicker from '@/components/ui/DatePicker';
+import EmailEditor from './EmailEditor';
+import styles from './AdminMailings.module.css';
+import { PLAN_CONFIGS, type PlanCode } from '@/lib/subscription';
+
+type Tab = 'campaigns' | 'sequences' | 'lists' | 'footer' | 'history';
+type HistoryPeriod = 'week' | 'month' | 'custom';
+
+interface MailCampaign {
+  id: number;
+  name: string;
+  subject: string;
+  htmlBody: string;
+  audienceType: string;
+  audiencePlanCode?: string | null;
+  audienceListId?: number | null;
+  previousCampaignId?: number | null;
+  status: string;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  createdAt: string;
+}
+
+interface MailList {
+  id: number;
+  name: string;
+  description?: string | null;
+  memberCount?: number;
+}
+
+interface SequenceStep {
+  delayDays: number;
+  delayHours: number;
+  subject: string;
+  htmlBody: string;
+}
+
+interface MailSequence {
+  id: number;
+  name: string;
+  description?: string | null;
+  triggerType: string;
+  isActive: boolean;
+  steps?: SequenceStep[];
+  enrollmentCount?: number;
+}
+
+interface SpamIssue {
+  text: string;
+  reason: string;
+  suggestion: string;
+}
+
+interface MailHistoryRow {
+  id: number;
+  eventAt: string;
+  email: string;
+  subject: string;
+  status: string;
+  errorMessage?: string | null;
+  sourceType: string;
+  sourceLabel: string;
+  user: { id: number; name: string | null; email: string | null };
+}
+
+interface MailHistoryResponse {
+  period: HistoryPeriod;
+  from: string;
+  to: string;
+  page: number;
+  totalPages: number;
+  total: number;
+  summary: { total: number; sent: number; failed: number; pending: number };
+  byDay: Array<{ date: string; count: number }>;
+  rows: MailHistoryRow[];
+}
+
+function toInputDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+const PLAN_OPTIONS = Object.values(PLAN_CONFIGS).map((p) => ({ code: p.code, title: p.title }));
+
+const emptyStep = (): SequenceStep => ({
+  delayDays: 1,
+  delayHours: 0,
+  subject: '',
+  htmlBody: '<p></p>',
+});
+
+export default function AdminMailings() {
+  const [tab, setTab] = useState<Tab>('campaigns');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [campaigns, setCampaigns] = useState<MailCampaign[]>([]);
+  const [lists, setLists] = useState<MailList[]>([]);
+  const [sequences, setSequences] = useState<MailSequence[]>([]);
+  const [footerHtml, setFooterHtml] = useState('');
+
+  const [editingCampaign, setEditingCampaign] = useState<Partial<MailCampaign> | null>(null);
+  const [editingSequence, setEditingSequence] = useState<{
+    id?: number;
+    name: string;
+    description: string;
+    triggerType: string;
+    isActive: boolean;
+    steps: SequenceStep[];
+  } | null>(null);
+
+  const [newListName, setNewListName] = useState('');
+  const [selectedListId, setSelectedListId] = useState<number | null>(null);
+  const [listMembers, setListMembers] = useState<Array<{ userId: number; user?: { email?: string; name?: string } }>>([]);
+  const [enrollListId, setEnrollListId] = useState<number | ''>('');
+
+  const [spamResult, setSpamResult] = useState<{
+    score: number;
+    summary: string;
+    issues: SpamIssue[];
+    rewrittenHtml?: string;
+  } | null>(null);
+  const [spamChecking, setSpamChecking] = useState(false);
+
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('week');
+  const [historyFrom, setHistoryFrom] = useState(() => toInputDate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)));
+  const [historyTo, setHistoryTo] = useState(() => toInputDate(new Date()));
+  const [historyStatus, setHistoryStatus] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
+  const [historySource, setHistorySource] = useState<'all' | 'campaign' | 'sequence'>('all');
+  const [historyEmail, setHistoryEmail] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<MailHistoryResponse | null>(null);
+
+  const showMsg = (text: string) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 4000);
+  };
+
+  const loadCampaigns = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/campaigns');
+    const data = await res.json();
+    if (res.ok) setCampaigns(data.campaigns || []);
+  }, []);
+
+  const loadLists = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/lists');
+    const data = await res.json();
+    if (res.ok) setLists(data.lists || []);
+  }, []);
+
+  const loadSequences = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/sequences');
+    const data = await res.json();
+    if (res.ok) setSequences(data.sequences || []);
+  }, []);
+
+  const loadFooter = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/footer');
+    const data = await res.json();
+    if (res.ok) setFooterHtml(data.html || '');
+  }, []);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await Promise.all([loadCampaigns(), loadLists(), loadSequences(), loadFooter()]);
+    } catch {
+      setError('Ошибка загрузки данных');
+    } finally {
+      setLoading(false);
+    }
+  }, [loadCampaigns, loadLists, loadSequences, loadFooter]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const loadListMembers = async (listId: number) => {
+    const res = await fetch(`/api/admin/mail/lists/${listId}/members`);
+    const data = await res.json();
+    if (res.ok) {
+      setListMembers(data.members || []);
+      setSelectedListId(listId);
+    }
+  };
+
+  const startNewCampaign = () => {
+    setEditingCampaign({
+      name: '',
+      subject: '',
+      htmlBody: '<p>Здравствуйте!</p>',
+      audienceType: 'all',
+      audiencePlanCode: 'free',
+    });
+    setSpamResult(null);
+  };
+
+  const saveCampaign = async () => {
+    if (!editingCampaign?.name || !editingCampaign.subject || !editingCampaign.htmlBody) {
+      setError('Заполните название, тему и текст');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const isNew = !editingCampaign.id;
+      const url = isNew ? '/api/admin/mail/campaigns' : `/api/admin/mail/campaigns/${editingCampaign.id}`;
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingCampaign),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка сохранения');
+        return;
+      }
+      setEditingCampaign(null);
+      await loadCampaigns();
+      showMsg('Рассылка сохранена');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendCampaign = async (id: number) => {
+    if (!confirm('Запустить рассылку? Письма будут отправлены через очередь.')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/campaigns/${id}/send`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка запуска');
+        return;
+      }
+      showMsg(`В очередь добавлено: ${data.queued} писем`);
+      await loadCampaigns();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addCampaignToList = async (campaignId: number, listId: number) => {
+    const res = await fetch(`/api/admin/mail/campaigns/${campaignId}/add-to-list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listId }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showMsg(`В список добавлено: ${data.added}`);
+      await loadLists();
+    } else {
+      setError(data.error || 'Ошибка');
+    }
+  };
+
+  const runSpamCheck = async (subject: string, htmlBody: string) => {
+    setSpamChecking(true);
+    setSpamResult(null);
+    try {
+      const res = await fetch('/api/admin/mail/spam-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, htmlBody }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка проверки');
+        return;
+      }
+      setSpamResult(data);
+    } finally {
+      setSpamChecking(false);
+    }
+  };
+
+  const createList = async () => {
+    if (!newListName.trim()) return;
+    const res = await fetch('/api/admin/mail/lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newListName.trim() }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setNewListName('');
+      await loadLists();
+      showMsg('Список создан');
+    } else {
+      setError(data.error);
+    }
+  };
+
+  const saveFooter = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/mail/footer', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: footerHtml }),
+      });
+      if (res.ok) showMsg('Футер сохранён');
+      else setError('Не удалось сохранить футер');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewSequence = () => {
+    setEditingSequence({
+      name: '',
+      description: '',
+      triggerType: 'none',
+      isActive: false,
+      steps: [{ ...emptyStep(), delayDays: 0 }],
+    });
+    setSpamResult(null);
+  };
+
+  const saveSequence = async () => {
+    if (!editingSequence?.name || editingSequence.steps.length === 0) {
+      setError('Укажите название и хотя бы одно письмо');
+      return;
+    }
+    setLoading(true);
+    try {
+      const isNew = !editingSequence.id;
+      const url = isNew ? '/api/admin/mail/sequences' : `/api/admin/mail/sequences/${editingSequence.id}`;
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingSequence),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка');
+        return;
+      }
+      setEditingSequence(null);
+      await loadSequences();
+      showMsg('Цепочка сохранена');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enrollSequence = async (sequenceId: number) => {
+    if (!enrollListId) {
+      setError('Выберите список');
+      return;
+    }
+    const res = await fetch(`/api/admin/mail/sequences/${sequenceId}/enroll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listId: enrollListId }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showMsg(`Записано в цепочку: ${data.enrolled}`);
+    } else {
+      setError(data.error);
+    }
+  };
+
+  const statusLabel = (s: string) => {
+    const map: Record<string, string> = {
+      draft: 'Черновик',
+      queued: 'В очереди',
+      sending: 'Отправляется',
+      sent: 'Отправлено',
+      failed: 'Ошибка',
+      pending: 'В очереди',
+    };
+    return map[s] || s;
+  };
+
+  const historyUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      period: historyPeriod,
+      status: historyStatus,
+      source: historySource,
+      page: String(historyPage),
+      limit: '50',
+    });
+    if (historyPeriod === 'custom') {
+      params.set('from', historyFrom);
+      params.set('to', historyTo);
+    }
+    if (historyEmail.trim()) params.set('email', historyEmail.trim());
+    return `/api/admin/mail/history?${params.toString()}`;
+  }, [historyPeriod, historyFrom, historyTo, historyStatus, historySource, historyEmail, historyPage]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(historyUrl);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось загрузить историю');
+        return;
+      }
+      setHistory(data);
+    } catch {
+      setError('Ошибка сети при загрузке истории');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyUrl]);
+
+  useEffect(() => {
+    if (tab === 'history') {
+      loadHistory();
+    }
+  }, [tab, loadHistory]);
+
+  return (
+    <div className={styles.wrap}>
+      <h1 className={styles.title}>Рассылки</h1>
+      <p className={styles.subtitle}>Email-рассылки, цепочки писем и управление списками</p>
+
+      <div className={styles.tabs}>
+        {(['campaigns', 'sequences', 'lists', 'footer', 'history'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
+            onClick={() => setTab(t)}
+          >
+            {t === 'campaigns' && 'Разовые рассылки'}
+            {t === 'sequences' && 'Цепочки писем'}
+            {t === 'lists' && 'Списки'}
+            {t === 'footer' && 'Футер писем'}
+            {t === 'history' && 'История'}
+          </button>
+        ))}
+      </div>
+
+      {message && <div className={styles.success}>{message}</div>}
+      {error && <div className={styles.error}>{error}</div>}
+
+      {tab === 'campaigns' && (
+        <div className={styles.section}>
+          {!editingCampaign ? (
+            <>
+              <div className={styles.row}>
+                <button type="button" className={styles.btnPrimary} onClick={startNewCampaign}>
+                  + Новая рассылка
+                </button>
+                <button type="button" className={styles.btnSecondary} onClick={loadCampaigns} disabled={loading}>
+                  Обновить
+                </button>
+              </div>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Название</th>
+                      <th>Аудитория</th>
+                      <th>Статус</th>
+                      <th>Отправлено</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {campaigns.map((c) => (
+                      <tr key={c.id}>
+                        <td>{c.name}</td>
+                        <td>
+                          {c.audienceType === 'all' && 'Все пользователи'}
+                          {c.audienceType === 'plan' && `Тариф: ${c.audiencePlanCode}`}
+                          {c.audienceType === 'list' && `Список #${c.audienceListId}`}
+                          {c.audienceType === 'previous_campaign' && `Получали #${c.previousCampaignId}`}
+                        </td>
+                        <td>{statusLabel(c.status)}</td>
+                        <td>
+                          {c.sentCount}/{c.totalRecipients}
+                          {c.failedCount > 0 && ` (${c.failedCount} ошибок)`}
+                        </td>
+                        <td className={styles.actions}>
+                          {(c.status === 'draft' || c.status === 'failed') && (
+                            <>
+                              <button type="button" className={styles.btnSmall} onClick={() => setEditingCampaign(c)}>
+                                Изменить
+                              </button>
+                              <button type="button" className={styles.btnSmallPrimary} onClick={() => sendCampaign(c.id)}>
+                                Отправить
+                              </button>
+                            </>
+                          )}
+                          {c.status === 'sent' && lists.length > 0 && (
+                            <select
+                              className={styles.selectInline}
+                              defaultValue=""
+                              onChange={(e) => {
+                                const listId = Number(e.target.value);
+                                if (listId) addCampaignToList(c.id, listId);
+                                e.target.value = '';
+                              }}
+                            >
+                              <option value="">→ В список</option>
+                              {lists.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {campaigns.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className={styles.empty}>
+                          Нет рассылок
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className={styles.form}>
+              <h2>{editingCampaign.id ? 'Редактирование' : 'Новая рассылка'}</h2>
+              <label className={styles.label}>
+                Название (внутреннее)
+                <input
+                  className={styles.input}
+                  value={editingCampaign.name || ''}
+                  onChange={(e) => setEditingCampaign({ ...editingCampaign, name: e.target.value })}
+                />
+              </label>
+              <label className={styles.label}>
+                Тема письма
+                <input
+                  className={styles.input}
+                  value={editingCampaign.subject || ''}
+                  onChange={(e) => setEditingCampaign({ ...editingCampaign, subject: e.target.value })}
+                />
+              </label>
+              <label className={styles.label}>
+                Аудитория
+                <select
+                  className={styles.input}
+                  value={editingCampaign.audienceType || 'all'}
+                  onChange={(e) => setEditingCampaign({ ...editingCampaign, audienceType: e.target.value })}
+                >
+                  <option value="all">Все зарегистрированные пользователи</option>
+                  <option value="plan">По тарифу</option>
+                  <option value="list">По списку</option>
+                  <option value="previous_campaign">Получали предыдущую рассылку</option>
+                </select>
+              </label>
+              {editingCampaign.audienceType === 'plan' && (
+                <select
+                  className={styles.input}
+                  value={editingCampaign.audiencePlanCode || 'free'}
+                  onChange={(e) =>
+                    setEditingCampaign({ ...editingCampaign, audiencePlanCode: e.target.value as PlanCode })
+                  }
+                >
+                  {PLAN_OPTIONS.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {editingCampaign.audienceType === 'list' && (
+                <select
+                  className={styles.input}
+                  value={editingCampaign.audienceListId || ''}
+                  onChange={(e) =>
+                    setEditingCampaign({ ...editingCampaign, audienceListId: Number(e.target.value) })
+                  }
+                >
+                  <option value="">Выберите список</option>
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.memberCount ?? 0})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {editingCampaign.audienceType === 'previous_campaign' && (
+                <select
+                  className={styles.input}
+                  value={editingCampaign.previousCampaignId || ''}
+                  onChange={(e) =>
+                    setEditingCampaign({ ...editingCampaign, previousCampaignId: Number(e.target.value) })
+                  }
+                >
+                  <option value="">Выберите рассылку</option>
+                  {campaigns
+                    .filter((c) => c.status === 'sent' && c.id !== editingCampaign.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.sentCount} получ.)
+                      </option>
+                    ))}
+                </select>
+              )}
+              <label className={styles.label}>Текст письма</label>
+              <EmailEditor
+                value={editingCampaign.htmlBody || ''}
+                onChange={(html) => setEditingCampaign({ ...editingCampaign, htmlBody: html })}
+              />
+              <div className={styles.row}>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  disabled={spamChecking}
+                  onClick={() =>
+                    runSpamCheck(editingCampaign.subject || '', editingCampaign.htmlBody || '')
+                  }
+                >
+                  {spamChecking ? 'Проверка...' : 'Проверить ИИ'}
+                </button>
+                {spamResult?.rewrittenHtml && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={() =>
+                      setEditingCampaign({ ...editingCampaign, htmlBody: spamResult.rewrittenHtml! })
+                    }
+                  >
+                    Применить переписанный текст
+                  </button>
+                )}
+              </div>
+              {spamResult && (
+                <div className={styles.spamBox}>
+                  <p>
+                    <strong>Оценка доставляемости:</strong> {spamResult.score}/100
+                  </p>
+                  <p>{spamResult.summary}</p>
+                  {spamResult.issues.length > 0 && (
+                    <ul>
+                      {spamResult.issues.map((issue, i) => (
+                        <li key={i}>
+                          «{issue.text}» — {issue.reason}. {issue.suggestion}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              <div className={styles.row}>
+                <button type="button" className={styles.btnPrimary} onClick={saveCampaign} disabled={loading}>
+                  Сохранить
+                </button>
+                <button type="button" className={styles.btnSecondary} onClick={() => setEditingCampaign(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'sequences' && (
+        <div className={styles.section}>
+          {!editingSequence ? (
+            <>
+              <div className={styles.row}>
+                <button type="button" className={styles.btnPrimary} onClick={startNewSequence}>
+                  + Новая цепочка
+                </button>
+              </div>
+              <p className={styles.hint}>
+                Цепочки с триггером «Новые пользователи» автоматически запускаются при регистрации. Для существующих
+                пользователей — выберите список и нажмите «Запустить».
+              </p>
+              {sequences.map((seq) => (
+                <div key={seq.id} className={styles.card}>
+                  <div className={styles.cardHeader}>
+                    <strong>{seq.name}</strong>
+                    <span className={seq.isActive ? styles.badgeActive : styles.badgeInactive}>
+                      {seq.isActive ? 'Активна' : 'Выключена'}
+                    </span>
+                  </div>
+                  <p className={styles.hint}>
+                    {seq.steps?.length || 0} писем · {seq.enrollmentCount || 0} подписчиков · Триггер:{' '}
+                    {seq.triggerType === 'new_user'
+                      ? 'Новые пользователи'
+                      : seq.triggerType === 'manual'
+                        ? 'Вручную'
+                        : '—'}
+                  </p>
+                  <div className={styles.row}>
+                    <button
+                      type="button"
+                      className={styles.btnSmall}
+                      onClick={() =>
+                        setEditingSequence({
+                          id: seq.id,
+                          name: seq.name,
+                          description: seq.description || '',
+                          triggerType: seq.triggerType,
+                          isActive: seq.isActive,
+                          steps: seq.steps?.length ? seq.steps : [emptyStep()],
+                        })
+                      }
+                    >
+                      Редактировать
+                    </button>
+                    <select
+                      className={styles.selectInline}
+                      value={enrollListId}
+                      onChange={(e) => setEnrollListId(e.target.value ? Number(e.target.value) : '')}
+                    >
+                      <option value="">Список для запуска</option>
+                      {lists.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.btnSmallPrimary}
+                      onClick={() => enrollSequence(seq.id)}
+                    >
+                      Запустить цепочку
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className={styles.form}>
+              <h2>{editingSequence.id ? 'Редактирование цепочки' : 'Новая цепочка'}</h2>
+              <label className={styles.label}>
+                Название
+                <input
+                  className={styles.input}
+                  value={editingSequence.name}
+                  onChange={(e) => setEditingSequence({ ...editingSequence, name: e.target.value })}
+                />
+              </label>
+              <label className={styles.label}>
+                Триггер
+                <select
+                  className={styles.input}
+                  value={editingSequence.triggerType}
+                  onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
+                >
+                  <option value="none">Без автозапуска</option>
+                  <option value="new_user">Новые пользователи (при регистрации)</option>
+                  <option value="manual">Только вручную по списку</option>
+                </select>
+              </label>
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={editingSequence.isActive}
+                  onChange={(e) => setEditingSequence({ ...editingSequence, isActive: e.target.checked })}
+                />
+                Цепочка активна
+              </label>
+              {editingSequence.steps.map((step, idx) => (
+                <div key={idx} className={styles.stepCard}>
+                  <h3>
+                    Письмо {idx + 1}
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        className={styles.btnSmallDanger}
+                        onClick={() => {
+                          const steps = editingSequence.steps.filter((_, i) => i !== idx);
+                          setEditingSequence({ ...editingSequence, steps });
+                        }}
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </h3>
+                  <div className={styles.row}>
+                    <label className={styles.label}>
+                      Задержка (дней)
+                      <input
+                        type="number"
+                        min={0}
+                        className={styles.inputShort}
+                        value={step.delayDays}
+                        onChange={(e) => {
+                          const steps = [...editingSequence.steps];
+                          steps[idx] = { ...step, delayDays: Number(e.target.value) };
+                          setEditingSequence({ ...editingSequence, steps });
+                        }}
+                      />
+                    </label>
+                    <label className={styles.label}>
+                      Часов
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        className={styles.inputShort}
+                        value={step.delayHours}
+                        onChange={(e) => {
+                          const steps = [...editingSequence.steps];
+                          steps[idx] = { ...step, delayHours: Number(e.target.value) };
+                          setEditingSequence({ ...editingSequence, steps });
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <p className={styles.hint}>
+                    {idx === 0
+                      ? 'Задержка до первого письма после регистрации/запуска'
+                      : 'Задержка после предыдущего письма'}
+                  </p>
+                  <input
+                    className={styles.input}
+                    placeholder="Тема"
+                    value={step.subject}
+                    onChange={(e) => {
+                      const steps = [...editingSequence.steps];
+                      steps[idx] = { ...step, subject: e.target.value };
+                      setEditingSequence({ ...editingSequence, steps });
+                    }}
+                  />
+                  <EmailEditor
+                    value={step.htmlBody}
+                    onChange={(html) => {
+                      const steps = [...editingSequence.steps];
+                      steps[idx] = { ...step, htmlBody: html };
+                      setEditingSequence({ ...editingSequence, steps });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    disabled={spamChecking}
+                    onClick={() => runSpamCheck(step.subject, step.htmlBody)}
+                  >
+                    Проверить ИИ
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={() =>
+                  setEditingSequence({
+                    ...editingSequence,
+                    steps: [...editingSequence.steps, emptyStep()],
+                  })
+                }
+              >
+                + Добавить письмо
+              </button>
+              {spamResult && (
+                <div className={styles.spamBox}>
+                  <p>
+                    Оценка: {spamResult.score}/100 — {spamResult.summary}
+                  </p>
+                </div>
+              )}
+              <div className={styles.row}>
+                <button type="button" className={styles.btnPrimary} onClick={saveSequence} disabled={loading}>
+                  Сохранить цепочку
+                </button>
+                <button type="button" className={styles.btnSecondary} onClick={() => setEditingSequence(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'lists' && (
+        <div className={styles.section}>
+          <div className={styles.row}>
+            <input
+              className={styles.input}
+              placeholder="Название списка"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+            />
+            <button type="button" className={styles.btnPrimary} onClick={createList}>
+              Создать список
+            </button>
+          </div>
+          <div className={styles.listsGrid}>
+            {lists.map((list) => (
+              <button
+                key={list.id}
+                type="button"
+                className={`${styles.listCard} ${selectedListId === list.id ? styles.listCardActive : ''}`}
+                onClick={() => loadListMembers(list.id)}
+              >
+                <strong>{list.name}</strong>
+                <span>{list.memberCount ?? 0} получателей</span>
+              </button>
+            ))}
+          </div>
+          {selectedListId && (
+            <div className={styles.tableWrap}>
+              <h3>Участники списка</h3>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Имя</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listMembers.map((m) => (
+                    <tr key={m.userId}>
+                      <td>{m.user?.email || '—'}</td>
+                      <td>{m.user?.name || '—'}</td>
+                    </tr>
+                  ))}
+                  {listMembers.length === 0 && (
+                    <tr>
+                      <td colSpan={2} className={styles.empty}>
+                        Список пуст. Добавьте получателей после рассылки (кнопка «→ В список») или вручную через API.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'footer' && (
+        <div className={styles.section}>
+          <p className={styles.hint}>
+            Общий футер для всех писем. Используйте {'{{unsubscribe_url}}'} для ссылки отписки.
+          </p>
+          <EmailEditor value={footerHtml} onChange={setFooterHtml} placeholder="HTML футера..." />
+          <div className={styles.row}>
+            <button type="button" className={styles.btnPrimary} onClick={saveFooter} disabled={loading}>
+              Сохранить футер
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div className={styles.section}>
+          <div className={styles.historyFilters}>
+            <label className={styles.filterLabel}>
+              Период
+              <select
+                className={styles.input}
+                value={historyPeriod}
+                onChange={(e) => {
+                  setHistoryPage(1);
+                  setHistoryPeriod(e.target.value as HistoryPeriod);
+                }}
+              >
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+                <option value="custom">Выбранные даты</option>
+              </select>
+            </label>
+            {historyPeriod === 'custom' && (
+              <>
+                <label className={styles.filterLabel}>
+                  От
+                  <DatePicker value={historyFrom} onChange={setHistoryFrom} theme="dark" className={styles.input} />
+                </label>
+                <label className={styles.filterLabel}>
+                  До
+                  <DatePicker value={historyTo} onChange={setHistoryTo} theme="dark" className={styles.input} />
+                </label>
+              </>
+            )}
+            <label className={styles.filterLabel}>
+              Статус
+              <select
+                className={styles.input}
+                value={historyStatus}
+                onChange={(e) => {
+                  setHistoryPage(1);
+                  setHistoryStatus(e.target.value as typeof historyStatus);
+                }}
+              >
+                <option value="all">Все</option>
+                <option value="sent">Отправлено</option>
+                <option value="failed">Ошибка</option>
+                <option value="pending">В очереди</option>
+              </select>
+            </label>
+            <label className={styles.filterLabel}>
+              Тип
+              <select
+                className={styles.input}
+                value={historySource}
+                onChange={(e) => {
+                  setHistoryPage(1);
+                  setHistorySource(e.target.value as typeof historySource);
+                }}
+              >
+                <option value="all">Все</option>
+                <option value="campaign">Разовые рассылки</option>
+                <option value="sequence">Цепочки</option>
+              </select>
+            </label>
+            <label className={styles.filterLabel}>
+              Email
+              <input
+                className={styles.input}
+                placeholder="Поиск по email"
+                value={historyEmail}
+                onChange={(e) => setHistoryEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setHistoryPage(1);
+                    loadHistory();
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={() => {
+                setHistoryPage(1);
+                loadHistory();
+              }}
+              disabled={historyLoading}
+            >
+              {historyLoading ? 'Загрузка...' : 'Показать'}
+            </button>
+          </div>
+
+          {history && (
+            <>
+              <div className={styles.historySummary}>
+                <div>
+                  Всего: <strong>{history.summary.total}</strong>
+                </div>
+                <div>
+                  Отправлено: <strong>{history.summary.sent}</strong>
+                </div>
+                <div>
+                  Ошибок: <strong>{history.summary.failed}</strong>
+                </div>
+                <div>
+                  В очереди: <strong>{history.summary.pending}</strong>
+                </div>
+                <div>
+                  Период:{' '}
+                  <strong>
+                    {new Date(history.from).toLocaleDateString('ru-RU')} —{' '}
+                    {new Date(history.to).toLocaleDateString('ru-RU')}
+                  </strong>
+                </div>
+              </div>
+
+              {history.byDay.length > 0 && (
+                <div className={styles.byDayChart}>
+                  <p className={styles.hint}>Отправлено по дням</p>
+                  <div className={styles.byDayBars}>
+                    {history.byDay.map((d) => {
+                      const max = Math.max(...history.byDay.map((x) => x.count), 1);
+                      return (
+                        <div key={d.date} className={styles.byDayItem} title={`${d.date}: ${d.count}`}>
+                          <div
+                            className={styles.byDayBar}
+                            style={{ height: `${Math.max(8, (d.count / max) * 64)}px` }}
+                          />
+                          <span className={styles.byDayLabel}>
+                            {new Date(d.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                          </span>
+                          <span className={styles.byDayCount}>{d.count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Email</th>
+                  <th>Тема</th>
+                  <th>Источник</th>
+                  <th>Статус</th>
+                  <th>Ошибка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(history?.rows || []).map((row) => (
+                  <tr key={row.id}>
+                    <td>{new Date(row.eventAt).toLocaleString('ru-RU')}</td>
+                    <td>{row.email}</td>
+                    <td className={styles.subjectCell}>{row.subject}</td>
+                    <td>
+                      <span className={row.sourceType === 'campaign' ? styles.badgeCampaign : styles.badgeSequence}>
+                        {row.sourceLabel}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          row.status === 'sent'
+                            ? styles.statusSent
+                            : row.status === 'failed'
+                              ? styles.statusFailed
+                              : styles.statusPending
+                        }
+                      >
+                        {statusLabel(row.status)}
+                      </span>
+                    </td>
+                    <td className={styles.errorCell}>{row.errorMessage || '—'}</td>
+                  </tr>
+                ))}
+                {!historyLoading && history && history.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className={styles.empty}>
+                      За выбранный период отправок нет
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {history && history.totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                disabled={historyPage <= 1 || historyLoading}
+                onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+              >
+                ← Назад
+              </button>
+              <span>
+                Стр. {history.page} из {history.totalPages} ({history.total} записей)
+              </span>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                disabled={historyPage >= history.totalPages || historyLoading}
+                onClick={() => setHistoryPage((p) => p + 1)}
+              >
+                Вперёд →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

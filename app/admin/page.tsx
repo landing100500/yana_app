@@ -6,6 +6,7 @@ import styles from './page.module.css';
 import AdminUsersCharts from './components/AdminUsersCharts';
 import AdminChatHistory from './components/AdminChatHistory';
 import AdminPaymentsStats from './components/AdminPaymentsStats';
+import AdminMailings from './components/AdminMailings';
 
 interface Section {
   id: string;
@@ -16,7 +17,7 @@ interface Section {
   enabled_for_agent?: boolean;
 }
 
-type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms' | 'statistics';
+type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms' | 'statistics' | 'mailings';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -532,6 +533,12 @@ export default function AdminPage() {
             >
               Статистика
             </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'mailings' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('mailings')}
+            >
+              Рассылки
+            </button>
           </nav>
 
           <div className={styles.agentSections}>
@@ -835,12 +842,16 @@ export default function AdminPage() {
               </div>
               {error && currentView === 'algorithms' && <div className={styles.error}>{error}</div>}
             </div>
-          ) : (
+          ) : currentView === 'statistics' ? (
             <div className={styles.adminPanel}>
               <h1 className={styles.title}>Статистика</h1>
               <AdminPaymentsStats />
             </div>
-          )}
+          ) : currentView === 'mailings' ? (
+            <div className={styles.adminPanel}>
+              <AdminMailings />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

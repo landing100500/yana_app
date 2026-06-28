@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import { initDatabase } from '@/lib/initDb';
+import { enrollNewUserInActiveSequences } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,12 @@ export async function POST(request: NextRequest) {
 
     const password = await bcrypt.hash(String(pin), 10);
     await user.update({ password });
+
+    try {
+      await enrollNewUserInActiveSequences(user.id);
+    } catch (mailErr) {
+      console.error('Failed to enroll user in mail sequences:', mailErr);
+    }
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
 
