@@ -9,12 +9,17 @@ interface MailSequenceAttributes {
   description?: string | null;
   triggerType: MailSequenceTriggerType;
   isActive: boolean;
+  launchedAt?: Date | null;
+  launchListId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface MailSequenceCreationAttributes
-  extends Optional<MailSequenceAttributes, 'id' | 'description' | 'triggerType' | 'isActive' | 'createdAt' | 'updatedAt'> {}
+  extends Optional<
+    MailSequenceAttributes,
+    'id' | 'description' | 'triggerType' | 'isActive' | 'launchedAt' | 'launchListId' | 'createdAt' | 'updatedAt'
+  > {}
 
 class MailSequence extends Model<MailSequenceAttributes, MailSequenceCreationAttributes> implements MailSequenceAttributes {
   public id!: number;
@@ -22,6 +27,8 @@ class MailSequence extends Model<MailSequenceAttributes, MailSequenceCreationAtt
   public description?: string | null;
   public triggerType!: MailSequenceTriggerType;
   public isActive!: boolean;
+  public launchedAt?: Date | null;
+  public launchListId?: number | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -50,6 +57,14 @@ MailSequence.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+    },
+    launchedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    launchListId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
     },
     createdAt: {
       type: DataTypes.DATE,

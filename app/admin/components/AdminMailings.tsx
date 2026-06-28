@@ -48,14 +48,35 @@ interface SequenceStep {
   htmlBody: string;
 }
 
+interface SequenceStats {
+  enrollments: {
+    total: number;
+    active: number;
+    completed: number;
+    unsubscribed: number;
+    cancelled: number;
+  };
+  sends: { sent: number; pending: number; failed: number };
+  steps: Array<{
+    stepOrder: number;
+    subject: string;
+    sent: number;
+    pending: number;
+    failed: number;
+  }>;
+}
+
 interface MailSequence {
   id: number;
   name: string;
   description?: string | null;
   triggerType: string;
   isActive: boolean;
+  launchedAt?: string | null;
+  launchListId?: number | null;
+  launchListName?: string | null;
   steps?: SequenceStep[];
-  enrollmentCount?: number;
+  stats?: SequenceStats;
 }
 
 interface SpamIssue {
@@ -136,14 +157,14 @@ export default function AdminMailings() {
     name: string;
     description: string;
     triggerType: string;
-    isActive: boolean;
     steps: SequenceStep[];
   } | null>(null);
 
   const [newListName, setNewListName] = useState('');
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [listMembers, setListMembers] = useState<Array<{ userId: number; user?: { email?: string; name?: string } }>>([]);
-  const [enrollListId, setEnrollListId] = useState<number | ''>('');
+  const [sequenceLaunchLists, setSequenceLaunchLists] = useState<Record<number, number>>({});
+  const [expandedSequenceId, setExpandedSequenceId] = useState<number | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
   const [userSearchEmail, setUserSearchEmail] = useState('');
@@ -519,11 +540,26 @@ export default function AdminMailings() {
     setEditingSequence({
       name: '',
       description: '',
-      triggerType: 'none',
-      isActive: false,
+      triggerType: 'manual',
       steps: [{ ...emptyStep(), delayDays: 0 }],
     });
     setSpamResult(null);
+  };
+
+  const sequenceTriggerLabel = (triggerType: string) => {
+    if (triggerType === 'new_user') return 'Новые пользователи';
+    if (triggerType === 'manual') return 'По списку (один раз)';
+    return 'По списку (один раз)';
+  };
+
+  const sequenceStatus = (seq: MailSequence) => {
+    if (!seq.launchedAt) return { label: 'Черновик', badge: styles.badgeDraft };
+    if (!seq.isActive) return { label: 'Приостановлена', badge: styles.badgePaused };
+    const stats = seq.stats;
+    if (stats && stats.enrollments.total > 0 && stats.enrollments.active === 0) {
+      return { label: 'Завершена', badge: styles.badgeDone };
+    }
+    return { label: 'Работает', badge: styles.badgeActive };
   };
 
   const saveSequence = async () => {
@@ -553,21 +589,95 @@ export default function AdminMailings() {
     }
   };
 
-  const enrollSequence = async (sequenceId: number) => {
-    if (!enrollListId) {
-      setError('Выберите список');
+  const launchSequenceOnList = async (seq: MailSequence) => {
+    const listId = sequenceLaunchLists[seq.id];
+    if (!listId) {
+      setError('Выберите список для запуска');
       return;
     }
-    const res = await fetch(`/api/admin/mail/sequences/${sequenceId}/enroll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listId: enrollListId }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      showMsg(`Записано в цепочку: ${data.enrolled}`);
-    } else {
-      setError(data.error);
+    if (!confirm(`Запустить цепочку «${seq.name}» для списка?\n\nЭто действие одноразовое — повторно запустить нельзя.`)) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences/${seq.id}/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка запуска');
+        return;
+      }
+      const parts = [
+        `добавлено: ${data.enrolled}`,
+        data.alreadyEnrolled ? `уже были: ${data.alreadyEnrolled}` : '',
+        data.notMailable ? `без email: ${data.notMailable}` : '',
+        data.immediateSent ? `отправлено сейчас: ${data.immediateSent}` : '',
+      ].filter(Boolean);
+      showMsg(`Цепочка запущена (${parts.join(', ')})`);
+      await loadSequences();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enableSequence = async (seq: MailSequence) => {
+    const isResume = !!seq.launchedAt;
+    const msg = isResume
+      ? `Возобновить цепочку «${seq.name}»?`
+      : `Включить цепочку «${seq.name}» для новых пользователей?\n\nНовые регистрации будут автоматически попадать в цепочку.`;
+    if (!confirm(msg)) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences/${seq.id}/enable`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка');
+        return;
+      }
+      showMsg(isResume ? 'Цепочка возобновлена' : 'Цепочка включена для новых пользователей');
+      await loadSequences();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pauseSequence = async (seq: MailSequence) => {
+    if (!confirm(`Приостановить цепочку «${seq.name}»? Отправка писем остановится.`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences/${seq.id}/pause`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка');
+        return;
+      }
+      showMsg('Цепочка приостановлена');
+      await loadSequences();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteSequence = async (seq: MailSequence) => {
+    if (!confirm(`Удалить цепочку «${seq.name}» и все связанные данные?`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences/${seq.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось удалить');
+        return;
+      }
+      if (editingSequence?.id === seq.id) setEditingSequence(null);
+      if (expandedSequenceId === seq.id) setExpandedSequenceId(null);
+      showMsg('Цепочка удалена');
+      await loadSequences();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -970,66 +1080,198 @@ export default function AdminMailings() {
                 <button type="button" className={styles.btnPrimary} onClick={startNewSequence}>
                   + Новая цепочка
                 </button>
+                <button type="button" className={styles.btnSecondary} onClick={loadSequences} disabled={loading}>
+                  Обновить
+                </button>
               </div>
               <p className={styles.hint}>
-                Цепочки с триггером «Новые пользователи» автоматически запускаются при регистрации. Для существующих
-                пользователей — выберите список и нажмите «Запустить».
+                1) Создайте цепочку и сохраните черновик. 2) Запустите один раз — по списку или для новых
+                пользователей. 3) Следите за статусами. Повторный запуск невозможен — только приостановка или
+                удаление.
               </p>
-              {sequences.map((seq) => (
-                <div key={seq.id} className={styles.card}>
-                  <div className={styles.cardHeader}>
-                    <strong>{seq.name}</strong>
-                    <span className={seq.isActive ? styles.badgeActive : styles.badgeInactive}>
-                      {seq.isActive ? 'Активна' : 'Выключена'}
-                    </span>
+              {sequences.map((seq) => {
+                const status = sequenceStatus(seq);
+                const stats = seq.stats;
+                const isLaunched = !!seq.launchedAt;
+                const canLaunchByList =
+                  !isLaunched && seq.triggerType !== 'new_user' && (seq.steps?.length || 0) > 0;
+                const canEnableNewUsers = !isLaunched && seq.triggerType === 'new_user' && (seq.steps?.length || 0) > 0;
+                const isExpanded = expandedSequenceId === seq.id;
+
+                return (
+                  <div key={seq.id} className={styles.card}>
+                    <div className={styles.cardHeader}>
+                      <strong>{seq.name}</strong>
+                      <span className={status.badge}>{status.label}</span>
+                    </div>
+                    <p className={styles.hint}>
+                      {seq.steps?.length || 0} писем · {sequenceTriggerLabel(seq.triggerType)}
+                      {isLaunched && seq.launchedAt && (
+                        <> · Запущена {new Date(seq.launchedAt).toLocaleString('ru-RU')}</>
+                      )}
+                      {seq.launchListName && <> · Список: {seq.launchListName}</>}
+                    </p>
+                    {stats && isLaunched && (
+                      <div className={styles.statsRow}>
+                        <span>
+                          Участники: {stats.enrollments.total} (в процессе {stats.enrollments.active}, завершили{' '}
+                          {stats.enrollments.completed}
+                          {stats.enrollments.unsubscribed > 0 && `, отписались ${stats.enrollments.unsubscribed}`})
+                        </span>
+                        <span>
+                          Письма: отправлено {stats.sends.sent}
+                          {stats.sends.pending > 0 && `, в очереди ${stats.sends.pending}`}
+                          {stats.sends.failed > 0 && `, ошибок ${stats.sends.failed}`}
+                        </span>
+                      </div>
+                    )}
+                    <div className={styles.row}>
+                      {!isLaunched && (
+                        <button
+                          type="button"
+                          className={styles.btnSmall}
+                          onClick={async () => {
+                            setLoading(true);
+                            try {
+                              const res = await fetch(`/api/admin/mail/sequences/${seq.id}`);
+                              const data = await res.json();
+                              if (!res.ok) {
+                                setError(data.error || 'Не удалось загрузить');
+                                return;
+                              }
+                              setEditingSequence({
+                                id: data.sequence.id,
+                                name: data.sequence.name,
+                                description: data.sequence.description || '',
+                                triggerType:
+                                  data.sequence.triggerType === 'none' ? 'manual' : data.sequence.triggerType,
+                                steps: data.steps?.length
+                                  ? data.steps.map((s: SequenceStep) => ({
+                                      delayDays: s.delayDays,
+                                      delayHours: s.delayHours,
+                                      subject: s.subject,
+                                      htmlBody: s.htmlBody || '<p></p>',
+                                    }))
+                                  : [emptyStep()],
+                              });
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                        >
+                          Редактировать
+                        </button>
+                      )}
+                      {canLaunchByList && (
+                        <>
+                          <select
+                            className={styles.selectInline}
+                            value={sequenceLaunchLists[seq.id] || ''}
+                            onChange={(e) =>
+                              setSequenceLaunchLists((prev) => ({
+                                ...prev,
+                                [seq.id]: e.target.value ? Number(e.target.value) : 0,
+                              }))
+                            }
+                          >
+                            <option value="">Список для запуска</option>
+                            {lists.map((l) => (
+                              <option key={l.id} value={l.id}>
+                                {l.name} ({l.memberCount ?? 0})
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className={styles.btnSmallPrimary}
+                            onClick={() => launchSequenceOnList(seq)}
+                            disabled={loading || !sequenceLaunchLists[seq.id]}
+                          >
+                            Запустить по списку
+                          </button>
+                        </>
+                      )}
+                      {canEnableNewUsers && (
+                        <button
+                          type="button"
+                          className={styles.btnSmallPrimary}
+                          onClick={() => enableSequence(seq)}
+                          disabled={loading}
+                        >
+                          Включить для новых
+                        </button>
+                      )}
+                      {isLaunched && seq.isActive && (
+                        <button
+                          type="button"
+                          className={styles.btnSmall}
+                          onClick={() => pauseSequence(seq)}
+                          disabled={loading}
+                        >
+                          Приостановить
+                        </button>
+                      )}
+                      {isLaunched && !seq.isActive && (
+                        <button
+                          type="button"
+                          className={styles.btnSmallPrimary}
+                          onClick={() => enableSequence(seq)}
+                          disabled={loading}
+                        >
+                          Возобновить
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={styles.btnSmall}
+                        onClick={() => setExpandedSequenceId(isExpanded ? null : seq.id)}
+                      >
+                        {isExpanded ? 'Скрыть детали' : 'Детали'}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.btnSmallDanger}
+                        onClick={() => deleteSequence(seq)}
+                        disabled={loading}
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                    {isExpanded && stats && (
+                      <div className={styles.stepProgress}>
+                        <h4>Прогресс по письмам</h4>
+                        {stats.steps.length === 0 ? (
+                          <p className={styles.hint}>Нет писем</p>
+                        ) : (
+                          <table className={styles.miniTable}>
+                            <thead>
+                              <tr>
+                                <th>#</th>
+                                <th>Тема</th>
+                                <th>Отправлено</th>
+                                <th>В очереди</th>
+                                <th>Ошибки</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stats.steps.map((step) => (
+                                <tr key={step.stepOrder}>
+                                  <td>{step.stepOrder}</td>
+                                  <td>{step.subject || '—'}</td>
+                                  <td>{step.sent}</td>
+                                  <td>{step.pending}</td>
+                                  <td>{step.failed}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className={styles.hint}>
-                    {seq.steps?.length || 0} писем · {seq.enrollmentCount || 0} подписчиков · Триггер:{' '}
-                    {seq.triggerType === 'new_user'
-                      ? 'Новые пользователи'
-                      : seq.triggerType === 'manual'
-                        ? 'Вручную'
-                        : '—'}
-                  </p>
-                  <div className={styles.row}>
-                    <button
-                      type="button"
-                      className={styles.btnSmall}
-                      onClick={() =>
-                        setEditingSequence({
-                          id: seq.id,
-                          name: seq.name,
-                          description: seq.description || '',
-                          triggerType: seq.triggerType,
-                          isActive: seq.isActive,
-                          steps: seq.steps?.length ? seq.steps : [emptyStep()],
-                        })
-                      }
-                    >
-                      Редактировать
-                    </button>
-                    <select
-                      className={styles.selectInline}
-                      value={enrollListId}
-                      onChange={(e) => setEnrollListId(e.target.value ? Number(e.target.value) : '')}
-                    >
-                      <option value="">Список для запуска</option>
-                      {lists.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={styles.btnSmallPrimary}
-                      onClick={() => enrollSequence(seq.id)}
-                    >
-                      Запустить цепочку
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              {sequences.length === 0 && <p className={styles.empty}>Нет цепочек</p>}
             </>
           ) : (
             <div className={styles.form}>
@@ -1043,25 +1285,20 @@ export default function AdminMailings() {
                 />
               </label>
               <label className={styles.label}>
-                Триггер
+                Триггер запуска
                 <select
                   className={styles.input}
                   value={editingSequence.triggerType}
                   onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
                 >
-                  <option value="none">Без автозапуска</option>
+                  <option value="manual">По списку (запуск один раз вручную)</option>
                   <option value="new_user">Новые пользователи (при регистрации)</option>
-                  <option value="manual">Только вручную по списку</option>
                 </select>
               </label>
-              <label className={styles.checkboxRow}>
-                <input
-                  type="checkbox"
-                  checked={editingSequence.isActive}
-                  onChange={(e) => setEditingSequence({ ...editingSequence, isActive: e.target.checked })}
-                />
-                Цепочка активна
-              </label>
+              <p className={styles.hint}>
+                Сохраните черновик, затем на главном экране цепочек нажмите «Запустить по списку» или «Включить для
+                новых». Галочка «активна» не нужна — активация происходит при запуске.
+              </p>
               {editingSequence.steps.map((step, idx) => (
                 <div key={idx} className={styles.stepCard}>
                   <h3>

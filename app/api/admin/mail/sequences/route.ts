@@ -3,7 +3,8 @@ import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
-import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
+import MailList from '@/models/MailList';
+import { getSequenceStats, repairLegacySequenceLaunch } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,12 +16,19 @@ export async function GET() {
     const sequences = await MailSequence.findAll({ order: [['createdAt', 'DESC']] });
     const withSteps = await Promise.all(
       sequences.map(async (seq) => {
+        const repaired = await repairLegacySequenceLaunch(seq);
         const steps = await MailSequenceStep.findAll({
           where: { sequenceId: seq.id },
           order: [['stepOrder', 'ASC']],
+          attributes: ['stepOrder', 'delayDays', 'delayHours', 'subject'],
         });
-        const enrollmentCount = await MailSequenceEnrollment.count({ where: { sequenceId: seq.id } });
-        return { ...seq.toJSON(), steps, enrollmentCount };
+        const stats = await getSequenceStats(seq.id);
+        let launchListName: string | null = null;
+        if (repaired.launchListId) {
+          const list = await MailList.findByPk(repaired.launchListId, { attributes: ['name'] });
+          launchListName = list?.name || null;
+        }
+        return { ...repaired.toJSON(), steps, stats, launchListName };
       })
     );
 
@@ -36,7 +44,7 @@ export async function POST(request: NextRequest) {
     await initDatabase();
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
 
-    const { name, description, triggerType, isActive, steps } = await request.json();
+    const { name, description, triggerType, steps } = await request.json();
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
@@ -45,7 +53,9 @@ export async function POST(request: NextRequest) {
       name: String(name),
       description: description ? String(description) : null,
       triggerType: triggerType || 'none',
-      isActive: !!isActive,
+      isActive: false,
+      launchedAt: null,
+      launchListId: null,
     });
 
     if (Array.isArray(steps)) {

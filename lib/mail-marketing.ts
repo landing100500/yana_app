@@ -358,6 +358,9 @@ export async function processMailQueue(limit = BATCH_SIZE): Promise<{
   });
 
   for (const enrollment of dueEnrollments) {
+    const sequence = await MailSequence.findByPk(enrollment.sequenceId);
+    if (!sequence?.isActive || !sequence.launchedAt) continue;
+
     const processed = await processSequenceEnrollment(enrollment.id);
     if (processed) sequencesProcessed++;
     await sleep(SEND_DELAY_MS);
@@ -374,6 +377,9 @@ function calculateNextSendAt(from: Date, step: MailSequenceStep): Date {
 export async function processSequenceEnrollment(enrollmentId: number): Promise<boolean> {
   const enrollment = await MailSequenceEnrollment.findByPk(enrollmentId);
   if (!enrollment || enrollment.status !== 'active') return false;
+
+  const sequence = await MailSequence.findByPk(enrollment.sequenceId);
+  if (!sequence?.isActive || !sequence.launchedAt) return false;
 
   const check = await isUserMailable(enrollment.userId);
   if (!check.ok) {
@@ -438,18 +444,17 @@ export async function processSequenceEnrollment(enrollmentId: number): Promise<b
   return true;
 }
 
-export async function enrollUserInSequence(userId: number, sequenceId: number): Promise<boolean> {
-  const sequence = await MailSequence.findByPk(sequenceId);
-  if (!sequence || !sequence.isActive) return false;
+export type EnrollUserResult = 'enrolled' | 'already' | 'not_mailable' | 'no_steps';
 
-  const check = await isUserMailable(userId);
-  if (!check.ok) return false;
-
+export async function enrollUserInSequence(userId: number, sequenceId: number): Promise<EnrollUserResult> {
   const steps = await MailSequenceStep.findAll({
     where: { sequenceId },
     order: [['stepOrder', 'ASC']],
   });
-  if (steps.length === 0) return false;
+  if (steps.length === 0) return 'no_steps';
+
+  const check = await isUserMailable(userId);
+  if (!check.ok) return 'not_mailable';
 
   const firstStep = steps[0];
   const nextSendAt = calculateNextSendAt(new Date(), firstStep);
@@ -466,28 +471,188 @@ export async function enrollUserInSequence(userId: number, sequenceId: number): 
     },
   });
 
-  return created;
+  return created ? 'enrolled' : 'already';
+}
+
+export async function processDueEnrollmentsForSequence(sequenceId: number): Promise<number> {
+  const enrollments = await MailSequenceEnrollment.findAll({
+    where: {
+      sequenceId,
+      status: 'active',
+      nextSendAt: { [Op.lte]: new Date() },
+    },
+    limit: 50,
+  });
+
+  let processed = 0;
+  for (const enrollment of enrollments) {
+    const ok = await processSequenceEnrollment(enrollment.id);
+    if (ok) processed++;
+    await sleep(SEND_DELAY_MS);
+  }
+  return processed;
+}
+
+export interface SequenceStats {
+  enrollments: {
+    total: number;
+    active: number;
+    completed: number;
+    unsubscribed: number;
+    cancelled: number;
+  };
+  sends: { sent: number; pending: number; failed: number };
+  steps: Array<{
+    stepOrder: number;
+    subject: string;
+    sent: number;
+    pending: number;
+    failed: number;
+  }>;
+}
+
+export async function repairLegacySequenceLaunch(sequence: MailSequence): Promise<MailSequence> {
+  if (sequence.launchedAt) return sequence;
+
+  const enrollmentCount = await MailSequenceEnrollment.count({ where: { sequenceId: sequence.id } });
+  if (enrollmentCount === 0) return sequence;
+
+  const first = await MailSequenceEnrollment.findOne({
+    where: { sequenceId: sequence.id },
+    order: [['enrolledAt', 'ASC']],
+  });
+
+  await sequence.update({
+    launchedAt: first?.enrolledAt || new Date(),
+    isActive: true,
+  });
+  await sequence.reload();
+  return sequence;
+}
+
+export async function getSequenceStats(sequenceId: number): Promise<SequenceStats> {
+  const enrollments = await MailSequenceEnrollment.findAll({
+    where: { sequenceId },
+    attributes: ['id', 'status'],
+  });
+  const enrollmentIds = enrollments.map((e) => e.id);
+
+  const sends =
+    enrollmentIds.length > 0
+      ? await MailSend.findAll({
+          where: { enrollmentId: enrollmentIds },
+          attributes: ['status', 'sequenceStepId'],
+        })
+      : [];
+
+  const steps = await MailSequenceStep.findAll({
+    where: { sequenceId },
+    order: [['stepOrder', 'ASC']],
+    attributes: ['id', 'stepOrder', 'subject'],
+  });
+
+  const countByStatus = (status: string) => enrollments.filter((e) => e.status === status).length;
+  const countSends = (status: string) => sends.filter((s) => s.status === status).length;
+
+  return {
+    enrollments: {
+      total: enrollments.length,
+      active: countByStatus('active'),
+      completed: countByStatus('completed'),
+      unsubscribed: countByStatus('unsubscribed'),
+      cancelled: countByStatus('cancelled'),
+    },
+    sends: {
+      sent: countSends('sent'),
+      pending: countSends('pending'),
+      failed: countSends('failed'),
+    },
+    steps: steps.map((step) => {
+      const stepSends = sends.filter((s) => s.sequenceStepId === step.id);
+      return {
+        stepOrder: step.stepOrder,
+        subject: step.subject,
+        sent: stepSends.filter((s) => s.status === 'sent').length,
+        pending: stepSends.filter((s) => s.status === 'pending').length,
+        failed: stepSends.filter((s) => s.status === 'failed').length,
+      };
+    }),
+  };
+}
+
+export interface LaunchSequenceResult {
+  enrolled: number;
+  alreadyEnrolled: number;
+  notMailable: number;
+  immediateSent: number;
+}
+
+export async function launchSequenceOnList(listId: number, sequenceId: number): Promise<LaunchSequenceResult> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) throw new Error('Цепочка не найдена');
+  if (sequence.launchedAt) throw new Error('Цепочка уже запущена');
+  if (sequence.triggerType === 'new_user') {
+    throw new Error('Для цепочки «Новые пользователи» используйте кнопку «Включить»');
+  }
+
+  const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
+  if (stepCount === 0) throw new Error('Добавьте хотя бы одно письмо в цепочку');
+
+  const members = await MailListMember.findAll({ where: { listId } });
+  if (members.length === 0) throw new Error('Список пуст');
+
+  let enrolled = 0;
+  let alreadyEnrolled = 0;
+  let notMailable = 0;
+
+  await sequence.update({ isActive: true, launchedAt: new Date(), launchListId: listId });
+
+  for (const member of members) {
+    const result = await enrollUserInSequence(member.userId, sequenceId);
+    if (result === 'enrolled') enrolled++;
+    else if (result === 'already') alreadyEnrolled++;
+    else if (result === 'not_mailable') notMailable++;
+  }
+
+  const immediateSent = await processDueEnrollmentsForSequence(sequenceId);
+
+  return { enrolled, alreadyEnrolled, notMailable, immediateSent };
+}
+
+export async function enableSequenceForNewUsers(sequenceId: number): Promise<void> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) throw new Error('Цепочка не найдена');
+  if (sequence.triggerType !== 'new_user') {
+    throw new Error('Включение доступно только для цепочек «Новые пользователи»');
+  }
+  if (sequence.launchedAt) throw new Error('Цепочка уже включена');
+
+  const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
+  if (stepCount === 0) throw new Error('Добавьте хотя бы одно письмо в цепочку');
+
+  await sequence.update({ isActive: true, launchedAt: new Date() });
+}
+
+export async function setSequencePaused(sequenceId: number, paused: boolean): Promise<void> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) throw new Error('Цепочка не найдена');
+  if (!sequence.launchedAt) throw new Error('Сначала запустите цепочку');
+
+  await sequence.update({ isActive: !paused });
 }
 
 export async function enrollNewUserInActiveSequences(userId: number): Promise<number> {
   const sequences = await MailSequence.findAll({
-    where: { isActive: true, triggerType: 'new_user' },
+    where: { isActive: true, triggerType: 'new_user', launchedAt: { [Op.ne]: null } },
   });
 
   let enrolled = 0;
   for (const sequence of sequences) {
-    const ok = await enrollUserInSequence(userId, sequence.id);
-    if (ok) enrolled++;
-  }
-  return enrolled;
-}
-
-export async function enrollListInSequence(listId: number, sequenceId: number): Promise<number> {
-  const members = await MailListMember.findAll({ where: { listId } });
-  let enrolled = 0;
-  for (const member of members) {
-    const ok = await enrollUserInSequence(member.userId, sequenceId);
-    if (ok) enrolled++;
+    const result = await enrollUserInSequence(userId, sequence.id);
+    if (result === 'enrolled') {
+      enrolled++;
+      await processDueEnrollmentsForSequence(sequence.id);
+    }
   }
   return enrolled;
 }

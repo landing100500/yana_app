@@ -5,6 +5,8 @@ import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
 import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import MailSend from '@/models/MailSend';
+import MailList from '@/models/MailList';
+import { getSequenceStats } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +30,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       order: [['enrolledAt', 'DESC']],
       limit: 50,
     });
+    const stats = await getSequenceStats(sequence.id);
+    let launchListName: string | null = null;
+    if (sequence.launchListId) {
+      const list = await MailList.findByPk(sequence.launchListId, { attributes: ['name'] });
+      launchListName = list?.name || null;
+    }
 
-    return NextResponse.json({ sequence, steps, enrollments });
+    return NextResponse.json({ sequence, steps, enrollments, stats, launchListName });
   } catch (error) {
     console.error('Mail sequence GET error:', error);
     return NextResponse.json({ error: 'Failed to load sequence' }, { status: 500 });
@@ -46,27 +54,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!sequence) return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
 
     const body = await request.json();
-    const { name, description, triggerType, isActive, steps } = body;
+    const { name, description, triggerType, steps } = body;
 
-    await sequence.update({
-      ...(name !== undefined ? { name: String(name) } : {}),
-      ...(description !== undefined ? { description: description ? String(description) : null } : {}),
-      ...(triggerType !== undefined ? { triggerType } : {}),
-      ...(isActive !== undefined ? { isActive: !!isActive } : {}),
-    });
+    if (sequence.launchedAt) {
+      if (name !== undefined) await sequence.update({ name: String(name) });
+      if (description !== undefined) {
+        await sequence.update({ description: description ? String(description) : null });
+      }
+      if (triggerType !== undefined || steps !== undefined) {
+        return NextResponse.json(
+          { error: 'Запущенную цепочку нельзя редактировать. Приостановите или удалите её.' },
+          { status: 400 }
+        );
+      }
+    } else {
+      await sequence.update({
+        ...(name !== undefined ? { name: String(name) } : {}),
+        ...(description !== undefined ? { description: description ? String(description) : null } : {}),
+        ...(triggerType !== undefined ? { triggerType } : {}),
+      });
 
-    if (Array.isArray(steps)) {
-      await MailSequenceStep.destroy({ where: { sequenceId: sequence.id } });
-      for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
-        await MailSequenceStep.create({
-          sequenceId: sequence.id,
-          stepOrder: i + 1,
-          delayDays: Number(step.delayDays) || 0,
-          delayHours: Number(step.delayHours) || 0,
-          subject: String(step.subject || ''),
-          htmlBody: String(step.htmlBody || ''),
-        });
+      if (Array.isArray(steps)) {
+        await MailSequenceStep.destroy({ where: { sequenceId: sequence.id } });
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          await MailSequenceStep.create({
+            sequenceId: sequence.id,
+            stepOrder: i + 1,
+            delayDays: Number(step.delayDays) || 0,
+            delayHours: Number(step.delayHours) || 0,
+            subject: String(step.subject || ''),
+            htmlBody: String(step.htmlBody || ''),
+          });
+        }
       }
     }
 
@@ -95,7 +115,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     const enrollmentIds = enrollments.map((e) => e.id);
 
     await MailSend.destroy({
-      where: { enrollmentId: enrollmentIds, status: 'pending' },
+      where: { enrollmentId: enrollmentIds },
     });
     await MailSequenceEnrollment.destroy({ where: { sequenceId: sequence.id } });
     await MailSequenceStep.destroy({ where: { sequenceId: sequence.id } });
