@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { embedMailImagesInHtml, type MailImageAttachment } from '@/lib/mail-email-images';
 
 export interface SendMarketingEmailOptions {
   to: string;
@@ -58,6 +59,8 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     auth: { user, pass },
   });
 
+  const { html: htmlWithCid, attachments: imageAttachments } = await embedMailImagesInHtml(options.html);
+
   const headers: Record<string, string> = {
     'X-Auto-Response-Suppress': 'All',
   };
@@ -67,14 +70,23 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   }
 
+  const inlineAttachments = imageAttachments.map((img: MailImageAttachment) => ({
+    filename: img.filename,
+    content: img.content,
+    cid: img.cid,
+    contentType: img.contentType,
+    contentDisposition: 'inline' as const,
+  }));
+
   await transporter.sendMail({
     from: fromName ? `"${fromName}" <${from}>` : from,
     to: options.to,
     subject: options.subject,
     replyTo: from,
-    html: options.html,
-    text: options.text || htmlToPlainText(options.html),
+    html: htmlWithCid,
+    text: options.text || htmlToPlainText(htmlWithCid),
     headers,
+    attachments: inlineAttachments.length > 0 ? inlineAttachments : undefined,
   });
 }
 

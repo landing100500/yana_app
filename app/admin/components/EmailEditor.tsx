@@ -42,7 +42,12 @@ export default function EmailEditor({ value, onChange, placeholder }: EmailEdito
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Upload failed');
-    exec('insertImage', data.url);
+
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    const imgHtml = `<img src="${data.url}" alt="" style="max-width:100%;height:auto;display:block;margin:12px 0;" />`;
+    document.execCommand('insertHTML', false, imgHtml);
+    onChange(editorRef.current.innerHTML);
   };
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
