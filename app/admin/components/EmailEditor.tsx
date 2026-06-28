@@ -2,6 +2,7 @@
 
 import { useRef, useCallback, useEffect } from 'react';
 import styles from './EmailEditor.module.css';
+import { normalizeHtmlForEditor, normalizeHtmlForStorage } from '@/lib/mail-editor-html';
 
 interface EmailEditorProps {
   value: string;
@@ -9,28 +10,51 @@ interface EmailEditorProps {
   placeholder?: string;
 }
 
+function insertNodeAtCursor(node: Node) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return false;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  return true;
+}
+
 export default function EmailEditor({ value, onChange, placeholder }: EmailEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastEmittedRef = useRef('');
 
-  const exec = useCallback((command: string, val?: string) => {
-    document.execCommand(command, false, val);
-    if (editorRef.current) onChange(editorRef.current.innerHTML);
+  const emitChange = useCallback(() => {
+    if (!editorRef.current) return;
+    const raw = editorRef.current.innerHTML;
+    const normalized = normalizeHtmlForStorage(raw);
+    lastEmittedRef.current = normalized;
+    onChange(normalized);
   }, [onChange]);
 
   const handleInput = () => {
-    if (editorRef.current) onChange(editorRef.current.innerHTML);
+    emitChange();
   };
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
+    if (!editorRef.current) return;
+    const displayHtml = normalizeHtmlForEditor(value || '');
+    if (editorRef.current.innerHTML !== displayHtml && value !== lastEmittedRef.current) {
+      editorRef.current.innerHTML = displayHtml || '';
+      lastEmittedRef.current = value || '';
     }
   }, [value]);
 
   const insertLink = () => {
     const url = prompt('URL ссылки:', 'https://');
-    if (url) exec('createLink', url);
+    if (!url || !editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand('createLink', false, url);
+    emitChange();
   };
 
   const uploadImage = async (file: File) => {
@@ -45,9 +69,21 @@ export default function EmailEditor({ value, onChange, placeholder }: EmailEdito
 
     if (!editorRef.current) return;
     editorRef.current.focus();
-    const imgHtml = `<img src="${data.url}" alt="" style="max-width:100%;height:auto;display:block;margin:12px 0;" />`;
-    document.execCommand('insertHTML', false, imgHtml);
-    onChange(editorRef.current.innerHTML);
+
+    const img = document.createElement('img');
+    img.src = normalizeHtmlForEditor(`<img src="${data.url}" />`).match(/src="([^"]+)"/)?.[1] || data.url;
+    img.alt = '';
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    img.style.margin = '12px 0';
+    img.style.borderRadius = '4px';
+
+    if (!insertNodeAtCursor(img)) {
+      editorRef.current.appendChild(img);
+    }
+
+    emitChange();
   };
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,6 +95,13 @@ export default function EmailEditor({ value, onChange, placeholder }: EmailEdito
       alert(err instanceof Error ? err.message : 'Не удалось загрузить изображение');
     }
     e.target.value = '';
+  };
+
+  const exec = (command: string, val?: string) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand(command, false, val);
+    emitChange();
   };
 
   return (

@@ -67,7 +67,18 @@
 
 .editor img {
   max-width: 100%;
+  width: auto;
   height: auto;
+  display: block;
+  margin: 12px 0;
+  border-radius: 4px;
+  background: #f4f4f4;
+  min-height: 40px;
+}
+
+.editor img[src=''],
+.editor img:not([src]) {
+  display: none;
 }
 
 .hiddenInput {

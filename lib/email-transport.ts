@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { embedMailImagesInHtml, type MailImageAttachment } from '@/lib/mail-email-images';
+import { normalizeHtmlForEmailSend } from '@/lib/mail-editor-html';
 
 export interface SendMarketingEmailOptions {
   to: string;
@@ -59,7 +60,8 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     auth: { user, pass },
   });
 
-  const { html: htmlWithCid, attachments: imageAttachments } = await embedMailImagesInHtml(options.html);
+  const htmlPrepared = normalizeHtmlForEmailSend(options.html);
+  const { html: htmlWithCid, attachments: imageAttachments } = await embedMailImagesInHtml(htmlPrepared);
 
   const headers: Record<string, string> = {
     'X-Auto-Response-Suppress': 'All',
