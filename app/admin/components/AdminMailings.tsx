@@ -211,7 +211,11 @@ export default function AdminMailings() {
   const loadLists = useCallback(async () => {
     const res = await fetch('/api/admin/mail/lists');
     const data = await res.json();
-    if (res.ok) setLists(data.lists || []);
+    if (res.ok) {
+      setLists(data.lists || []);
+    } else {
+      setError(data.error || 'Не удалось загрузить списки');
+    }
   }, []);
 
   const loadSequences = useCallback(async () => {
@@ -242,6 +246,12 @@ export default function AdminMailings() {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    if (tab === 'campaigns' || tab === 'sequences' || tab === 'lists') {
+      loadLists();
+    }
+  }, [tab, loadLists]);
+
   const loadListMembers = async (listId: number) => {
     const res = await fetch(`/api/admin/mail/lists/${listId}/members`);
     const data = await res.json();
@@ -251,13 +261,15 @@ export default function AdminMailings() {
     }
   };
 
-  const startNewCampaign = () => {
+  const startNewCampaign = async () => {
+    await loadLists();
     setEditingCampaign({
       name: '',
       subject: '',
       htmlBody: '<p>Здравствуйте!</p>',
       audienceType: 'all',
       audiencePlanCode: 'free',
+      audienceListId: null,
     });
     setCampaignSendMode('now');
     setCampaignScheduledAt(defaultScheduleDatetime());
@@ -275,6 +287,14 @@ export default function AdminMailings() {
   const saveCampaignDraft = async (): Promise<MailCampaign | null> => {
     if (!editingCampaign?.name || !editingCampaign.subject || !editingCampaign.htmlBody) {
       setError('Заполните название, тему и текст');
+      return null;
+    }
+    if (editingCampaign.audienceType === 'list' && !editingCampaign.audienceListId) {
+      setError('Выберите список получателей');
+      return null;
+    }
+    if (editingCampaign.audienceType === 'previous_campaign' && !editingCampaign.previousCampaignId) {
+      setError('Выберите предыдущую рассылку');
       return null;
     }
     const isNew = !editingCampaign.id;
@@ -814,7 +834,8 @@ export default function AdminMailings() {
                               <button
                                 type="button"
                                 className={styles.btnSmall}
-                                onClick={() => {
+                                onClick={async () => {
+                                  await loadLists();
                                   setEditingCampaign(c);
                                   if (c.scheduledAt) {
                                     setCampaignSendMode('schedule');
@@ -898,9 +919,17 @@ export default function AdminMailings() {
               <label className={styles.label}>
                 Аудитория
                 <select
-                  className={styles.input}
+                  className={styles.select}
                   value={editingCampaign.audienceType || 'all'}
-                  onChange={(e) => setEditingCampaign({ ...editingCampaign, audienceType: e.target.value })}
+                  onChange={(e) => {
+                    const audienceType = e.target.value;
+                    setEditingCampaign({
+                      ...editingCampaign,
+                      audienceType,
+                      ...(audienceType === 'list' ? {} : { audienceListId: null }),
+                    });
+                    if (audienceType === 'list') loadLists();
+                  }}
                 >
                   <option value="all">Все зарегистрированные пользователи</option>
                   <option value="plan">По тарифу</option>
@@ -909,53 +938,84 @@ export default function AdminMailings() {
                 </select>
               </label>
               {editingCampaign.audienceType === 'plan' && (
-                <select
-                  className={styles.input}
-                  value={editingCampaign.audiencePlanCode || 'free'}
-                  onChange={(e) =>
-                    setEditingCampaign({ ...editingCampaign, audiencePlanCode: e.target.value as PlanCode })
-                  }
-                >
-                  {PLAN_OPTIONS.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      {p.title}
-                    </option>
-                  ))}
-                </select>
+                <label className={styles.label}>
+                  Тариф
+                  <select
+                    className={styles.select}
+                    value={editingCampaign.audiencePlanCode || 'free'}
+                    onChange={(e) =>
+                      setEditingCampaign({ ...editingCampaign, audiencePlanCode: e.target.value as PlanCode })
+                    }
+                  >
+                    {PLAN_OPTIONS.map((p) => (
+                      <option key={p.code} value={p.code}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
               {editingCampaign.audienceType === 'list' && (
-                <select
-                  className={styles.input}
-                  value={editingCampaign.audienceListId || ''}
-                  onChange={(e) =>
-                    setEditingCampaign({ ...editingCampaign, audienceListId: Number(e.target.value) })
-                  }
-                >
-                  <option value="">Выберите список</option>
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name} ({l.memberCount ?? 0})
-                    </option>
-                  ))}
-                </select>
+                <label className={styles.label}>
+                  Список получателей
+                  <div className={styles.row}>
+                    <select
+                      className={styles.select}
+                      value={
+                        editingCampaign.audienceListId != null ? String(editingCampaign.audienceListId) : ''
+                      }
+                      onChange={(e) =>
+                        setEditingCampaign({
+                          ...editingCampaign,
+                          audienceListId: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                    >
+                      <option value="">Выберите список</option>
+                      {lists.map((l) => (
+                        <option key={l.id} value={String(l.id)}>
+                          {l.name} ({l.memberCount ?? 0} чел.)
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" className={styles.btnSecondary} onClick={() => loadLists()}>
+                      Обновить
+                    </button>
+                  </div>
+                  {lists.length === 0 && (
+                    <span className={styles.fieldError}>
+                      Списков нет. Создайте во вкладке «Списки», затем нажмите «Обновить».
+                    </span>
+                  )}
+                </label>
               )}
               {editingCampaign.audienceType === 'previous_campaign' && (
-                <select
-                  className={styles.input}
-                  value={editingCampaign.previousCampaignId || ''}
-                  onChange={(e) =>
-                    setEditingCampaign({ ...editingCampaign, previousCampaignId: Number(e.target.value) })
-                  }
-                >
+                <label className={styles.label}>
+                  Предыдущая рассылка
+                  <select
+                    className={styles.select}
+                    value={
+                      editingCampaign.previousCampaignId != null
+                        ? String(editingCampaign.previousCampaignId)
+                        : ''
+                    }
+                    onChange={(e) =>
+                      setEditingCampaign({
+                        ...editingCampaign,
+                        previousCampaignId: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                  >
                   <option value="">Выберите рассылку</option>
                   {campaigns
                     .filter((c) => c.status === 'sent' && c.id !== editingCampaign.id)
                     .map((c) => (
-                      <option key={c.id} value={c.id}>
+                      <option key={c.id} value={String(c.id)}>
                         {c.name} ({c.sentCount} получ.)
                       </option>
                     ))}
                 </select>
+                </label>
               )}
               <label className={styles.label}>Текст письма</label>
               <EmailEditor
@@ -1166,7 +1226,9 @@ export default function AdminMailings() {
                         <>
                           <select
                             className={styles.selectInline}
-                            value={sequenceLaunchLists[seq.id] || ''}
+                            value={
+                              sequenceLaunchLists[seq.id] ? String(sequenceLaunchLists[seq.id]) : ''
+                            }
                             onChange={(e) =>
                               setSequenceLaunchLists((prev) => ({
                                 ...prev,
@@ -1176,7 +1238,7 @@ export default function AdminMailings() {
                           >
                             <option value="">Список для запуска</option>
                             {lists.map((l) => (
-                              <option key={l.id} value={l.id}>
+                              <option key={l.id} value={String(l.id)}>
                                 {l.name} ({l.memberCount ?? 0})
                               </option>
                             ))}

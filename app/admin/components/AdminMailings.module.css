@@ -99,14 +99,29 @@
 }
 
 .input,
-.selectInline {
+.selectInline,
+.select {
   flex: 1;
   min-width: 200px;
   padding: 0.65rem 0.85rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(0, 0, 0, 0.25);
+  background-color: #2d2540;
+  background: rgba(0, 0, 0, 0.35);
   color: rgba(255, 255, 255, 0.95);
+  font-size: 0.9rem;
+}
+
+.select {
+  width: 100%;
+  cursor: pointer;
+}
+
+.input option,
+.selectInline option,
+.select option {
+  background-color: #2d1f3d;
+  color: #ffffff;
 }
 
 .inputShort {
