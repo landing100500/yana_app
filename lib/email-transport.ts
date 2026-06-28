@@ -78,6 +78,7 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     cid: img.cid,
     contentType: img.contentType,
     contentDisposition: 'inline' as const,
+    encoding: 'base64' as const,
   }));
 
   await transporter.sendMail({

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { Op } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
+import sequelize from '@/lib/db';
 import User from '@/models/User';
 import MailSubscriber from '@/models/MailSubscriber';
 import MailListMember from '@/models/MailListMember';
@@ -157,6 +158,34 @@ export async function cancelScheduledCampaign(campaignId: number): Promise<void>
     throw new Error('Рассылка не запланирована');
   }
   await campaign.update({ status: 'draft', scheduledAt: null });
+}
+
+export async function deleteCampaignCompletely(campaignId: number): Promise<{ deletedSends: number }> {
+  const campaign = await MailCampaign.findByPk(campaignId);
+  if (!campaign) throw new Error('Campaign not found');
+  if (campaign.status === 'sending' || campaign.status === 'queued') {
+    throw new Error('Нельзя удалить рассылку во время отправки');
+  }
+
+  let deletedSends = 0;
+
+  await sequelize.transaction(async (t: Transaction) => {
+    deletedSends = await MailSend.destroy({ where: { campaignId }, transaction: t });
+
+    await MailCampaign.update(
+      { previousCampaignId: null, audienceType: 'all' },
+      { where: { previousCampaignId: campaignId }, transaction: t }
+    );
+
+    await MailListMember.update(
+      { sourceCampaignId: null, source: 'manual' },
+      { where: { sourceCampaignId: campaignId }, transaction: t }
+    );
+
+    await campaign.destroy({ transaction: t });
+  });
+
+  return { deletedSends };
 }
 
 export async function queueCampaign(campaignId: number): Promise<{ queued: number }> {

@@ -6,6 +6,7 @@ import {
   guessMailImageContentType,
   isSafeMailImageFilename,
 } from '@/lib/mail-image-utils';
+import { publicMailImageUrl } from '@/lib/mail-image-utils';
 
 export { extractMailImageFilename } from '@/lib/mail-image-utils';
 
@@ -57,6 +58,18 @@ export async function embedMailImagesInHtml(html: string): Promise<{
   for (const [src, cid] of Array.from(cidBySrc.entries())) {
     result = result.split(src).join(`cid:${cid}`);
   }
+
+  // Fallback: если CID не сработал, подставляем публичный HTTPS URL
+  result = result.replace(/<img\b([^>]*)>/gi, (full, attrs: string) => {
+    const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+    if (!srcMatch) return full;
+    const src = srcMatch[1];
+    if (src.startsWith('cid:')) return full;
+    const filename = extractMailImageFilename(src);
+    if (!filename) return full;
+    const publicUrl = publicMailImageUrl(filename);
+    return full.replace(src, publicUrl);
+  });
 
   return { html: result, attachments };
 }

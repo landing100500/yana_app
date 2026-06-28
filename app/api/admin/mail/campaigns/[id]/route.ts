@@ -3,7 +3,7 @@ import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailCampaign from '@/models/MailCampaign';
 import MailSend from '@/models/MailSend';
-import { validateScheduledAt } from '@/lib/mail-marketing';
+import { validateScheduledAt, deleteCampaignCompletely } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,19 +92,12 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    if (campaign.status === 'sending' || campaign.status === 'queued') {
-      return NextResponse.json({ error: 'Cannot delete active campaign' }, { status: 400 });
-    }
-
-    if (campaign.status === 'scheduled') {
-      await campaign.update({ status: 'draft', scheduledAt: null });
-    }
-
-    await MailSend.destroy({ where: { campaignId: campaign.id, status: 'pending' } });
-    await campaign.destroy();
-    return NextResponse.json({ success: true });
+    const result = await deleteCampaignCompletely(campaign.id);
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error('Mail campaign DELETE error:', error);
-    return NextResponse.json({ error: 'Failed to delete campaign' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to delete campaign';
+    const status = message.includes('отправки') || message.includes('not found') ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -1,18 +1,15 @@
-import { extractMailImageFilename } from '@/lib/mail-image-utils';
-import { getAppBaseUrl } from '@/lib/app-url';
+import {
+  extractMailImageFilename,
+  publicMailImageUrl,
+  editorMailImageUrl,
+} from '@/lib/mail-image-utils';
 
 const EMAIL_IMG_STYLE =
   'max-width:600px;width:100%;height:auto;display:block;margin:12px auto;border:0;';
 
 const EDITOR_IMG_STYLE = 'max-width:100%;height:auto;display:block;margin:12px 0;border-radius:4px;';
 
-export function publicMailImageUrl(filename: string): string {
-  return `${getAppBaseUrl()}/mail-images/${filename}`;
-}
-
-export function editorMailImageUrl(filename: string): string {
-  return `/api/admin/mail/images/${encodeURIComponent(filename)}`;
-}
+export { publicMailImageUrl, editorMailImageUrl };
 
 /** Канонический URL для хранения в БД и отправки. */
 export function normalizeMailImageSrcForStorage(src: string): string {

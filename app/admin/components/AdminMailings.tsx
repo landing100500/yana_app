@@ -358,6 +358,33 @@ export default function AdminMailings() {
     }
   };
 
+  const deleteCampaign = async (c: MailCampaign) => {
+    const sent = c.status === 'sent';
+    const msg = sent
+      ? `Удалить рассылку «${c.name}»?\n\nБудут удалены все записи отправки (${c.sentCount} писем) из истории. Это действие нельзя отменить.`
+      : `Удалить рассылку «${c.name}»? Все связанные данные будут удалены.`;
+    if (!confirm(msg)) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/campaigns/${c.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось удалить');
+        return;
+      }
+      if (editingCampaign?.id === c.id) setEditingCampaign(null);
+      showMsg(
+        data.deletedSends > 0
+          ? `Рассылка удалена (очищено записей: ${data.deletedSends})`
+          : 'Рассылка удалена'
+      );
+      await loadCampaigns();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const searchUsersForList = async () => {
     if (!selectedListId) return;
     setListAddLoading(true);
@@ -714,6 +741,16 @@ export default function AdminMailings() {
                                 </option>
                               ))}
                             </select>
+                          )}
+                          {c.status !== 'sending' && c.status !== 'queued' && (
+                            <button
+                              type="button"
+                              className={styles.btnSmallDanger}
+                              onClick={() => deleteCampaign(c)}
+                              disabled={loading}
+                            >
+                              Удалить
+                            </button>
                           )}
                         </td>
                       </tr>
