@@ -127,6 +127,41 @@ async function ensureAuthSchema() {
   }
 }
 
+async function ensureMailSchema() {
+  const queryInterface = sequelize.getQueryInterface();
+  try {
+    const sequencesTable = await queryInterface.describeTable('mail_sequences');
+
+    if (!sequencesTable.launchedAt) {
+      await queryInterface.addColumn('mail_sequences', 'launchedAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!sequencesTable.launchListId) {
+      await queryInterface.addColumn('mail_sequences', 'launchListId', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      });
+    }
+
+    const campaignsTable = await queryInterface.describeTable('mail_campaigns');
+    if (!campaignsTable.scheduledAt) {
+      await queryInterface.addColumn('mail_campaigns', 'scheduledAt', {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+  } catch (error: unknown) {
+    const message = String(error instanceof Error ? error.message : error).toLowerCase();
+    if (message.includes('does not exist') || message.includes('unknown table') || message.includes('no such table')) {
+      return;
+    }
+    console.error('Failed to ensure mail schema:', error);
+    throw error;
+  }
+}
+
 async function ensurePaymentsSchema() {
   const queryInterface = sequelize.getQueryInterface();
   try {
@@ -210,6 +245,7 @@ export async function initDatabase(): Promise<void> {
 
       // sync без alter — только создание отсутствующих таблиц
       await sequelize.sync({ force: false });
+      await ensureMailSchema();
       console.log('Database models synchronized.');
 
       dbReady = true;

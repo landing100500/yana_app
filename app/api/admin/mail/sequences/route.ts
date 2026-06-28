@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sequence, steps: createdSteps });
   } catch (error) {
     console.error('Mail sequences POST error:', error);
-    return NextResponse.json({ error: 'Failed to create sequence' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to create sequence';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
