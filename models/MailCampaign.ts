@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/lib/db';
 
 export type MailCampaignAudienceType = 'all' | 'plan' | 'list' | 'previous_campaign';
-export type MailCampaignStatus = 'draft' | 'scheduled' | 'queued' | 'sending' | 'sent' | 'failed';
+export type MailCampaignStatus = 'draft' | 'scheduled' | 'queued' | 'sending' | 'sent' | 'partial' | 'failed';
 
 interface MailCampaignAttributes {
   id: number;

@@ -12,9 +12,8 @@ import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import { getUserPlanSnapshot } from '@/lib/subscription';
 import { sendMarketingEmail, getAppBaseUrl } from '@/lib/email-transport';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
-
-const BATCH_SIZE = 20;
-const SEND_DELAY_MS = 500;
+import { mailQueueConfig } from '@/lib/mail-queue-config';
+import type { MailCampaignStatus } from '@/models/MailCampaign';
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +60,45 @@ async function isUserMailable(userId: number): Promise<{ ok: boolean; email?: st
   return { ok: true, email: user.email, subscriber };
 }
 
+/** Пакетная проверка подписки — без N отдельных запросов при большой аудитории */
+async function filterMailableRecipients(
+  userIds: number[]
+): Promise<Array<{ userId: number; email: string }>> {
+  const uniqueIds = Array.from(new Set(userIds));
+  if (uniqueIds.length === 0) return [];
+
+  const users = await User.findAll({
+    where: {
+      id: uniqueIds,
+      email: { [Op.ne]: null },
+      password: { [Op.ne]: null },
+    },
+    attributes: ['id', 'email'],
+  });
+  if (users.length === 0) return [];
+
+  const subscribers = await MailSubscriber.findAll({
+    where: { userId: users.map((u) => u.id) },
+  });
+  const subByUser = new Map(subscribers.map((s) => [s.userId, s]));
+
+  const result: Array<{ userId: number; email: string }> = [];
+  for (const user of users) {
+    const email = user.email!.trim();
+    let subscriber = subByUser.get(user.id);
+    if (!subscriber) {
+      subscriber = await ensureMailSubscriber(user.id, email);
+      subByUser.set(user.id, subscriber);
+    } else if (subscriber.email !== email.toLowerCase()) {
+      await subscriber.update({ email: email.toLowerCase() });
+    }
+    if (subscriber.isSubscribed) {
+      result.push({ userId: user.id, email });
+    }
+  }
+  return result;
+}
+
 export async function resolveCampaignRecipientIds(campaign: MailCampaign): Promise<number[]> {
   let userIds: number[] = [];
 
@@ -103,12 +141,7 @@ export async function resolveCampaignRecipientIds(campaign: MailCampaign): Promi
     userIds = Array.from(new Set(sends.map((s) => s.userId)));
   }
 
-  const mailable: number[] = [];
-  for (const userId of userIds) {
-    const check = await isUserMailable(userId);
-    if (check.ok) mailable.push(userId);
-  }
-  return mailable;
+  return Array.from(new Set(userIds));
 }
 
 export function validateScheduledAt(scheduledAt: Date): void {
@@ -191,38 +224,55 @@ export async function deleteCampaignCompletely(campaignId: number): Promise<{ de
 export async function queueCampaign(campaignId: number): Promise<{ queued: number }> {
   const campaign = await MailCampaign.findByPk(campaignId);
   if (!campaign) throw new Error('Campaign not found');
-  if (campaign.status !== 'draft' && campaign.status !== 'failed' && campaign.status !== 'scheduled') {
+  if (
+    campaign.status !== 'draft' &&
+    campaign.status !== 'failed' &&
+    campaign.status !== 'scheduled'
+  ) {
     throw new Error('Campaign already queued or sent');
   }
 
   const recipientIds = await resolveCampaignRecipientIds(campaign);
+  const mailable = await filterMailableRecipients(recipientIds);
+
   const existing = await MailSend.findAll({
     where: { campaignId: campaign.id, status: { [Op.in]: ['pending', 'sent'] } },
     attributes: ['userId'],
   });
   const existingSet = new Set(existing.map((s) => s.userId));
 
-  let queued = 0;
-  for (const userId of recipientIds) {
-    if (existingSet.has(userId)) continue;
-    const check = await isUserMailable(userId);
-    if (!check.ok || !check.email) continue;
+  const rows: Array<{
+    userId: number;
+    email: string;
+    campaignId: number;
+    subject: string;
+    status: 'pending';
+  }> = [];
 
-    await MailSend.create({
+  for (const { userId, email } of mailable) {
+    if (existingSet.has(userId)) continue;
+    rows.push({
       userId,
-      email: check.email,
+      email,
       campaignId: campaign.id,
       subject: campaign.subject,
       status: 'pending',
     });
-    queued++;
+  }
+
+  let queued = 0;
+  const batchSize = mailQueueConfig.queueInsertBatchSize;
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const chunk = rows.slice(i, i + batchSize);
+    const created = await MailSend.bulkCreate(chunk, { ignoreDuplicates: true });
+    queued += created.length;
   }
 
   await campaign.update({
-    status: 'queued',
+    status: queued > 0 || existing.length > 0 ? 'sending' : 'failed',
     totalRecipients: recipientIds.length,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: await MailSend.count({ where: { campaignId: campaign.id, status: 'sent' } }),
+    failedCount: await MailSend.count({ where: { campaignId: campaign.id, status: 'failed' } }),
   });
 
   return { queued };
@@ -272,13 +322,125 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<boolea
   }
 }
 
-export async function processMailQueue(limit = BATCH_SIZE): Promise<{
+async function refreshCampaignCounters(campaignId: number): Promise<MailCampaign | null> {
+  const campaign = await MailCampaign.findByPk(campaignId);
+  if (!campaign) return null;
+
+  const sentCount = await MailSend.count({ where: { campaignId, status: 'sent' } });
+  const failedCount = await MailSend.count({ where: { campaignId, status: 'failed' } });
+  const pendingCount = await MailSend.count({ where: { campaignId, status: 'pending' } });
+
+  let status: MailCampaignStatus = campaign.status;
+  let sentAt = campaign.sentAt;
+
+  if (pendingCount === 0 && (sentCount > 0 || failedCount > 0)) {
+    if (sentCount === 0) status = 'failed';
+    else if (failedCount > 0) status = 'partial';
+    else status = 'sent';
+    sentAt = sentAt || new Date();
+  } else if (pendingCount > 0 && campaign.status !== 'scheduled' && campaign.status !== 'draft') {
+    status = 'sending';
+  }
+
+  await campaign.update({ sentCount, failedCount, status, sentAt });
+  return campaign;
+}
+
+async function processBroadcastChunk(campaign: MailCampaign, chunkLimit: number): Promise<{
+  sent: number;
+  failed: number;
+  completed: boolean;
+}> {
+  let sent = 0;
+  let failed = 0;
+
+  const pendingSends = await MailSend.findAll({
+    where: { campaignId: campaign.id, status: 'pending' },
+    order: [['id', 'ASC']],
+    limit: chunkLimit,
+  });
+
+  for (const send of pendingSends) {
+    const ok = await sendOneMailSend(send, campaign.htmlBody);
+    if (ok) sent++;
+    else failed++;
+    await sleep(mailQueueConfig.broadcastDelayMs);
+  }
+
+  const updated = await refreshCampaignCounters(campaign.id);
+  const pendingLeft = await MailSend.count({ where: { campaignId: campaign.id, status: 'pending' } });
+  const completed =
+    pendingLeft === 0 &&
+    !!updated &&
+    (updated.status === 'sent' || updated.status === 'partial' || updated.status === 'failed');
+
+  return { sent, failed, completed };
+}
+
+async function processSequencePendingSends(limit: number): Promise<number> {
+  const pending = await MailSend.findAll({
+    where: {
+      status: 'pending',
+      sequenceStepId: { [Op.ne]: null },
+      campaignId: null,
+    },
+    order: [['createdAt', 'ASC']],
+    limit,
+  });
+
+  let processed = 0;
+  for (const send of pending) {
+    const step = await MailSequenceStep.findByPk(send.sequenceStepId!);
+    if (!step) {
+      await send.update({ status: 'failed', errorMessage: 'Sequence step not found' });
+      continue;
+    }
+    const ok = await sendOneMailSend(send, step.htmlBody);
+    if (ok) processed++;
+    await sleep(mailQueueConfig.sequenceDelayMs);
+  }
+  return processed;
+}
+
+/** Фоновая обработка после клика «Отправить» — не блокирует HTTP */
+export function kickBackgroundMailQueue(): void {
+  void runBackgroundMailQueue();
+}
+
+async function runBackgroundMailQueue(): Promise<void> {
+  const deadline = Date.now() + mailQueueConfig.backgroundRunSeconds * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const result = await processMailQueue();
+      const pendingLeft = await MailSend.count({ where: { status: 'pending' } });
+      if (
+        result.sendsSent === 0 &&
+        result.sequencesProcessed === 0 &&
+        result.scheduledActivated === 0 &&
+        pendingLeft === 0
+      ) {
+        break;
+      }
+    } catch (error) {
+      console.error('Background mail queue error:', error);
+      break;
+    }
+    await sleep(300);
+  }
+}
+
+export async function processMailQueue(limit?: number): Promise<{
   campaignsProcessed: number;
   sendsSent: number;
   sendsFailed: number;
   sequencesProcessed: number;
   scheduledActivated: number;
 }> {
+  const cfg = mailQueueConfig;
+  const totalLimit = limit ?? cfg.queueLimit;
+  const broadcastBudget = Math.max(1, Math.floor(totalLimit * cfg.broadcastBudgetRatio));
+  const sequenceBudget = Math.max(1, totalLimit - broadcastBudget);
+
   let sendsSent = 0;
   let sendsFailed = 0;
   let campaignsProcessed = 0;
@@ -286,75 +448,56 @@ export async function processMailQueue(limit = BATCH_SIZE): Promise<{
 
   const scheduledActivated = await processDueScheduledCampaigns();
 
-  const pendingSends = await MailSend.findAll({
-    where: { status: 'pending' },
-    order: [['createdAt', 'ASC']],
-    limit,
+  const activeCampaigns = await MailCampaign.findAll({
+    where: { status: { [Op.in]: ['queued', 'sending'] } },
+    order: [['updatedAt', 'ASC']],
   });
 
-  for (const send of pendingSends) {
-    let htmlBody = '';
+  let broadcastOps = 0;
+  for (const campaign of activeCampaigns) {
+    if (broadcastOps >= broadcastBudget) break;
 
-    if (send.campaignId) {
-      const campaign = await MailCampaign.findByPk(send.campaignId);
-      if (!campaign) {
-        await send.update({ status: 'failed', errorMessage: 'Campaign not found' });
-        sendsFailed++;
-        continue;
-      }
-      if (campaign.status === 'queued') {
-        await campaign.update({ status: 'sending' });
-      }
-      htmlBody = campaign.htmlBody;
-    } else if (send.sequenceStepId) {
-      const step = await MailSequenceStep.findByPk(send.sequenceStepId);
-      if (!step) {
-        await send.update({ status: 'failed', errorMessage: 'Sequence step not found' });
-        sendsFailed++;
-        continue;
-      }
-      htmlBody = step.htmlBody;
-    } else {
-      await send.update({ status: 'failed', errorMessage: 'No content source' });
-      sendsFailed++;
-      continue;
-    }
-
-    const ok = await sendOneMailSend(send, htmlBody);
-    if (ok) sendsSent++;
-    else sendsFailed++;
-
-    if (send.campaignId) {
-      const campaign = await MailCampaign.findByPk(send.campaignId);
-      if (campaign) {
-        const pendingCount = await MailSend.count({
-          where: { campaignId: campaign.id, status: 'pending' },
-        });
-        const sentCount = await MailSend.count({
-          where: { campaignId: campaign.id, status: 'sent' },
-        });
-        const failedCount = await MailSend.count({
-          where: { campaignId: campaign.id, status: 'failed' },
-        });
-        await campaign.update({
-          sentCount,
-          failedCount,
-          status: pendingCount === 0 ? 'sent' : 'sending',
-          sentAt: pendingCount === 0 ? new Date() : campaign.sentAt,
-        });
-        if (pendingCount === 0) campaignsProcessed++;
-      }
-    }
-
-    await sleep(SEND_DELAY_MS);
+    const chunkLimit = Math.min(cfg.broadcastChunkSize, broadcastBudget - broadcastOps);
+    const { sent, failed, completed } = await processBroadcastChunk(campaign, chunkLimit);
+    sendsSent += sent;
+    sendsFailed += failed;
+    broadcastOps += sent + failed;
+    if (completed) campaignsProcessed++;
   }
+
+  // Оставшиеся pending без привязки к активной кампании (legacy / sequence retries)
+  const orphanBudget = Math.max(0, broadcastBudget - broadcastOps);
+  if (orphanBudget > 0) {
+    const orphanSends = await MailSend.findAll({
+      where: {
+        status: 'pending',
+        campaignId: { [Op.ne]: null },
+      },
+      order: [['createdAt', 'ASC']],
+      limit: orphanBudget,
+    });
+
+    for (const send of orphanSends) {
+      const campaign = await MailCampaign.findByPk(send.campaignId!);
+      if (!campaign || (campaign.status !== 'queued' && campaign.status !== 'sending')) continue;
+      const ok = await sendOneMailSend(send, campaign.htmlBody);
+      if (ok) sendsSent++;
+      else sendsFailed++;
+      await refreshCampaignCounters(campaign.id);
+      await sleep(cfg.broadcastDelayMs);
+    }
+  }
+
+  const sequencePendingSent = await processSequencePendingSends(Math.min(5, sequenceBudget));
+  sendsSent += sequencePendingSent;
 
   const dueEnrollments = await MailSequenceEnrollment.findAll({
     where: {
       status: 'active',
       nextSendAt: { [Op.lte]: new Date() },
     },
-    limit: Math.max(1, Math.floor(limit / 2)),
+    order: [['nextSendAt', 'ASC']],
+    limit: sequenceBudget,
   });
 
   for (const enrollment of dueEnrollments) {
@@ -363,7 +506,7 @@ export async function processMailQueue(limit = BATCH_SIZE): Promise<{
 
     const processed = await processSequenceEnrollment(enrollment.id);
     if (processed) sequencesProcessed++;
-    await sleep(SEND_DELAY_MS);
+    await sleep(cfg.sequenceDelayMs);
   }
 
   return { campaignsProcessed, sendsSent, sendsFailed, sequencesProcessed, scheduledActivated };
@@ -488,7 +631,7 @@ export async function processDueEnrollmentsForSequence(sequenceId: number): Prom
   for (const enrollment of enrollments) {
     const ok = await processSequenceEnrollment(enrollment.id);
     if (ok) processed++;
-    await sleep(SEND_DELAY_MS);
+    await sleep(mailQueueConfig.sequenceDelayMs);
   }
   return processed;
 }
@@ -601,20 +744,44 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   const members = await MailListMember.findAll({ where: { listId } });
   if (members.length === 0) throw new Error('Список пуст');
 
-  let enrolled = 0;
-  let alreadyEnrolled = 0;
-  let notMailable = 0;
+  const steps = await MailSequenceStep.findAll({
+    where: { sequenceId },
+    order: [['stepOrder', 'ASC']],
+  });
+  const firstStep = steps[0];
+  const nextSendAt = calculateNextSendAt(new Date(), firstStep);
 
   await sequence.update({ isActive: true, launchedAt: new Date(), launchListId: listId });
 
-  for (const member of members) {
-    const result = await enrollUserInSequence(member.userId, sequenceId);
-    if (result === 'enrolled') enrolled++;
-    else if (result === 'already') alreadyEnrolled++;
-    else if (result === 'not_mailable') notMailable++;
+  const mailable = await filterMailableRecipients(members.map((m) => m.userId));
+  const existing = await MailSequenceEnrollment.findAll({
+    where: { sequenceId, userId: mailable.map((m) => m.userId) },
+    attributes: ['userId'],
+  });
+  const existingSet = new Set(existing.map((e) => e.userId));
+
+  const enrollRows = mailable
+    .filter((m) => !existingSet.has(m.userId))
+    .map((m) => ({
+      sequenceId,
+      userId: m.userId,
+      currentStepOrder: 0,
+      nextSendAt,
+      status: 'active' as const,
+      enrolledAt: new Date(),
+    }));
+
+  let enrolled = 0;
+  const batchSize = mailQueueConfig.queueInsertBatchSize;
+  for (let i = 0; i < enrollRows.length; i += batchSize) {
+    const chunk = enrollRows.slice(i, i + batchSize);
+    const created = await MailSequenceEnrollment.bulkCreate(chunk, { ignoreDuplicates: true });
+    enrolled += created.length;
   }
 
-  const immediateSent = await processDueEnrollmentsForSequence(sequenceId);
+  const alreadyEnrolled = mailable.length - enrolled;
+  const notMailable = members.length - mailable.length;
+  const immediateSent = 0;
 
   return { enrolled, alreadyEnrolled, notMailable, immediateSent };
 }
@@ -651,7 +818,6 @@ export async function enrollNewUserInActiveSequences(userId: number): Promise<nu
     const result = await enrollUserInSequence(userId, sequence.id);
     if (result === 'enrolled') {
       enrolled++;
-      await processDueEnrollmentsForSequence(sequence.id);
     }
   }
   return enrolled;

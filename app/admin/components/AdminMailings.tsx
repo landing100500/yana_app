@@ -708,6 +708,7 @@ export default function AdminMailings() {
       queued: 'В очереди',
       sending: 'Отправляется',
       sent: 'Отправлено',
+      partial: 'Частично',
       failed: 'Ошибка',
       pending: 'В очереди',
     };

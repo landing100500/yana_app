@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { processMailQueue } from '@/lib/mail-marketing';
+import { mailQueueConfig } from '@/lib/mail-queue-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await initDatabase();
-    const limit = Number(request.nextUrl.searchParams.get('limit') || 30);
+    const limit = Number(request.nextUrl.searchParams.get('limit') || mailQueueConfig.queueLimit);
     const result = await processMailQueue(limit);
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

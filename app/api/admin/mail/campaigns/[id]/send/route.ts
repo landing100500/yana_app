@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailCampaign from '@/models/MailCampaign';
-import { queueCampaign, scheduleCampaign, validateScheduledAt } from '@/lib/mail-marketing';
+import { queueCampaign, scheduleCampaign, validateScheduledAt, kickBackgroundMailQueue } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const result = await queueCampaign(campaign.id);
+    kickBackgroundMailQueue();
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to queue campaign';

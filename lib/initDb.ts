@@ -152,6 +152,19 @@ async function ensureMailSchema() {
         allowNull: true,
       });
     }
+
+    try {
+      const mailSendIndexes = (await queryInterface.showIndex('mail_sends')) as Array<{ name?: string }>;
+      const uniqueName = 'mail_sends_campaign_user_unique';
+      if (!mailSendIndexes.some((idx) => idx.name === uniqueName)) {
+        await queryInterface.addIndex('mail_sends', ['campaignId', 'userId'], {
+          unique: true,
+          name: uniqueName,
+        });
+      }
+    } catch (indexError) {
+      console.warn('[DB] mail_sends unique index skipped (duplicates may exist):', indexError);
+    }
   } catch (error: unknown) {
     const message = String(error instanceof Error ? error.message : error).toLowerCase();
     if (message.includes('does not exist') || message.includes('unknown table') || message.includes('no such table')) {
