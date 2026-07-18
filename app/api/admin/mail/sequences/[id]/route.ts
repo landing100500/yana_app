@@ -7,10 +7,26 @@ import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import MailSend from '@/models/MailSend';
 import MailList from '@/models/MailList';
 import { getSequenceStats } from '@/lib/mail-marketing';
+import { parsePlanCode } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function normalizeSequenceTrigger(body: {
+  triggerType?: string;
+  triggerPlanCode?: string | null;
+}): { triggerType: string; triggerPlanCode: string | null } {
+  const triggerType = body.triggerType || 'none';
+  if (triggerType === 'plan_purchase') {
+    const plan = parsePlanCode(body.triggerPlanCode);
+    if (!plan || plan === 'free') {
+      throw new Error('Для триггера «Покупка тарифа» выберите платный тариф');
+    }
+    return { triggerType, triggerPlanCode: plan };
+  }
+  return { triggerType, triggerPlanCode: null };
+}
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
@@ -54,25 +70,42 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!sequence) return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
 
     const body = await request.json();
-    const { name, description, triggerType, steps } = body;
+    const { name, description, triggerType, triggerPlanCode, steps } = body;
 
     if (sequence.launchedAt) {
       if (name !== undefined) await sequence.update({ name: String(name) });
       if (description !== undefined) {
         await sequence.update({ description: description ? String(description) : null });
       }
-      if (triggerType !== undefined || steps !== undefined) {
+      if (triggerType !== undefined || triggerPlanCode !== undefined || steps !== undefined) {
         return NextResponse.json(
           { error: 'Запущенную цепочку нельзя редактировать. Приостановите или удалите её.' },
           { status: 400 }
         );
       }
     } else {
-      await sequence.update({
+      const updates: Record<string, unknown> = {
         ...(name !== undefined ? { name: String(name) } : {}),
         ...(description !== undefined ? { description: description ? String(description) : null } : {}),
-        ...(triggerType !== undefined ? { triggerType } : {}),
-      });
+      };
+
+      if (triggerType !== undefined || triggerPlanCode !== undefined) {
+        try {
+          const trigger = normalizeSequenceTrigger({
+            triggerType: triggerType ?? sequence.triggerType,
+            triggerPlanCode: triggerPlanCode !== undefined ? triggerPlanCode : sequence.triggerPlanCode,
+          });
+          updates.triggerType = trigger.triggerType;
+          updates.triggerPlanCode = trigger.triggerPlanCode;
+        } catch (e) {
+          return NextResponse.json(
+            { error: e instanceof Error ? e.message : 'Неверный триггер' },
+            { status: 400 }
+          );
+        }
+      }
+
+      await sequence.update(updates);
 
       if (Array.isArray(steps)) {
         await MailSequenceStep.destroy({ where: { sequenceId: sequence.id } });

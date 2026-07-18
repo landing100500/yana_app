@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { initDatabase } from '@/lib/initDb';
 import User from '@/models/User';
 import { assignPlanDates, getUserPlanSnapshot, parsePlanCode, resetPlanDailyUsage } from '@/lib/subscription';
+import { enrollUserOnPlanPurchase } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,15 @@ export async function PUT(
     }
     resetPlanDailyUsage(user);
     await user.save();
+
+    // Ручная выдача платного тарифа админом — тот же триггер, что и покупка
+    if (planCode !== 'free') {
+      try {
+        await enrollUserOnPlanPurchase(user.id, planCode);
+      } catch (enrollError) {
+        console.error('Admin plan sequence enroll failed', { userId: user.id, planCode, enrollError });
+      }
+    }
 
     return NextResponse.json({
       success: true,

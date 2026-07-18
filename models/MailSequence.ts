@@ -1,13 +1,14 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/lib/db';
 
-export type MailSequenceTriggerType = 'new_user' | 'manual' | 'none';
+export type MailSequenceTriggerType = 'new_user' | 'manual' | 'none' | 'plan_purchase';
 
 interface MailSequenceAttributes {
   id: number;
   name: string;
   description?: string | null;
   triggerType: MailSequenceTriggerType;
+  triggerPlanCode?: string | null;
   isActive: boolean;
   launchedAt?: Date | null;
   launchListId?: number | null;
@@ -18,7 +19,15 @@ interface MailSequenceAttributes {
 interface MailSequenceCreationAttributes
   extends Optional<
     MailSequenceAttributes,
-    'id' | 'description' | 'triggerType' | 'isActive' | 'launchedAt' | 'launchListId' | 'createdAt' | 'updatedAt'
+    | 'id'
+    | 'description'
+    | 'triggerType'
+    | 'triggerPlanCode'
+    | 'isActive'
+    | 'launchedAt'
+    | 'launchListId'
+    | 'createdAt'
+    | 'updatedAt'
   > {}
 
 class MailSequence extends Model<MailSequenceAttributes, MailSequenceCreationAttributes> implements MailSequenceAttributes {
@@ -26,6 +35,7 @@ class MailSequence extends Model<MailSequenceAttributes, MailSequenceCreationAtt
   public name!: string;
   public description?: string | null;
   public triggerType!: MailSequenceTriggerType;
+  public triggerPlanCode?: string | null;
   public isActive!: boolean;
   public launchedAt?: Date | null;
   public launchListId?: number | null;
@@ -52,6 +62,10 @@ MailSequence.init(
       type: DataTypes.STRING(16),
       allowNull: false,
       defaultValue: 'none',
+    },
+    triggerPlanCode: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
     },
     isActive: {
       type: DataTypes.BOOLEAN,

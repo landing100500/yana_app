@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailSequence from '@/models/MailSequence';
-import { enableSequenceForNewUsers, setSequencePaused } from '@/lib/mail-marketing';
+import {
+  enableSequenceForNewUsers,
+  enableSequenceForPlanPurchase,
+  setSequencePaused,
+} from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,15 +26,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: true, resumed: true });
     }
 
-    if (sequence.triggerType !== 'new_user') {
-      return NextResponse.json(
-        { error: 'Запустите цепочку по списку — кнопка «Запустить по списку»' },
-        { status: 400 }
-      );
+    if (sequence.triggerType === 'new_user') {
+      await enableSequenceForNewUsers(sequence.id);
+      return NextResponse.json({ success: true, enabled: true });
     }
 
-    await enableSequenceForNewUsers(sequence.id);
-    return NextResponse.json({ success: true, enabled: true });
+    if (sequence.triggerType === 'plan_purchase') {
+      await enableSequenceForPlanPurchase(sequence.id);
+      return NextResponse.json({ success: true, enabled: true });
+    }
+
+    return NextResponse.json(
+      { error: 'Запустите цепочку по списку — кнопка «Запустить по списку»' },
+      { status: 400 }
+    );
   } catch (error) {
     console.error('Mail sequence enable error:', error);
     const message = error instanceof Error ? error.message : 'Не удалось включить цепочку';

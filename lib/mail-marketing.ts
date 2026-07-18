@@ -9,7 +9,7 @@ import MailSend from '@/models/MailSend';
 import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
 import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
-import { getUserPlanSnapshot } from '@/lib/subscription';
+import { getUserPlanSnapshot, normalizePlanCode } from '@/lib/subscription';
 import { sendMarketingEmail, getAppBaseUrl } from '@/lib/email-transport';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
@@ -644,7 +644,7 @@ export interface SequenceStats {
     unsubscribed: number;
     cancelled: number;
   };
-  sends: { sent: number; pending: number; failed: number };
+  sends: { sent: number; pending: number; failed: number; sentToday: number };
   steps: Array<{
     stepOrder: number;
     subject: string;
@@ -697,6 +697,19 @@ export async function getSequenceStats(sequenceId: number): Promise<SequenceStat
   const countByStatus = (status: string) => enrollments.filter((e) => e.status === status).length;
   const countSends = (status: string) => sends.filter((s) => s.status === status).length;
 
+  let sentToday = 0;
+  if (enrollmentIds.length > 0) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    sentToday = await MailSend.count({
+      where: {
+        enrollmentId: enrollmentIds,
+        status: 'sent',
+        sentAt: { [Op.gte]: startOfToday },
+      },
+    });
+  }
+
   return {
     enrollments: {
       total: enrollments.length,
@@ -709,6 +722,7 @@ export async function getSequenceStats(sequenceId: number): Promise<SequenceStat
       sent: countSends('sent'),
       pending: countSends('pending'),
       failed: countSends('failed'),
+      sentToday,
     },
     steps: steps.map((step) => {
       const stepSends = sends.filter((s) => s.sequenceStepId === step.id);
@@ -734,8 +748,8 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   const sequence = await MailSequence.findByPk(sequenceId);
   if (!sequence) throw new Error('Цепочка не найдена');
   if (sequence.launchedAt) throw new Error('Цепочка уже запущена');
-  if (sequence.triggerType === 'new_user') {
-    throw new Error('Для цепочки «Новые пользователи» используйте кнопку «Включить»');
+  if (sequence.triggerType === 'new_user' || sequence.triggerType === 'plan_purchase') {
+    throw new Error('Для автотриггера используйте кнопку «Включить»');
   }
 
   const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
@@ -800,6 +814,23 @@ export async function enableSequenceForNewUsers(sequenceId: number): Promise<voi
   await sequence.update({ isActive: true, launchedAt: new Date() });
 }
 
+export async function enableSequenceForPlanPurchase(sequenceId: number): Promise<void> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) throw new Error('Цепочка не найдена');
+  if (sequence.triggerType !== 'plan_purchase') {
+    throw new Error('Включение доступно только для цепочек «Покупка тарифа»');
+  }
+  if (!sequence.triggerPlanCode) {
+    throw new Error('Укажите тариф для триггера');
+  }
+  if (sequence.launchedAt) throw new Error('Цепочка уже включена');
+
+  const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
+  if (stepCount === 0) throw new Error('Добавьте хотя бы одно письмо в цепочку');
+
+  await sequence.update({ isActive: true, launchedAt: new Date() });
+}
+
 export async function setSequencePaused(sequenceId: number, paused: boolean): Promise<void> {
   const sequence = await MailSequence.findByPk(sequenceId);
   if (!sequence) throw new Error('Цепочка не найдена');
@@ -811,6 +842,30 @@ export async function setSequencePaused(sequenceId: number, paused: boolean): Pr
 export async function enrollNewUserInActiveSequences(userId: number): Promise<number> {
   const sequences = await MailSequence.findAll({
     where: { isActive: true, triggerType: 'new_user', launchedAt: { [Op.ne]: null } },
+  });
+
+  let enrolled = 0;
+  for (const sequence of sequences) {
+    const result = await enrollUserInSequence(userId, sequence.id);
+    if (result === 'enrolled') {
+      enrolled++;
+    }
+  }
+  return enrolled;
+}
+
+/** Запись в цепочки с триггером «покупка тарифа». Безопасно вызывать повторно (findOrCreate). */
+export async function enrollUserOnPlanPurchase(userId: number, planCodeLike: string): Promise<number> {
+  const planCode = normalizePlanCode(planCodeLike);
+  if (planCode === 'free') return 0;
+
+  const sequences = await MailSequence.findAll({
+    where: {
+      isActive: true,
+      triggerType: 'plan_purchase',
+      triggerPlanCode: planCode,
+      launchedAt: { [Op.ne]: null },
+    },
   });
 
   let enrolled = 0;

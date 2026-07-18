@@ -43,7 +43,9 @@ async function applyPlanToUser(
 }
 
 export async function activatePlanForPayment(payment: Payment): Promise<Payment> {
-  return sequelize.transaction(async (transaction) => {
+  const wasAlreadySucceeded = payment.status === 'succeeded';
+
+  const result = await sequelize.transaction(async (transaction) => {
     const lockedPayment = await Payment.findByPk(payment.id, {
       transaction,
       lock: Transaction.LOCK.UPDATE,
@@ -80,6 +82,22 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
     await lockedPayment.save({ transaction });
     return lockedPayment;
   });
+
+  // После коммита: запись в цепочки «покупка тарифа» (только при первой успешной оплате)
+  if (!wasAlreadySucceeded && result.status === 'succeeded') {
+    try {
+      const { enrollUserOnPlanPurchase } = await import('@/lib/mail-marketing');
+      await enrollUserOnPlanPurchase(result.userId, result.planCode);
+    } catch (error) {
+      console.error('Plan purchase sequence enroll failed', {
+        userId: result.userId,
+        planCode: result.planCode,
+        error,
+      });
+    }
+  }
+
+  return result;
 }
 
 function validateRemotePayment(payment: Payment, remote: Awaited<ReturnType<typeof getYookassaPayment>>) {

@@ -144,6 +144,12 @@ async function ensureMailSchema() {
         allowNull: true,
       });
     }
+    if (!sequencesTable.triggerPlanCode) {
+      await queryInterface.addColumn('mail_sequences', 'triggerPlanCode', {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      });
+    }
 
     const campaignsTable = await queryInterface.describeTable('mail_campaigns');
     if (!campaignsTable.scheduledAt) {

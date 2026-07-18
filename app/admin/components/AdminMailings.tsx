@@ -56,7 +56,7 @@ interface SequenceStats {
     unsubscribed: number;
     cancelled: number;
   };
-  sends: { sent: number; pending: number; failed: number };
+  sends: { sent: number; pending: number; failed: number; sentToday?: number };
   steps: Array<{
     stepOrder: number;
     subject: string;
@@ -71,6 +71,7 @@ interface MailSequence {
   name: string;
   description?: string | null;
   triggerType: string;
+  triggerPlanCode?: string | null;
   isActive: boolean;
   launchedAt?: string | null;
   launchListId?: number | null;
@@ -157,6 +158,7 @@ export default function AdminMailings() {
     name: string;
     description: string;
     triggerType: string;
+    triggerPlanCode: string;
     steps: SequenceStep[];
   } | null>(null);
 
@@ -561,14 +563,19 @@ export default function AdminMailings() {
       name: '',
       description: '',
       triggerType: 'manual',
+      triggerPlanCode: 'hours24',
       steps: [{ ...emptyStep(), delayDays: 0 }],
     });
     setSpamResult(null);
   };
 
-  const sequenceTriggerLabel = (triggerType: string) => {
-    if (triggerType === 'new_user') return 'Новые пользователи';
-    if (triggerType === 'manual') return 'По списку (один раз)';
+  const sequenceTriggerLabel = (seq: MailSequence | { triggerType: string; triggerPlanCode?: string | null }) => {
+    if (seq.triggerType === 'new_user') return 'Новые пользователи';
+    if (seq.triggerType === 'plan_purchase') {
+      const plan = PLAN_OPTIONS.find((p) => p.code === seq.triggerPlanCode);
+      return `Покупка тарифа: ${plan?.title || seq.triggerPlanCode || '—'}`;
+    }
+    if (seq.triggerType === 'manual') return 'По списку (один раз)';
     return 'По списку (один раз)';
   };
 
@@ -585,6 +592,10 @@ export default function AdminMailings() {
   const saveSequence = async () => {
     if (!editingSequence?.name || editingSequence.steps.length === 0) {
       setError('Укажите название и хотя бы одно письмо');
+      return;
+    }
+    if (editingSequence.triggerType === 'plan_purchase' && !editingSequence.triggerPlanCode) {
+      setError('Выберите тариф для триггера');
       return;
     }
     setLoading(true);
@@ -645,9 +656,14 @@ export default function AdminMailings() {
 
   const enableSequence = async (seq: MailSequence) => {
     const isResume = !!seq.launchedAt;
-    const msg = isResume
-      ? `Возобновить цепочку «${seq.name}»?`
-      : `Включить цепочку «${seq.name}» для новых пользователей?\n\nНовые регистрации будут автоматически попадать в цепочку.`;
+    let msg: string;
+    if (isResume) {
+      msg = `Возобновить цепочку «${seq.name}»?`;
+    } else if (seq.triggerType === 'plan_purchase') {
+      msg = `Включить цепочку «${seq.name}»?\n\nПри покупке тарифа «${sequenceTriggerLabel(seq).replace('Покупка тарифа: ', '')}» пользователь автоматически попадёт в цепочку.`;
+    } else {
+      msg = `Включить цепочку «${seq.name}» для новых пользователей?\n\nНовые регистрации будут автоматически попадать в цепочку.`;
+    }
     if (!confirm(msg)) return;
 
     setLoading(true);
@@ -658,7 +674,13 @@ export default function AdminMailings() {
         setError(data.error || 'Ошибка');
         return;
       }
-      showMsg(isResume ? 'Цепочка возобновлена' : 'Цепочка включена для новых пользователей');
+      showMsg(
+        isResume
+          ? 'Цепочка возобновлена'
+          : seq.triggerType === 'plan_purchase'
+            ? 'Цепочка включена для покупок тарифа'
+            : 'Цепочка включена для новых пользователей'
+      );
       await loadSequences();
     } finally {
       setLoading(false);
@@ -1146,17 +1168,17 @@ export default function AdminMailings() {
                 </button>
               </div>
               <p className={styles.hint}>
-                1) Создайте цепочку и сохраните черновик. 2) Запустите один раз — по списку или для новых
-                пользователей. 3) Следите за статусами. Повторный запуск невозможен — только приостановка или
+                1) Создайте цепочку и сохраните черновик. 2) Запустите: по списку, для новых пользователей или при
+                покупке тарифа. 3) Следите за статусами. Повторный запуск невозможен — только приостановка или
                 удаление.
               </p>
               {sequences.map((seq) => {
                 const status = sequenceStatus(seq);
                 const stats = seq.stats;
                 const isLaunched = !!seq.launchedAt;
-                const canLaunchByList =
-                  !isLaunched && seq.triggerType !== 'new_user' && (seq.steps?.length || 0) > 0;
-                const canEnableNewUsers = !isLaunched && seq.triggerType === 'new_user' && (seq.steps?.length || 0) > 0;
+                const isAutoTrigger = seq.triggerType === 'new_user' || seq.triggerType === 'plan_purchase';
+                const canLaunchByList = !isLaunched && !isAutoTrigger && (seq.steps?.length || 0) > 0;
+                const canEnableAuto = !isLaunched && isAutoTrigger && (seq.steps?.length || 0) > 0;
                 const isExpanded = expandedSequenceId === seq.id;
 
                 return (
@@ -1166,7 +1188,7 @@ export default function AdminMailings() {
                       <span className={status.badge}>{status.label}</span>
                     </div>
                     <p className={styles.hint}>
-                      {seq.steps?.length || 0} писем · {sequenceTriggerLabel(seq.triggerType)}
+                      {seq.steps?.length || 0} писем · {sequenceTriggerLabel(seq)}
                       {isLaunched && seq.launchedAt && (
                         <> · Запущена {new Date(seq.launchedAt).toLocaleString('ru-RU')}</>
                       )}
@@ -1175,12 +1197,18 @@ export default function AdminMailings() {
                     {stats && isLaunched && (
                       <div className={styles.statsRow}>
                         <span>
-                          Участники: {stats.enrollments.total} (в процессе {stats.enrollments.active}, завершили{' '}
-                          {stats.enrollments.completed}
-                          {stats.enrollments.unsubscribed > 0 && `, отписались ${stats.enrollments.unsubscribed}`})
+                          В цепочке: <strong>{stats.enrollments.active}</strong>
+                          {' · '}
+                          Завершили: <strong>{stats.enrollments.completed}</strong>
+                          {' · '}
+                          Сегодня писем: <strong>{stats.sends.sentToday ?? 0}</strong>
                         </span>
-                        <span>
-                          Письма: отправлено {stats.sends.sent}
+                        <span className={styles.hint}>
+                          Всего участников {stats.enrollments.total}
+                          {stats.enrollments.unsubscribed > 0 &&
+                            `, отписались ${stats.enrollments.unsubscribed}`}
+                          {' · '}
+                          отправлено {stats.sends.sent}
                           {stats.sends.pending > 0 && `, в очереди ${stats.sends.pending}`}
                           {stats.sends.failed > 0 && `, ошибок ${stats.sends.failed}`}
                         </span>
@@ -1206,6 +1234,7 @@ export default function AdminMailings() {
                                 description: data.sequence.description || '',
                                 triggerType:
                                   data.sequence.triggerType === 'none' ? 'manual' : data.sequence.triggerType,
+                                triggerPlanCode: data.sequence.triggerPlanCode || 'hours24',
                                 steps: data.steps?.length
                                   ? data.steps.map((s: SequenceStep) => ({
                                       delayDays: s.delayDays,
@@ -1254,14 +1283,14 @@ export default function AdminMailings() {
                           </button>
                         </>
                       )}
-                      {canEnableNewUsers && (
+                      {canEnableAuto && (
                         <button
                           type="button"
                           className={styles.btnSmallPrimary}
                           onClick={() => enableSequence(seq)}
                           disabled={loading}
                         >
-                          Включить для новых
+                          {seq.triggerType === 'plan_purchase' ? 'Включить для тарифа' : 'Включить для новых'}
                         </button>
                       )}
                       {isLaunched && seq.isActive && (
@@ -1350,17 +1379,36 @@ export default function AdminMailings() {
               <label className={styles.label}>
                 Триггер запуска
                 <select
-                  className={styles.input}
+                  className={styles.select}
                   value={editingSequence.triggerType}
                   onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
                 >
                   <option value="manual">По списку (запуск один раз вручную)</option>
                   <option value="new_user">Новые пользователи (при регистрации)</option>
+                  <option value="plan_purchase">Покупка тарифа</option>
                 </select>
               </label>
+              {editingSequence.triggerType === 'plan_purchase' && (
+                <label className={styles.label}>
+                  Тариф
+                  <select
+                    className={styles.select}
+                    value={editingSequence.triggerPlanCode}
+                    onChange={(e) =>
+                      setEditingSequence({ ...editingSequence, triggerPlanCode: e.target.value })
+                    }
+                  >
+                    {PLAN_OPTIONS.filter((p) => p.code !== 'free').map((p) => (
+                      <option key={p.code} value={p.code}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <p className={styles.hint}>
-                Сохраните черновик, затем на главном экране цепочек нажмите «Запустить по списку» или «Включить для
-                новых». Галочка «активна» не нужна — активация происходит при запуске.
+                Сохраните черновик, затем на экране цепочек нажмите «Запустить по списку», «Включить для новых» или
+                «Включить для тарифа». Активация происходит при запуске.
               </p>
               {editingSequence.steps.map((step, idx) => (
                 <div key={idx} className={styles.stepCard}>
