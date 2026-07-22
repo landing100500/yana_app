@@ -150,6 +150,31 @@ async function ensureMailSchema() {
         allowNull: true,
       });
     }
+    if (!sequencesTable.triggerPlanCodes) {
+      await queryInterface.addColumn('mail_sequences', 'triggerPlanCodes', {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      });
+    }
+    if (!sequencesTable.excludePlanCodes) {
+      await queryInterface.addColumn('mail_sequences', 'excludePlanCodes', {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      });
+    }
+    if (!sequencesTable.excludeAllPaidPlans) {
+      await queryInterface.addColumn('mail_sequences', 'excludeAllPaidPlans', {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      });
+    }
+    if (!sequencesTable.excludeListId) {
+      await queryInterface.addColumn('mail_sequences', 'excludeListId', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      });
+    }
 
     const campaignsTable = await queryInterface.describeTable('mail_campaigns');
     if (!campaignsTable.scheduledAt) {

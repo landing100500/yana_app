@@ -7,26 +7,15 @@ import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import MailSend from '@/models/MailSend';
 import MailList from '@/models/MailList';
 import { getSequenceStats } from '@/lib/mail-marketing';
-import { parsePlanCode } from '@/lib/subscription';
+import {
+  getSequenceTriggerPlanCodes,
+  normalizeSequenceRulesInput,
+  parsePlanCodesJson,
+} from '@/lib/mail-sequence-rules';
 
 export const dynamic = 'force-dynamic';
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function normalizeSequenceTrigger(body: {
-  triggerType?: string;
-  triggerPlanCode?: string | null;
-}): { triggerType: string; triggerPlanCode: string | null } {
-  const triggerType = body.triggerType || 'none';
-  if (triggerType === 'plan_purchase') {
-    const plan = parsePlanCode(body.triggerPlanCode);
-    if (!plan || plan === 'free') {
-      throw new Error('Для триггера «Покупка тарифа» выберите платный тариф');
-    }
-    return { triggerType, triggerPlanCode: plan };
-  }
-  return { triggerType, triggerPlanCode: null };
-}
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
@@ -52,8 +41,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       const list = await MailList.findByPk(sequence.launchListId, { attributes: ['name'] });
       launchListName = list?.name || null;
     }
+    let excludeListName: string | null = null;
+    if (sequence.excludeListId) {
+      const list = await MailList.findByPk(sequence.excludeListId, { attributes: ['name'] });
+      excludeListName = list?.name || null;
+    }
 
-    return NextResponse.json({ sequence, steps, enrollments, stats, launchListName });
+    return NextResponse.json({ sequence, steps, enrollments, stats, launchListName, excludeListName });
   } catch (error) {
     console.error('Mail sequence GET error:', error);
     return NextResponse.json({ error: 'Failed to load sequence' }, { status: 500 });
@@ -70,14 +64,32 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!sequence) return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
 
     const body = await request.json();
-    const { name, description, triggerType, triggerPlanCode, steps } = body;
+    const {
+      name,
+      description,
+      triggerType,
+      triggerPlanCode,
+      triggerPlanCodes,
+      excludePlanCodes,
+      excludeAllPaidPlans,
+      excludeListId,
+      steps,
+    } = body;
 
     if (sequence.launchedAt) {
       if (name !== undefined) await sequence.update({ name: String(name) });
       if (description !== undefined) {
         await sequence.update({ description: description ? String(description) : null });
       }
-      if (triggerType !== undefined || triggerPlanCode !== undefined || steps !== undefined) {
+      if (
+        triggerType !== undefined ||
+        triggerPlanCode !== undefined ||
+        triggerPlanCodes !== undefined ||
+        excludePlanCodes !== undefined ||
+        excludeAllPaidPlans !== undefined ||
+        excludeListId !== undefined ||
+        steps !== undefined
+      ) {
         return NextResponse.json(
           { error: 'Запущенную цепочку нельзя редактировать. Приостановите или удалите её.' },
           { status: 400 }
@@ -89,14 +101,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(description !== undefined ? { description: description ? String(description) : null } : {}),
       };
 
-      if (triggerType !== undefined || triggerPlanCode !== undefined) {
+      const rulesFieldsTouched =
+        triggerType !== undefined ||
+        triggerPlanCode !== undefined ||
+        triggerPlanCodes !== undefined ||
+        excludePlanCodes !== undefined ||
+        excludeAllPaidPlans !== undefined ||
+        excludeListId !== undefined;
+
+      if (rulesFieldsTouched) {
         try {
-          const trigger = normalizeSequenceTrigger({
+          const rules = normalizeSequenceRulesInput({
             triggerType: triggerType ?? sequence.triggerType,
             triggerPlanCode: triggerPlanCode !== undefined ? triggerPlanCode : sequence.triggerPlanCode,
+            triggerPlanCodes:
+              triggerPlanCodes !== undefined
+                ? triggerPlanCodes
+                : getSequenceTriggerPlanCodes(sequence),
+            excludePlanCodes:
+              excludePlanCodes !== undefined ? excludePlanCodes : parsePlanCodesJson(sequence.excludePlanCodes),
+            excludeAllPaidPlans:
+              excludeAllPaidPlans !== undefined ? excludeAllPaidPlans : sequence.excludeAllPaidPlans,
+            excludeListId: excludeListId !== undefined ? excludeListId : sequence.excludeListId,
           });
-          updates.triggerType = trigger.triggerType;
-          updates.triggerPlanCode = trigger.triggerPlanCode;
+          Object.assign(updates, rules);
         } catch (e) {
           return NextResponse.json(
             { error: e instanceof Error ? e.message : 'Неверный триггер' },

@@ -72,6 +72,11 @@ interface MailSequence {
   description?: string | null;
   triggerType: string;
   triggerPlanCode?: string | null;
+  triggerPlanCodes?: string | null;
+  excludePlanCodes?: string | null;
+  excludeAllPaidPlans?: boolean;
+  excludeListId?: number | null;
+  excludeListName?: string | null;
   isActive: boolean;
   launchedAt?: string | null;
   launchListId?: number | null;
@@ -133,6 +138,46 @@ function defaultScheduleDatetime() {
 }
 
 const PLAN_OPTIONS = Object.values(PLAN_CONFIGS).map((p) => ({ code: p.code, title: p.title }));
+const PAID_PLAN_OPTIONS = PLAN_OPTIONS.filter((p) => p.code !== 'free');
+
+function parseSequencePlanCodes(seq: {
+  triggerPlanCodes?: string | null;
+  triggerPlanCode?: string | null;
+}): PlanCode[] {
+  if (seq.triggerPlanCodes) {
+    try {
+      const parsed = JSON.parse(seq.triggerPlanCodes);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((c): c is PlanCode =>
+          typeof c === 'string' && PAID_PLAN_OPTIONS.some((p) => p.code === c)
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (seq.triggerPlanCode && seq.triggerPlanCode !== 'free') {
+    return [seq.triggerPlanCode as PlanCode];
+  }
+  return [];
+}
+
+function parseSequenceExcludePlanCodes(seq: { excludePlanCodes?: string | null }): PlanCode[] {
+  if (!seq.excludePlanCodes) return [];
+  try {
+    const parsed = JSON.parse(seq.excludePlanCodes);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((c): c is PlanCode =>
+      typeof c === 'string' && PAID_PLAN_OPTIONS.some((p) => p.code === c)
+    );
+  } catch {
+    return [];
+  }
+}
+
+function togglePlanCode(codes: PlanCode[], code: PlanCode): PlanCode[] {
+  return codes.includes(code) ? codes.filter((c) => c !== code) : [...codes, code];
+}
 
 const emptyStep = (): SequenceStep => ({
   delayDays: 1,
@@ -158,7 +203,10 @@ export default function AdminMailings() {
     name: string;
     description: string;
     triggerType: string;
-    triggerPlanCode: string;
+    triggerPlanCodes: PlanCode[];
+    excludePlanCodes: PlanCode[];
+    excludeAllPaidPlans: boolean;
+    excludeListId: number | null;
     steps: SequenceStep[];
   } | null>(null);
 
@@ -563,20 +611,37 @@ export default function AdminMailings() {
       name: '',
       description: '',
       triggerType: 'manual',
-      triggerPlanCode: 'hours24',
+      triggerPlanCodes: ['hours24'],
+      excludePlanCodes: [],
+      excludeAllPaidPlans: false,
+      excludeListId: null,
       steps: [{ ...emptyStep(), delayDays: 0 }],
     });
     setSpamResult(null);
   };
 
-  const sequenceTriggerLabel = (seq: MailSequence | { triggerType: string; triggerPlanCode?: string | null }) => {
+  const sequenceTriggerLabel = (seq: MailSequence | { triggerType: string; triggerPlanCode?: string | null; triggerPlanCodes?: string | null }) => {
     if (seq.triggerType === 'new_user') return 'Новые пользователи';
     if (seq.triggerType === 'plan_purchase') {
-      const plan = PLAN_OPTIONS.find((p) => p.code === seq.triggerPlanCode);
-      return `Покупка тарифа: ${plan?.title || seq.triggerPlanCode || '—'}`;
+      const codes = parseSequencePlanCodes(seq);
+      const titles = codes.map((c) => PLAN_OPTIONS.find((p) => p.code === c)?.title || c);
+      return `Покупка тарифа: ${titles.length > 0 ? titles.join(', ') : '—'}`;
     }
     if (seq.triggerType === 'manual') return 'По списку (один раз)';
     return 'По списку (один раз)';
+  };
+
+  const sequenceExclusionLabel = (seq: MailSequence) => {
+    const parts: string[] = [];
+    if (seq.excludeAllPaidPlans) parts.push('все платные тарифы');
+    const excludePlans = parseSequenceExcludePlanCodes(seq);
+    if (excludePlans.length > 0) {
+      parts.push(
+        excludePlans.map((c) => PLAN_OPTIONS.find((p) => p.code === c)?.title || c).join(', ')
+      );
+    }
+    if (seq.excludeListName) parts.push(`список «${seq.excludeListName}»`);
+    return parts.length > 0 ? parts.join('; ') : null;
   };
 
   const sequenceStatus = (seq: MailSequence) => {
@@ -594,8 +659,8 @@ export default function AdminMailings() {
       setError('Укажите название и хотя бы одно письмо');
       return;
     }
-    if (editingSequence.triggerType === 'plan_purchase' && !editingSequence.triggerPlanCode) {
-      setError('Выберите тариф для триггера');
+    if (editingSequence.triggerType === 'plan_purchase' && editingSequence.triggerPlanCodes.length === 0) {
+      setError('Выберите хотя бы один тариф для триггера');
       return;
     }
     setLoading(true);
@@ -1194,6 +1259,9 @@ export default function AdminMailings() {
                       )}
                       {seq.launchListName && <> · Список: {seq.launchListName}</>}
                     </p>
+                    {sequenceExclusionLabel(seq) && (
+                      <p className={styles.hint}>Исключения: {sequenceExclusionLabel(seq)}</p>
+                    )}
                     {stats && isLaunched && (
                       <div className={styles.statsRow}>
                         <span>
@@ -1234,7 +1302,12 @@ export default function AdminMailings() {
                                 description: data.sequence.description || '',
                                 triggerType:
                                   data.sequence.triggerType === 'none' ? 'manual' : data.sequence.triggerType,
-                                triggerPlanCode: data.sequence.triggerPlanCode || 'hours24',
+                                triggerPlanCodes: parseSequencePlanCodes(data.sequence).length
+                                  ? parseSequencePlanCodes(data.sequence)
+                                  : ['hours24'],
+                                excludePlanCodes: parseSequenceExcludePlanCodes(data.sequence),
+                                excludeAllPaidPlans: !!data.sequence.excludeAllPaidPlans,
+                                excludeListId: data.sequence.excludeListId ?? null,
                                 steps: data.steps?.length
                                   ? data.steps.map((s: SequenceStep) => ({
                                       delayDays: s.delayDays,
@@ -1389,23 +1462,84 @@ export default function AdminMailings() {
                 </select>
               </label>
               {editingSequence.triggerType === 'plan_purchase' && (
+                <div className={styles.label}>
+                  Тарифы (можно несколько)
+                  <div className={styles.row} style={{ flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    {PAID_PLAN_OPTIONS.map((p) => (
+                      <label key={p.code} className={styles.checkboxRow} style={{ marginBottom: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={editingSequence.triggerPlanCodes.includes(p.code)}
+                          onChange={() =>
+                            setEditingSequence({
+                              ...editingSequence,
+                              triggerPlanCodes: togglePlanCode(editingSequence.triggerPlanCodes, p.code),
+                            })
+                          }
+                        />
+                        {p.title}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className={styles.scheduleBox}>
+                <h3>Исключения</h3>
+                <p className={styles.hint}>
+                  Пользователи из исключений не попадут в цепочку. Если купят указанный тариф — активная цепочка для
+                  них остановится.
+                </p>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={editingSequence.excludeAllPaidPlans}
+                    onChange={(e) =>
+                      setEditingSequence({ ...editingSequence, excludeAllPaidPlans: e.target.checked })
+                    }
+                  />
+                  Исключить все платные тарифы
+                </label>
+                <div className={styles.label}>
+                  Исключить тарифы
+                  <div className={styles.row} style={{ flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    {PAID_PLAN_OPTIONS.map((p) => (
+                      <label key={p.code} className={styles.checkboxRow} style={{ marginBottom: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={editingSequence.excludePlanCodes.includes(p.code)}
+                          onChange={() =>
+                            setEditingSequence({
+                              ...editingSequence,
+                              excludePlanCodes: togglePlanCode(editingSequence.excludePlanCodes, p.code),
+                            })
+                          }
+                        />
+                        {p.title}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <label className={styles.label}>
-                  Тариф
+                  Исключить список пользователей
                   <select
                     className={styles.select}
-                    value={editingSequence.triggerPlanCode}
+                    value={editingSequence.excludeListId ?? ''}
                     onChange={(e) =>
-                      setEditingSequence({ ...editingSequence, triggerPlanCode: e.target.value })
+                      setEditingSequence({
+                        ...editingSequence,
+                        excludeListId: e.target.value ? Number(e.target.value) : null,
+                      })
                     }
                   >
-                    {PLAN_OPTIONS.filter((p) => p.code !== 'free').map((p) => (
-                      <option key={p.code} value={p.code}>
-                        {p.title}
+                    <option value="">Не исключать</option>
+                    {lists.map((list) => (
+                      <option key={list.id} value={list.id}>
+                        {list.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              )}
+              </div>
               <p className={styles.hint}>
                 Сохраните черновик, затем на экране цепочек нажмите «Запустить по списку», «Включить для новых» или
                 «Включить для тарифа». Активация происходит при запуске.

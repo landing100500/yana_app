@@ -5,24 +5,9 @@ import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
 import MailList from '@/models/MailList';
 import { getSequenceStats, repairLegacySequenceLaunch } from '@/lib/mail-marketing';
-import { parsePlanCode } from '@/lib/subscription';
+import { normalizeSequenceRulesInput } from '@/lib/mail-sequence-rules';
 
 export const dynamic = 'force-dynamic';
-
-function normalizeSequenceTrigger(body: {
-  triggerType?: string;
-  triggerPlanCode?: string | null;
-}): { triggerType: string; triggerPlanCode: string | null } {
-  const triggerType = body.triggerType || 'none';
-  if (triggerType === 'plan_purchase') {
-    const plan = parsePlanCode(body.triggerPlanCode);
-    if (!plan || plan === 'free') {
-      throw new Error('Для триггера «Покупка тарифа» выберите платный тариф');
-    }
-    return { triggerType, triggerPlanCode: plan };
-  }
-  return { triggerType, triggerPlanCode: null };
-}
 
 export async function GET() {
   try {
@@ -44,7 +29,12 @@ export async function GET() {
           const list = await MailList.findByPk(repaired.launchListId, { attributes: ['name'] });
           launchListName = list?.name || null;
         }
-        return { ...repaired.toJSON(), steps, stats, launchListName };
+        let excludeListName: string | null = null;
+        if (repaired.excludeListId) {
+          const list = await MailList.findByPk(repaired.excludeListId, { attributes: ['name'] });
+          excludeListName = list?.name || null;
+        }
+        return { ...repaired.toJSON(), steps, stats, launchListName, excludeListName };
       })
     );
 
@@ -60,14 +50,15 @@ export async function POST(request: NextRequest) {
     await initDatabase();
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
 
-    const { name, description, triggerType, triggerPlanCode, steps } = await request.json();
+    const body = await request.json();
+    const { name, description, steps, ...rulesBody } = body;
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
 
-    let trigger;
+    let rules;
     try {
-      trigger = normalizeSequenceTrigger({ triggerType, triggerPlanCode });
+      rules = normalizeSequenceRulesInput(rulesBody);
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Неверный триггер' }, { status: 400 });
     }
@@ -75,8 +66,12 @@ export async function POST(request: NextRequest) {
     const sequence = await MailSequence.create({
       name: String(name),
       description: description ? String(description) : null,
-      triggerType: trigger.triggerType as 'manual' | 'new_user' | 'none' | 'plan_purchase',
-      triggerPlanCode: trigger.triggerPlanCode,
+      triggerType: rules.triggerType as 'manual' | 'new_user' | 'none' | 'plan_purchase',
+      triggerPlanCode: rules.triggerPlanCode,
+      triggerPlanCodes: rules.triggerPlanCodes,
+      excludePlanCodes: rules.excludePlanCodes,
+      excludeAllPaidPlans: rules.excludeAllPaidPlans,
+      excludeListId: rules.excludeListId,
       isActive: false,
       launchedAt: null,
       launchListId: null,

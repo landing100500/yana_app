@@ -9,6 +9,10 @@ interface MailSequenceAttributes {
   description?: string | null;
   triggerType: MailSequenceTriggerType;
   triggerPlanCode?: string | null;
+  triggerPlanCodes?: string | null;
+  excludePlanCodes?: string | null;
+  excludeAllPaidPlans: boolean;
+  excludeListId?: number | null;
   isActive: boolean;
   launchedAt?: Date | null;
   launchListId?: number | null;
@@ -23,6 +27,10 @@ interface MailSequenceCreationAttributes
     | 'description'
     | 'triggerType'
     | 'triggerPlanCode'
+    | 'triggerPlanCodes'
+    | 'excludePlanCodes'
+    | 'excludeAllPaidPlans'
+    | 'excludeListId'
     | 'isActive'
     | 'launchedAt'
     | 'launchListId'
@@ -36,6 +44,10 @@ class MailSequence extends Model<MailSequenceAttributes, MailSequenceCreationAtt
   public description?: string | null;
   public triggerType!: MailSequenceTriggerType;
   public triggerPlanCode?: string | null;
+  public triggerPlanCodes?: string | null;
+  public excludePlanCodes?: string | null;
+  public excludeAllPaidPlans!: boolean;
+  public excludeListId?: number | null;
   public isActive!: boolean;
   public launchedAt?: Date | null;
   public launchListId?: number | null;
@@ -65,6 +77,23 @@ MailSequence.init(
     },
     triggerPlanCode: {
       type: DataTypes.STRING(32),
+      allowNull: true,
+    },
+    triggerPlanCodes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    excludePlanCodes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    excludeAllPaidPlans: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    excludeListId: {
+      type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
     },
     isActive: {

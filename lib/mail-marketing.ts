@@ -14,6 +14,12 @@ import { sendMarketingEmail, getAppBaseUrl } from '@/lib/email-transport';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
+import {
+  applyPlanPurchaseExclusions,
+  cancelEnrollmentForExclusion,
+  getSequenceTriggerPlanCodes,
+  isUserExcludedFromSequence,
+} from '@/lib/mail-sequence-rules';
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -524,6 +530,11 @@ export async function processSequenceEnrollment(enrollmentId: number): Promise<b
   const sequence = await MailSequence.findByPk(enrollment.sequenceId);
   if (!sequence?.isActive || !sequence.launchedAt) return false;
 
+  if (await isUserExcludedFromSequence(enrollment.userId, sequence)) {
+    await cancelEnrollmentForExclusion(enrollment.id);
+    return false;
+  }
+
   const check = await isUserMailable(enrollment.userId);
   if (!check.ok) {
     await enrollment.update({ status: 'unsubscribed' });
@@ -587,9 +598,16 @@ export async function processSequenceEnrollment(enrollmentId: number): Promise<b
   return true;
 }
 
-export type EnrollUserResult = 'enrolled' | 'already' | 'not_mailable' | 'no_steps';
+export type EnrollUserResult = 'enrolled' | 'already' | 'not_mailable' | 'no_steps' | 'excluded';
 
 export async function enrollUserInSequence(userId: number, sequenceId: number): Promise<EnrollUserResult> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) return 'no_steps';
+
+  if (await isUserExcludedFromSequence(userId, sequence)) {
+    return 'excluded';
+  }
+
   const steps = await MailSequenceStep.findAll({
     where: { sequenceId },
     order: [['stepOrder', 'ASC']],
@@ -768,13 +786,20 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   await sequence.update({ isActive: true, launchedAt: new Date(), launchListId: listId });
 
   const mailable = await filterMailableRecipients(members.map((m) => m.userId));
+  const eligible: Array<{ userId: number; email: string }> = [];
+  for (const m of mailable) {
+    if (!(await isUserExcludedFromSequence(m.userId, sequence))) {
+      eligible.push(m);
+    }
+  }
+
   const existing = await MailSequenceEnrollment.findAll({
-    where: { sequenceId, userId: mailable.map((m) => m.userId) },
+    where: { sequenceId, userId: eligible.map((m) => m.userId) },
     attributes: ['userId'],
   });
   const existingSet = new Set(existing.map((e) => e.userId));
 
-  const enrollRows = mailable
+  const enrollRows = eligible
     .filter((m) => !existingSet.has(m.userId))
     .map((m) => ({
       sequenceId,
@@ -793,8 +818,8 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
     enrolled += created.length;
   }
 
-  const alreadyEnrolled = mailable.length - enrolled;
-  const notMailable = members.length - mailable.length;
+  const alreadyEnrolled = eligible.length - enrolled;
+  const notMailable = members.length - eligible.length;
   const immediateSent = 0;
 
   return { enrolled, alreadyEnrolled, notMailable, immediateSent };
@@ -820,7 +845,7 @@ export async function enableSequenceForPlanPurchase(sequenceId: number): Promise
   if (sequence.triggerType !== 'plan_purchase') {
     throw new Error('Включение доступно только для цепочек «Покупка тарифа»');
   }
-  if (!sequence.triggerPlanCode) {
+  if (getSequenceTriggerPlanCodes(sequence).length === 0) {
     throw new Error('Укажите тариф для триггера');
   }
   if (sequence.launchedAt) throw new Error('Цепочка уже включена');
@@ -859,17 +884,22 @@ export async function enrollUserOnPlanPurchase(userId: number, planCodeLike: str
   const planCode = normalizePlanCode(planCodeLike);
   if (planCode === 'free') return 0;
 
+  // Сначала исключения: остановить цепочки, где купленный тариф в исключениях
+  await applyPlanPurchaseExclusions(userId, planCode);
+
   const sequences = await MailSequence.findAll({
     where: {
       isActive: true,
       triggerType: 'plan_purchase',
-      triggerPlanCode: planCode,
       launchedAt: { [Op.ne]: null },
     },
   });
 
   let enrolled = 0;
   for (const sequence of sequences) {
+    const triggerPlans = getSequenceTriggerPlanCodes(sequence);
+    if (!triggerPlans.includes(planCode)) continue;
+
     const result = await enrollUserInSequence(userId, sequence.id);
     if (result === 'enrolled') {
       enrolled++;
