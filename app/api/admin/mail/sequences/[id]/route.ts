@@ -73,6 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       excludePlanCodes,
       excludeAllPaidPlans,
       excludeListId,
+      launchListId,
       steps,
     } = body;
 
@@ -88,6 +89,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         excludePlanCodes !== undefined ||
         excludeAllPaidPlans !== undefined ||
         excludeListId !== undefined ||
+        launchListId !== undefined ||
         steps !== undefined
       ) {
         return NextResponse.json(
@@ -131,6 +133,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             { status: 400 }
           );
         }
+      }
+
+      const nextTrigger = String(updates.triggerType ?? sequence.triggerType);
+      if (nextTrigger === 'manual') {
+        const id =
+          launchListId !== undefined
+            ? launchListId != null && launchListId !== ''
+              ? Number(launchListId)
+              : null
+            : sequence.launchListId ?? null;
+        if (!id || !Number.isFinite(id) || id <= 0) {
+          return NextResponse.json({ error: 'Для триггера «По списку» выберите список' }, { status: 400 });
+        }
+        const list = await MailList.findByPk(id, { attributes: ['id'] });
+        if (!list) return NextResponse.json({ error: 'Список не найден' }, { status: 400 });
+        updates.launchListId = id;
+      } else if (triggerType !== undefined || launchListId !== undefined) {
+        updates.launchListId = null;
       }
 
       await sequence.update(updates);

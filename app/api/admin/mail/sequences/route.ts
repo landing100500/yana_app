@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
 
     const body = await request.json();
-    const { name, description, steps, ...rulesBody } = body;
+    const { name, description, steps, launchListId, ...rulesBody } = body;
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
@@ -71,6 +71,17 @@ export async function POST(request: NextRequest) {
       rules = normalizeSequenceRulesInput(rulesBody);
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Неверный триггер' }, { status: 400 });
+    }
+
+    let resolvedLaunchListId: number | null = null;
+    if (rules.triggerType === 'manual') {
+      const id = launchListId != null && launchListId !== '' ? Number(launchListId) : null;
+      if (!id || !Number.isFinite(id) || id <= 0) {
+        return NextResponse.json({ error: 'Для триггера «По списку» выберите список' }, { status: 400 });
+      }
+      const list = await MailList.findByPk(id, { attributes: ['id'] });
+      if (!list) return NextResponse.json({ error: 'Список не найден' }, { status: 400 });
+      resolvedLaunchListId = id;
     }
 
     const sequence = await MailSequence.create({
@@ -84,7 +95,7 @@ export async function POST(request: NextRequest) {
       excludeListId: rules.excludeListId,
       isActive: false,
       launchedAt: null,
-      launchListId: null,
+      launchListId: resolvedLaunchListId,
     });
 
     if (Array.isArray(steps)) {

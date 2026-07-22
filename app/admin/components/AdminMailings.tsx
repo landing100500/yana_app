@@ -225,6 +225,7 @@ export default function AdminMailings() {
     excludePlanCodes: PlanCode[];
     excludeAllPaidPlans: boolean;
     excludeListId: number | null;
+    launchListId: number | null;
     steps: SequenceStep[];
   } | null>(null);
 
@@ -237,6 +238,15 @@ export default function AdminMailings() {
   const [listMembersLoading, setListMembersLoading] = useState(false);
   const [sequenceLaunchLists, setSequenceLaunchLists] = useState<Record<number, number>>({});
   const [expandedSequenceId, setExpandedSequenceId] = useState<number | null>(null);
+  const [audiencePreview, setAudiencePreview] = useState<{
+    loading: boolean;
+    mailable: number | null;
+    total: number | null;
+    label?: string;
+  }>({ loading: false, mailable: null, total: null });
+  const [launchAudiencePreview, setLaunchAudiencePreview] = useState<
+    Record<number, { loading: boolean; mailable: number | null; total: number | null }>
+  >({});
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
   const [userSearchEmail, setUserSearchEmail] = useState('');
@@ -370,6 +380,92 @@ export default function AdminMailings() {
       loadCampaignOptions();
     }
   }, [tab, loadListOptions, loadCampaignOptions]);
+
+  const loadAudiencePreview = useCallback(async (audience: 'all' | 'list', listId?: number | null) => {
+    if (audience === 'list' && !listId) {
+      setAudiencePreview({ loading: false, mailable: null, total: null });
+      return;
+    }
+    setAudiencePreview((prev) => ({ ...prev, loading: true }));
+    try {
+      const params = new URLSearchParams({ audience });
+      if (audience === 'list' && listId) params.set('listId', String(listId));
+      const res = await fetch(`/api/admin/mail/audience-preview?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setAudiencePreview({ loading: false, mailable: null, total: null });
+        return;
+      }
+      setAudiencePreview({
+        loading: false,
+        mailable: Number(data.mailable) || 0,
+        total: Number(data.total) || 0,
+        label: data.label,
+      });
+    } catch {
+      setAudiencePreview({ loading: false, mailable: null, total: null });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!editingSequence) return;
+    if (editingSequence.triggerType === 'all_users') {
+      void loadAudiencePreview('all');
+    } else if (editingSequence.triggerType === 'manual') {
+      void loadAudiencePreview('list', editingSequence.launchListId);
+    } else {
+      setAudiencePreview({ loading: false, mailable: null, total: null });
+    }
+  }, [editingSequence?.triggerType, editingSequence?.launchListId, loadAudiencePreview]);
+
+  const loadLaunchAudiencePreview = useCallback(async (seqId: number, audience: 'all' | 'list', listId?: number) => {
+    setLaunchAudiencePreview((prev) => ({
+      ...prev,
+      [seqId]: { loading: true, mailable: prev[seqId]?.mailable ?? null, total: prev[seqId]?.total ?? null },
+    }));
+    try {
+      const params = new URLSearchParams({ audience });
+      if (audience === 'list' && listId) params.set('listId', String(listId));
+      const res = await fetch(`/api/admin/mail/audience-preview?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setLaunchAudiencePreview((prev) => ({
+          ...prev,
+          [seqId]: { loading: false, mailable: null, total: null },
+        }));
+        return;
+      }
+      setLaunchAudiencePreview((prev) => ({
+        ...prev,
+        [seqId]: {
+          loading: false,
+          mailable: Number(data.mailable) || 0,
+          total: Number(data.total) || 0,
+        },
+      }));
+    } catch {
+      setLaunchAudiencePreview((prev) => ({
+        ...prev,
+        [seqId]: { loading: false, mailable: null, total: null },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'sequences' || !sequencesLoaded) return;
+    void loadListOptions();
+    for (const seq of sequences) {
+      if (seq.launchedAt) continue;
+      if (seq.triggerType === 'all_users') {
+        void loadLaunchAudiencePreview(seq.id, 'all');
+      } else if ((seq.triggerType === 'manual' || seq.triggerType === 'none') && seq.launchListId) {
+        setSequenceLaunchLists((prev) =>
+          prev[seq.id] ? prev : { ...prev, [seq.id]: seq.launchListId as number }
+        );
+        void loadLaunchAudiencePreview(seq.id, 'list', seq.launchListId);
+      }
+    }
+  }, [tab, sequencesLoaded, sequences, loadListOptions, loadLaunchAudiencePreview]);
 
   useEffect(() => {
     if (tab === 'campaigns') loadCampaigns(campaignsPage);
@@ -717,9 +813,12 @@ export default function AdminMailings() {
       excludePlanCodes: [],
       excludeAllPaidPlans: false,
       excludeListId: null,
+      launchListId: null,
       steps: [{ ...emptyStep(), delayDays: 0 }],
     });
+    setAudiencePreview({ loading: false, mailable: null, total: null });
     setSpamResult(null);
+    void loadListOptions();
   };
 
   const sequenceTriggerLabel = (seq: MailSequence | { triggerType: string; triggerPlanCode?: string | null; triggerPlanCodes?: string | null }) => {
@@ -766,6 +865,10 @@ export default function AdminMailings() {
       setError('Выберите хотя бы один тариф для триггера');
       return;
     }
+    if (editingSequence.triggerType === 'manual' && !editingSequence.launchListId) {
+      setError('Выберите список для запуска цепочки');
+      return;
+    }
     setLoading(true);
     try {
       const isNew = !editingSequence.id;
@@ -788,8 +891,8 @@ export default function AdminMailings() {
     }
   };
 
-  const launchSequenceOnList = async (seq: MailSequence) => {
-    const listId = sequenceLaunchLists[seq.id];
+  const launchSequenceOnList = async (seq: MailSequence, listIdOverride?: number) => {
+    const listId = listIdOverride || sequenceLaunchLists[seq.id] || seq.launchListId;
     if (!listId) {
       setError('Выберите список для запуска');
       return;
@@ -1467,6 +1570,7 @@ export default function AdminMailings() {
                                 excludePlanCodes: parseSequenceExcludePlanCodes(data.sequence),
                                 excludeAllPaidPlans: !!data.sequence.excludeAllPaidPlans,
                                 excludeListId: data.sequence.excludeListId ?? null,
+                                launchListId: data.sequence.launchListId ?? null,
                                 steps: data.steps?.length
                                   ? data.steps.map((s: SequenceStep) => ({
                                       delayDays: s.delayDays,
@@ -1476,6 +1580,7 @@ export default function AdminMailings() {
                                     }))
                                   : [emptyStep()],
                               });
+                              void loadListOptions();
                             } finally {
                               setLoading(false);
                             }
@@ -1489,14 +1594,25 @@ export default function AdminMailings() {
                           <select
                             className={styles.selectInline}
                             value={
-                              sequenceLaunchLists[seq.id] ? String(sequenceLaunchLists[seq.id]) : ''
+                              sequenceLaunchLists[seq.id]
+                                ? String(sequenceLaunchLists[seq.id])
+                                : seq.launchListId
+                                  ? String(seq.launchListId)
+                                  : ''
                             }
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const listId = e.target.value ? Number(e.target.value) : 0;
                               setSequenceLaunchLists((prev) => ({
                                 ...prev,
-                                [seq.id]: e.target.value ? Number(e.target.value) : 0,
-                              }))
-                            }
+                                [seq.id]: listId,
+                              }));
+                              if (listId) void loadLaunchAudiencePreview(seq.id, 'list', listId);
+                            }}
+                            onFocus={() => {
+                              void loadListOptions();
+                              const listId = sequenceLaunchLists[seq.id] || seq.launchListId;
+                              if (listId) void loadLaunchAudiencePreview(seq.id, 'list', listId);
+                            }}
                           >
                             <option value="">Выберите список</option>
                             {listOptions.map((l) => (
@@ -1507,23 +1623,69 @@ export default function AdminMailings() {
                           </select>
                           <button
                             type="button"
+                            className={styles.btnSecondary}
+                            onClick={() => loadListOptions()}
+                          >
+                            Обновить списки
+                          </button>
+                          <button
+                            type="button"
                             className={styles.btnSmallPrimary}
-                            onClick={() => launchSequenceOnList(seq)}
-                            disabled={loading || !sequenceLaunchLists[seq.id]}
+                            onClick={() =>
+                              launchSequenceOnList(seq, sequenceLaunchLists[seq.id] || seq.launchListId || undefined)
+                            }
+                            disabled={loading || !(sequenceLaunchLists[seq.id] || seq.launchListId)}
                           >
                             Запустить по списку
                           </button>
+                          {listOptions.length === 0 && (
+                            <span className={styles.fieldError}>Списки не загрузились — нажмите «Обновить списки»</span>
+                          )}
+                          <span className={styles.hint}>
+                            {(() => {
+                              const preview = launchAudiencePreview[seq.id];
+                              if (preview?.loading) return 'Считаем получателей...';
+                              if (preview?.mailable != null) {
+                                return `Старт для ~${preview.mailable} чел.`;
+                              }
+                              return '';
+                            })()}
+                          </span>
                         </>
                       )}
                       {isManualAll && (
-                        <button
-                          type="button"
-                          className={styles.btnSmallPrimary}
-                          onClick={() => launchSequenceOnAll(seq)}
-                          disabled={loading}
-                        >
-                          Запустить для всех
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className={styles.btnSmallPrimary}
+                            onClick={() => launchSequenceOnAll(seq)}
+                            disabled={loading}
+                            onMouseEnter={() => {
+                              if (!launchAudiencePreview[seq.id]) {
+                                void loadLaunchAudiencePreview(seq.id, 'all');
+                              }
+                            }}
+                          >
+                            Запустить для всех
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.btnSecondary}
+                            onClick={() => loadLaunchAudiencePreview(seq.id, 'all')}
+                          >
+                            Посчитать аудиторию
+                          </button>
+                          <span className={styles.hint}>
+                            {(() => {
+                              const preview = launchAudiencePreview[seq.id];
+                              if (preview?.loading) return 'Считаем получателей...';
+                              if (preview?.mailable != null) {
+                                return `Старт для ~${preview.mailable} зарегистрированных`;
+                              }
+                              return 'Нажмите «Посчитать аудиторию»';
+                            })()}
+                          </span>
+                        </>
                       )}
                       {canEnableAuto && (
                         <button
@@ -1631,7 +1793,15 @@ export default function AdminMailings() {
                 <select
                   className={styles.select}
                   value={editingSequence.triggerType}
-                  onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
+                  onChange={(e) => {
+                    const triggerType = e.target.value;
+                    setEditingSequence({
+                      ...editingSequence,
+                      triggerType,
+                      launchListId: triggerType === 'manual' ? editingSequence.launchListId : null,
+                    });
+                    if (triggerType === 'manual') void loadListOptions();
+                  }}
                 >
                   <option value="manual">По списку (запуск один раз)</option>
                   <option value="all_users">Все зарегистрированные (запуск один раз)</option>
@@ -1639,6 +1809,60 @@ export default function AdminMailings() {
                   <option value="plan_purchase">Покупка тарифа</option>
                 </select>
               </label>
+              {editingSequence.triggerType === 'manual' && (
+                <label className={styles.label}>
+                  Список для запуска
+                  <div className={styles.row}>
+                    <select
+                      className={styles.select}
+                      value={editingSequence.launchListId != null ? String(editingSequence.launchListId) : ''}
+                      onChange={(e) =>
+                        setEditingSequence({
+                          ...editingSequence,
+                          launchListId: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                    >
+                      <option value="">Выберите список</option>
+                      {listOptions.map((l) => (
+                        <option key={l.id} value={String(l.id)}>
+                          {l.name} ({l.memberCount ?? 0} чел.)
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" className={styles.btnSecondary} onClick={() => loadListOptions()}>
+                      Обновить
+                    </button>
+                  </div>
+                  {listOptions.length === 0 && (
+                    <span className={styles.fieldError}>
+                      Списков нет. Создайте во вкладке «Списки», затем нажмите «Обновить».
+                    </span>
+                  )}
+                  <p className={styles.hint}>
+                    {audiencePreview.loading
+                      ? 'Считаем получателей...'
+                      : audiencePreview.mailable != null
+                        ? `Старт цепочки примерно для ${audiencePreview.mailable} пользователей (с email и подпиской${
+                            audiencePreview.total != null && audiencePreview.total !== audiencePreview.mailable
+                              ? `, в списке ${audiencePreview.total}`
+                              : ''
+                          })`
+                        : editingSequence.launchListId
+                          ? 'Не удалось посчитать аудиторию'
+                          : 'Выберите список — покажем число получателей'}
+                  </p>
+                </label>
+              )}
+              {editingSequence.triggerType === 'all_users' && (
+                <p className={styles.hint}>
+                  {audiencePreview.loading
+                    ? 'Считаем получателей...'
+                    : audiencePreview.mailable != null
+                      ? `Старт цепочки примерно для ${audiencePreview.mailable} зарегистрированных пользователей (с email и подпиской)`
+                      : 'Считаем аудиторию...'}
+                </p>
+              )}
               {editingSequence.triggerType === 'plan_purchase' && (
                 <div className={styles.label}>
                   Тарифы (можно несколько)
