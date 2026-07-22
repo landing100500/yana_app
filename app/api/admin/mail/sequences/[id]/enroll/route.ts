@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailSequence from '@/models/MailSequence';
-import { launchSequenceOnList } from '@/lib/mail-marketing';
+import { launchSequenceOnAllUsers, launchSequenceOnList } from '@/lib/mail-marketing';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +17,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const sequence = await MailSequence.findByPk(Number(id));
     if (!sequence) return NextResponse.json({ error: 'Цепочка не найдена' }, { status: 404 });
 
-    const { listId } = await request.json();
+    const body = await request.json();
+    const audience = body.audience === 'all' ? 'all' : 'list';
+
+    if (audience === 'all') {
+      const result = await launchSequenceOnAllUsers(sequence.id);
+      return NextResponse.json({ success: true, audience: 'all', ...result });
+    }
+
+    const listId = body.listId;
     if (!listId) {
-      return NextResponse.json({ error: 'Выберите список' }, { status: 400 });
+      return NextResponse.json({ error: 'Выберите список или «Все зарегистрированные»' }, { status: 400 });
     }
 
     const result = await launchSequenceOnList(Number(listId), sequence.id);
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, audience: 'list', ...result });
   } catch (error) {
     console.error('Mail sequence enroll error:', error);
     const message = error instanceof Error ? error.message : 'Не удалось запустить цепочку';

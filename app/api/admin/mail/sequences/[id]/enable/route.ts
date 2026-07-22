@@ -37,7 +37,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
 
     return NextResponse.json(
-      { error: 'Запустите цепочку по списку — кнопка «Запустить по списку»' },
+      { error: 'Запустите цепочку вручную — кнопка «Запустить» (список или все зарегистрированные)' },
       { status: 400 }
     );
   } catch (error) {

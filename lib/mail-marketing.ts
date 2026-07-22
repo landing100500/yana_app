@@ -762,30 +762,34 @@ export interface LaunchSequenceResult {
   immediateSent: number;
 }
 
-export async function launchSequenceOnList(listId: number, sequenceId: number): Promise<LaunchSequenceResult> {
-  const sequence = await MailSequence.findByPk(sequenceId);
-  if (!sequence) throw new Error('Цепочка не найдена');
-  if (sequence.launchedAt) throw new Error('Цепочка уже запущена');
-  if (sequence.triggerType === 'new_user' || sequence.triggerType === 'plan_purchase') {
-    throw new Error('Для автотриггера используйте кнопку «Включить»');
-  }
+async function resolveRegisteredUserIds(): Promise<number[]> {
+  const users = await User.findAll({
+    where: {
+      email: { [Op.ne]: null },
+      password: { [Op.ne]: null },
+    },
+    attributes: ['id'],
+  });
+  return users.map((u) => u.id);
+}
 
-  const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
-  if (stepCount === 0) throw new Error('Добавьте хотя бы одно письмо в цепочку');
-
-  const members = await MailListMember.findAll({ where: { listId } });
-  if (members.length === 0) throw new Error('Список пуст');
+async function launchSequenceForUserIds(
+  sequence: MailSequence,
+  userIds: number[],
+  launchListId: number | null
+): Promise<LaunchSequenceResult> {
+  if (userIds.length === 0) throw new Error('Нет пользователей для запуска');
 
   const steps = await MailSequenceStep.findAll({
-    where: { sequenceId },
+    where: { sequenceId: sequence.id },
     order: [['stepOrder', 'ASC']],
   });
   const firstStep = steps[0];
   const nextSendAt = calculateNextSendAt(new Date(), firstStep);
 
-  await sequence.update({ isActive: true, launchedAt: new Date(), launchListId: listId });
+  await sequence.update({ isActive: true, launchedAt: new Date(), launchListId });
 
-  const mailable = await filterMailableRecipients(members.map((m) => m.userId));
+  const mailable = await filterMailableRecipients(userIds);
   const eligible: Array<{ userId: number; email: string }> = [];
   for (const m of mailable) {
     if (!(await isUserExcludedFromSequence(m.userId, sequence))) {
@@ -794,7 +798,7 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   }
 
   const existing = await MailSequenceEnrollment.findAll({
-    where: { sequenceId, userId: eligible.map((m) => m.userId) },
+    where: { sequenceId: sequence.id, userId: eligible.map((m) => m.userId) },
     attributes: ['userId'],
   });
   const existingSet = new Set(existing.map((e) => e.userId));
@@ -802,7 +806,7 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   const enrollRows = eligible
     .filter((m) => !existingSet.has(m.userId))
     .map((m) => ({
-      sequenceId,
+      sequenceId: sequence.id,
       userId: m.userId,
       currentStepOrder: 0,
       nextSendAt,
@@ -818,11 +822,45 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
     enrolled += created.length;
   }
 
-  const alreadyEnrolled = eligible.length - enrolled;
-  const notMailable = members.length - eligible.length;
-  const immediateSent = 0;
+  return {
+    enrolled,
+    alreadyEnrolled: eligible.length - enrolled,
+    notMailable: userIds.length - eligible.length,
+    immediateSent: 0,
+  };
+}
 
-  return { enrolled, alreadyEnrolled, notMailable, immediateSent };
+async function assertManualSequenceReady(sequenceId: number): Promise<MailSequence> {
+  const sequence = await MailSequence.findByPk(sequenceId);
+  if (!sequence) throw new Error('Цепочка не найдена');
+  if (sequence.launchedAt) throw new Error('Цепочка уже запущена');
+  if (sequence.triggerType === 'new_user' || sequence.triggerType === 'plan_purchase') {
+    throw new Error('Для автотриггера используйте кнопку «Включить»');
+  }
+
+  const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
+  if (stepCount === 0) throw new Error('Добавьте хотя бы одно письмо в цепочку');
+
+  return sequence;
+}
+
+export async function launchSequenceOnList(listId: number, sequenceId: number): Promise<LaunchSequenceResult> {
+  const sequence = await assertManualSequenceReady(sequenceId);
+  const members = await MailListMember.findAll({ where: { listId }, attributes: ['userId'] });
+  if (members.length === 0) throw new Error('Список пуст');
+  return launchSequenceForUserIds(
+    sequence,
+    members.map((m) => m.userId),
+    listId
+  );
+}
+
+/** Одноразовый запуск цепочки на всех зарегистрированных (email + пароль), как audienceType=all в рассылках. */
+export async function launchSequenceOnAllUsers(sequenceId: number): Promise<LaunchSequenceResult> {
+  const sequence = await assertManualSequenceReady(sequenceId);
+  const userIds = await resolveRegisteredUserIds();
+  if (userIds.length === 0) throw new Error('Нет зарегистрированных пользователей');
+  return launchSequenceForUserIds(sequence, userIds, null);
 }
 
 export async function enableSequenceForNewUsers(sequenceId: number): Promise<void> {

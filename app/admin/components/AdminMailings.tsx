@@ -235,7 +235,7 @@ export default function AdminMailings() {
   const [listMembersTotalPages, setListMembersTotalPages] = useState(1);
   const [listMembersTotal, setListMembersTotal] = useState(0);
   const [listMembersLoading, setListMembersLoading] = useState(false);
-  const [sequenceLaunchLists, setSequenceLaunchLists] = useState<Record<number, number>>({});
+  const [sequenceLaunchTargets, setSequenceLaunchTargets] = useState<Record<number, 'all' | number>>({});
   const [expandedSequenceId, setExpandedSequenceId] = useState<number | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
@@ -729,8 +729,8 @@ export default function AdminMailings() {
       const titles = codes.map((c) => PLAN_OPTIONS.find((p) => p.code === c)?.title || c);
       return `Покупка тарифа: ${titles.length > 0 ? titles.join(', ') : '—'}`;
     }
-    if (seq.triggerType === 'manual') return 'По списку (один раз)';
-    return 'По списку (один раз)';
+    if (seq.triggerType === 'manual') return 'Вручную (список или все)';
+    return 'Вручную (список или все)';
   };
 
   const sequenceExclusionLabel = (seq: MailSequence) => {
@@ -787,21 +787,24 @@ export default function AdminMailings() {
     }
   };
 
-  const launchSequenceOnList = async (seq: MailSequence) => {
-    const listId = sequenceLaunchLists[seq.id];
-    if (!listId) {
-      setError('Выберите список для запуска');
+  const launchSequence = async (seq: MailSequence) => {
+    const target = sequenceLaunchTargets[seq.id];
+    if (!target) {
+      setError('Выберите аудиторию для запуска');
       return;
     }
-    if (!confirm(`Запустить цепочку «${seq.name}» для списка?\n\nЭто действие одноразовое — повторно запустить нельзя.`)) {
-      return;
-    }
+    const isAll = target === 'all';
+    const confirmMsg = isAll
+      ? `Запустить цепочку «${seq.name}» для всех зарегистрированных пользователей?\n\nЭто действие одноразовое — повторно запустить нельзя.`
+      : `Запустить цепочку «${seq.name}» для списка?\n\nЭто действие одноразовое — повторно запустить нельзя.`;
+    if (!confirm(confirmMsg)) return;
+
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/mail/sequences/${seq.id}/enroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listId }),
+        body: JSON.stringify(isAll ? { audience: 'all' } : { audience: 'list', listId: target }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -811,7 +814,7 @@ export default function AdminMailings() {
       const parts = [
         `добавлено: ${data.enrolled}`,
         data.alreadyEnrolled ? `уже были: ${data.alreadyEnrolled}` : '',
-        data.notMailable ? `без email: ${data.notMailable}` : '',
+        data.notMailable ? `без email / исключения: ${data.notMailable}` : '',
         data.immediateSent ? `отправлено сейчас: ${data.immediateSent}` : '',
       ].filter(Boolean);
       showMsg(`Цепочка запущена (${parts.join(', ')})`);
@@ -1348,9 +1351,9 @@ export default function AdminMailings() {
                 </button>
               </div>
               <p className={styles.hint}>
-                1) Создайте цепочку и сохраните черновик. 2) Запустите: по списку, для новых пользователей или при
-                покупке тарифа. 3) Следите за статусами. Повторный запуск невозможен — только приостановка или
-                удаление.
+                1) Создайте цепочку и сохраните черновик. 2) Запустите: по списку, для всех зарегистрированных,
+                для новых пользователей или при покупке тарифа. 3) Следите за статусами. Повторный запуск
+                невозможен — только приостановка или удаление.
               </p>
               {!sequencesLoaded ? (
                 <div className={styles.tabLoading}>Загрузка цепочек...</div>
@@ -1378,6 +1381,9 @@ export default function AdminMailings() {
                         <> · Запущена {new Date(seq.launchedAt).toLocaleString('ru-RU')}</>
                       )}
                       {seq.launchListName && <> · Список: {seq.launchListName}</>}
+                      {isLaunched &&
+                        !seq.launchListName &&
+                        !isAutoTrigger && <> · Аудитория: все зарегистрированные</>}
                     </p>
                     {sequenceExclusionLabel(seq) && (
                       <p className={styles.hint}>Исключения: {sequenceExclusionLabel(seq)}</p>
@@ -1450,16 +1456,25 @@ export default function AdminMailings() {
                           <select
                             className={styles.selectInline}
                             value={
-                              sequenceLaunchLists[seq.id] ? String(sequenceLaunchLists[seq.id]) : ''
+                              sequenceLaunchTargets[seq.id] === 'all'
+                                ? 'all'
+                                : sequenceLaunchTargets[seq.id]
+                                  ? String(sequenceLaunchTargets[seq.id])
+                                  : ''
                             }
-                            onChange={(e) =>
-                              setSequenceLaunchLists((prev) => ({
-                                ...prev,
-                                [seq.id]: e.target.value ? Number(e.target.value) : 0,
-                              }))
-                            }
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setSequenceLaunchTargets((prev) => {
+                                const next = { ...prev };
+                                if (!v) delete next[seq.id];
+                                else if (v === 'all') next[seq.id] = 'all';
+                                else next[seq.id] = Number(v);
+                                return next;
+                              });
+                            }}
                           >
-                            <option value="">Список для запуска</option>
+                            <option value="">Аудитория для запуска</option>
+                            <option value="all">Все зарегистрированные</option>
                             {listOptions.map((l) => (
                               <option key={l.id} value={String(l.id)}>
                                 {l.name} ({l.memberCount ?? 0})
@@ -1469,10 +1484,10 @@ export default function AdminMailings() {
                           <button
                             type="button"
                             className={styles.btnSmallPrimary}
-                            onClick={() => launchSequenceOnList(seq)}
-                            disabled={loading || !sequenceLaunchLists[seq.id]}
+                            onClick={() => launchSequence(seq)}
+                            disabled={loading || !sequenceLaunchTargets[seq.id]}
                           >
-                            Запустить по списку
+                            Запустить
                           </button>
                         </>
                       )}
@@ -1584,7 +1599,7 @@ export default function AdminMailings() {
                   value={editingSequence.triggerType}
                   onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
                 >
-                  <option value="manual">По списку (запуск один раз вручную)</option>
+                  <option value="manual">Вручную (список или все зарегистрированные)</option>
                   <option value="new_user">Новые пользователи (при регистрации)</option>
                   <option value="plan_purchase">Покупка тарифа</option>
                 </select>
@@ -1669,8 +1684,8 @@ export default function AdminMailings() {
                 </label>
               </div>
               <p className={styles.hint}>
-                Сохраните черновик, затем на экране цепочек нажмите «Запустить по списку», «Включить для новых» или
-                «Включить для тарифа». Активация происходит при запуске.
+                Сохраните черновик, затем на экране цепочек нажмите «Запустить» (список или все зарегистрированные),
+                «Включить для новых» или «Включить для тарифа». Активация происходит при запуске.
               </p>
               {editingSequence.steps.map((step, idx) => (
                 <div key={idx} className={styles.stepCard}>
