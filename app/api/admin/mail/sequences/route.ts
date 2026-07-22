@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const sequence = await MailSequence.create({
       name: String(name),
       description: description ? String(description) : null,
-      triggerType: rules.triggerType as 'manual' | 'new_user' | 'none' | 'plan_purchase',
+      triggerType: rules.triggerType as 'manual' | 'all_users' | 'new_user' | 'none' | 'plan_purchase',
       triggerPlanCode: rules.triggerPlanCode,
       triggerPlanCodes: rules.triggerPlanCodes,
       excludePlanCodes: rules.excludePlanCodes,

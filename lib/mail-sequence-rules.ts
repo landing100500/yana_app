@@ -147,6 +147,10 @@ export function normalizeSequenceRulesInput(body: {
   excludeListId: number | null;
 } {
   const triggerType = body.triggerType || 'none';
+  const allowed = new Set(['none', 'manual', 'all_users', 'new_user', 'plan_purchase']);
+  if (!allowed.has(triggerType)) {
+    throw new Error('Неизвестный тип триггера');
+  }
 
   let triggerPlanCodes: string | null = null;
   let triggerPlanCode: string | null = null;

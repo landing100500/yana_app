@@ -830,12 +830,20 @@ async function launchSequenceForUserIds(
   };
 }
 
-async function assertManualSequenceReady(sequenceId: number): Promise<MailSequence> {
+async function assertOneShotSequenceReady(
+  sequenceId: number,
+  expected: 'manual' | 'all_users'
+): Promise<MailSequence> {
   const sequence = await MailSequence.findByPk(sequenceId);
   if (!sequence) throw new Error('Цепочка не найдена');
   if (sequence.launchedAt) throw new Error('Цепочка уже запущена');
-  if (sequence.triggerType === 'new_user' || sequence.triggerType === 'plan_purchase') {
-    throw new Error('Для автотриггера используйте кнопку «Включить»');
+
+  const type = sequence.triggerType === 'none' ? 'manual' : sequence.triggerType;
+  if (type !== expected) {
+    if (expected === 'manual') {
+      throw new Error('Для запуска по списку выберите триггер «По списку»');
+    }
+    throw new Error('Для запуска на всех выберите триггер «Все зарегистрированные»');
   }
 
   const stepCount = await MailSequenceStep.count({ where: { sequenceId } });
@@ -845,7 +853,7 @@ async function assertManualSequenceReady(sequenceId: number): Promise<MailSequen
 }
 
 export async function launchSequenceOnList(listId: number, sequenceId: number): Promise<LaunchSequenceResult> {
-  const sequence = await assertManualSequenceReady(sequenceId);
+  const sequence = await assertOneShotSequenceReady(sequenceId, 'manual');
   const members = await MailListMember.findAll({ where: { listId }, attributes: ['userId'] });
   if (members.length === 0) throw new Error('Список пуст');
   return launchSequenceForUserIds(
@@ -855,9 +863,9 @@ export async function launchSequenceOnList(listId: number, sequenceId: number): 
   );
 }
 
-/** Одноразовый запуск цепочки на всех зарегистрированных (email + пароль), как audienceType=all в рассылках. */
+/** Одноразовый запуск цепочки на всех зарегистрированных (email + пароль). */
 export async function launchSequenceOnAllUsers(sequenceId: number): Promise<LaunchSequenceResult> {
-  const sequence = await assertManualSequenceReady(sequenceId);
+  const sequence = await assertOneShotSequenceReady(sequenceId, 'all_users');
   const userIds = await resolveRegisteredUserIds();
   if (userIds.length === 0) throw new Error('Нет зарегистрированных пользователей');
   return launchSequenceForUserIds(sequence, userIds, null);

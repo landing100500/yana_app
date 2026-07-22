@@ -19,15 +19,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = await request.json();
     const audience = body.audience === 'all' ? 'all' : 'list';
+    const trigger = sequence.triggerType === 'none' ? 'manual' : sequence.triggerType;
 
     if (audience === 'all') {
+      if (trigger !== 'all_users') {
+        return NextResponse.json(
+          { error: 'Для запуска на всех выберите триггер «Все зарегистрированные»' },
+          { status: 400 }
+        );
+      }
       const result = await launchSequenceOnAllUsers(sequence.id);
       return NextResponse.json({ success: true, audience: 'all', ...result });
     }
 
+    if (trigger !== 'manual') {
+      return NextResponse.json(
+        { error: 'Для запуска по списку выберите триггер «По списку»' },
+        { status: 400 }
+      );
+    }
+
     const listId = body.listId;
     if (!listId) {
-      return NextResponse.json({ error: 'Выберите список или «Все зарегистрированные»' }, { status: 400 });
+      return NextResponse.json({ error: 'Выберите список' }, { status: 400 });
     }
 
     const result = await launchSequenceOnList(Number(listId), sequence.id);

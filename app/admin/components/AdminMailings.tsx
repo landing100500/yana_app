@@ -235,7 +235,7 @@ export default function AdminMailings() {
   const [listMembersTotalPages, setListMembersTotalPages] = useState(1);
   const [listMembersTotal, setListMembersTotal] = useState(0);
   const [listMembersLoading, setListMembersLoading] = useState(false);
-  const [sequenceLaunchTargets, setSequenceLaunchTargets] = useState<Record<number, 'all' | number>>({});
+  const [sequenceLaunchLists, setSequenceLaunchLists] = useState<Record<number, number>>({});
   const [expandedSequenceId, setExpandedSequenceId] = useState<number | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
@@ -729,8 +729,9 @@ export default function AdminMailings() {
       const titles = codes.map((c) => PLAN_OPTIONS.find((p) => p.code === c)?.title || c);
       return `Покупка тарифа: ${titles.length > 0 ? titles.join(', ') : '—'}`;
     }
-    if (seq.triggerType === 'manual') return 'Вручную (список или все)';
-    return 'Вручную (список или все)';
+    if (seq.triggerType === 'all_users') return 'Все зарегистрированные (один раз)';
+    if (seq.triggerType === 'manual') return 'По списку (один раз)';
+    return 'По списку (один раз)';
   };
 
   const sequenceExclusionLabel = (seq: MailSequence) => {
@@ -787,24 +788,21 @@ export default function AdminMailings() {
     }
   };
 
-  const launchSequence = async (seq: MailSequence) => {
-    const target = sequenceLaunchTargets[seq.id];
-    if (!target) {
-      setError('Выберите аудиторию для запуска');
+  const launchSequenceOnList = async (seq: MailSequence) => {
+    const listId = sequenceLaunchLists[seq.id];
+    if (!listId) {
+      setError('Выберите список для запуска');
       return;
     }
-    const isAll = target === 'all';
-    const confirmMsg = isAll
-      ? `Запустить цепочку «${seq.name}» для всех зарегистрированных пользователей?\n\nЭто действие одноразовое — повторно запустить нельзя.`
-      : `Запустить цепочку «${seq.name}» для списка?\n\nЭто действие одноразовое — повторно запустить нельзя.`;
-    if (!confirm(confirmMsg)) return;
-
+    if (!confirm(`Запустить цепочку «${seq.name}» для выбранного списка?\n\nЭто действие одноразовое — повторно запустить нельзя.`)) {
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/mail/sequences/${seq.id}/enroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isAll ? { audience: 'all' } : { audience: 'list', listId: target }),
+        body: JSON.stringify({ audience: 'list', listId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -815,7 +813,38 @@ export default function AdminMailings() {
         `добавлено: ${data.enrolled}`,
         data.alreadyEnrolled ? `уже были: ${data.alreadyEnrolled}` : '',
         data.notMailable ? `без email / исключения: ${data.notMailable}` : '',
-        data.immediateSent ? `отправлено сейчас: ${data.immediateSent}` : '',
+      ].filter(Boolean);
+      showMsg(`Цепочка запущена (${parts.join(', ')})`);
+      await loadSequences(sequencesPage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const launchSequenceOnAll = async (seq: MailSequence) => {
+    if (
+      !confirm(
+        `Запустить цепочку «${seq.name}» для всех зарегистрированных пользователей?\n\nЭто действие одноразовое — повторно запустить нельзя.`
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences/${seq.id}/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audience: 'all' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Ошибка запуска');
+        return;
+      }
+      const parts = [
+        `добавлено: ${data.enrolled}`,
+        data.alreadyEnrolled ? `уже были: ${data.alreadyEnrolled}` : '',
+        data.notMailable ? `без email / исключения: ${data.notMailable}` : '',
       ].filter(Boolean);
       showMsg(`Цепочка запущена (${parts.join(', ')})`);
       await loadSequences(sequencesPage);
@@ -1365,7 +1394,11 @@ export default function AdminMailings() {
                 const stats = seq.stats;
                 const isLaunched = !!seq.launchedAt;
                 const isAutoTrigger = seq.triggerType === 'new_user' || seq.triggerType === 'plan_purchase';
-                const canLaunchByList = !isLaunched && !isAutoTrigger && (seq.steps?.length || 0) > 0;
+                const isManualList =
+                  !isLaunched &&
+                  (seq.triggerType === 'manual' || seq.triggerType === 'none') &&
+                  (seq.steps?.length || 0) > 0;
+                const isManualAll = !isLaunched && seq.triggerType === 'all_users' && (seq.steps?.length || 0) > 0;
                 const canEnableAuto = !isLaunched && isAutoTrigger && (seq.steps?.length || 0) > 0;
                 const isExpanded = expandedSequenceId === seq.id;
 
@@ -1383,7 +1416,7 @@ export default function AdminMailings() {
                       {seq.launchListName && <> · Список: {seq.launchListName}</>}
                       {isLaunched &&
                         !seq.launchListName &&
-                        !isAutoTrigger && <> · Аудитория: все зарегистрированные</>}
+                        seq.triggerType === 'all_users' && <> · Аудитория: все зарегистрированные</>}
                     </p>
                     {sequenceExclusionLabel(seq) && (
                       <p className={styles.hint}>Исключения: {sequenceExclusionLabel(seq)}</p>
@@ -1451,30 +1484,21 @@ export default function AdminMailings() {
                           Редактировать
                         </button>
                       )}
-                      {canLaunchByList && (
+                      {isManualList && (
                         <>
                           <select
                             className={styles.selectInline}
                             value={
-                              sequenceLaunchTargets[seq.id] === 'all'
-                                ? 'all'
-                                : sequenceLaunchTargets[seq.id]
-                                  ? String(sequenceLaunchTargets[seq.id])
-                                  : ''
+                              sequenceLaunchLists[seq.id] ? String(sequenceLaunchLists[seq.id]) : ''
                             }
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setSequenceLaunchTargets((prev) => {
-                                const next = { ...prev };
-                                if (!v) delete next[seq.id];
-                                else if (v === 'all') next[seq.id] = 'all';
-                                else next[seq.id] = Number(v);
-                                return next;
-                              });
-                            }}
+                            onChange={(e) =>
+                              setSequenceLaunchLists((prev) => ({
+                                ...prev,
+                                [seq.id]: e.target.value ? Number(e.target.value) : 0,
+                              }))
+                            }
                           >
-                            <option value="">Аудитория для запуска</option>
-                            <option value="all">Все зарегистрированные</option>
+                            <option value="">Выберите список</option>
                             {listOptions.map((l) => (
                               <option key={l.id} value={String(l.id)}>
                                 {l.name} ({l.memberCount ?? 0})
@@ -1484,12 +1508,22 @@ export default function AdminMailings() {
                           <button
                             type="button"
                             className={styles.btnSmallPrimary}
-                            onClick={() => launchSequence(seq)}
-                            disabled={loading || !sequenceLaunchTargets[seq.id]}
+                            onClick={() => launchSequenceOnList(seq)}
+                            disabled={loading || !sequenceLaunchLists[seq.id]}
                           >
-                            Запустить
+                            Запустить по списку
                           </button>
                         </>
+                      )}
+                      {isManualAll && (
+                        <button
+                          type="button"
+                          className={styles.btnSmallPrimary}
+                          onClick={() => launchSequenceOnAll(seq)}
+                          disabled={loading}
+                        >
+                          Запустить для всех
+                        </button>
                       )}
                       {canEnableAuto && (
                         <button
@@ -1599,7 +1633,8 @@ export default function AdminMailings() {
                   value={editingSequence.triggerType}
                   onChange={(e) => setEditingSequence({ ...editingSequence, triggerType: e.target.value })}
                 >
-                  <option value="manual">Вручную (список или все зарегистрированные)</option>
+                  <option value="manual">По списку (запуск один раз)</option>
+                  <option value="all_users">Все зарегистрированные (запуск один раз)</option>
                   <option value="new_user">Новые пользователи (при регистрации)</option>
                   <option value="plan_purchase">Покупка тарифа</option>
                 </select>
@@ -1684,7 +1719,7 @@ export default function AdminMailings() {
                 </label>
               </div>
               <p className={styles.hint}>
-                Сохраните черновик, затем на экране цепочек нажмите «Запустить» (список или все зарегистрированные),
+                Сохраните черновик, затем на экране цепочек нажмите «Запустить по списку», «Запустить для всех»,
                 «Включить для новых» или «Включить для тарифа». Активация происходит при запуске.
               </p>
               {editingSequence.steps.map((step, idx) => (

@@ -1,7 +1,7 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/lib/db';
 
-export type MailSequenceTriggerType = 'new_user' | 'manual' | 'none' | 'plan_purchase';
+export type MailSequenceTriggerType = 'new_user' | 'manual' | 'all_users' | 'none' | 'plan_purchase';
 
 interface MailSequenceAttributes {
   id: number;
