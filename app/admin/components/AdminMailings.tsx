@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import DatePicker from '@/components/ui/DatePicker';
 import EmailEditor from './EmailEditor';
+import AdminPagination from './AdminPagination';
 import styles from './AdminMailings.module.css';
 import { PLAN_CONFIGS, type PlanCode } from '@/lib/subscription';
 
@@ -193,8 +194,25 @@ export default function AdminMailings() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [campaigns, setCampaigns] = useState<MailCampaign[]>([]);
+  const [campaignOptions, setCampaignOptions] = useState<Array<Pick<MailCampaign, 'id' | 'name' | 'sentCount' | 'status'>>>([]);
+  const [campaignsPage, setCampaignsPage] = useState(1);
+  const [campaignsTotalPages, setCampaignsTotalPages] = useState(1);
+  const [campaignsTotal, setCampaignsTotal] = useState(0);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [campaignsLoaded, setCampaignsLoaded] = useState(false);
   const [lists, setLists] = useState<MailList[]>([]);
+  const [listOptions, setListOptions] = useState<MailList[]>([]);
+  const [listsPage, setListsPage] = useState(1);
+  const [listsTotalPages, setListsTotalPages] = useState(1);
+  const [listsTotal, setListsTotal] = useState(0);
+  const [listsLoading, setListsLoading] = useState(false);
+  const [listsLoaded, setListsLoaded] = useState(false);
   const [sequences, setSequences] = useState<MailSequence[]>([]);
+  const [sequencesPage, setSequencesPage] = useState(1);
+  const [sequencesTotalPages, setSequencesTotalPages] = useState(1);
+  const [sequencesTotal, setSequencesTotal] = useState(0);
+  const [sequencesLoading, setSequencesLoading] = useState(false);
+  const [sequencesLoaded, setSequencesLoaded] = useState(false);
   const [footerHtml, setFooterHtml] = useState('');
 
   const [editingCampaign, setEditingCampaign] = useState<Partial<MailCampaign> | null>(null);
@@ -213,12 +231,19 @@ export default function AdminMailings() {
   const [newListName, setNewListName] = useState('');
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [listMembers, setListMembers] = useState<Array<{ userId: number; user?: { email?: string; name?: string } }>>([]);
+  const [listMembersPage, setListMembersPage] = useState(1);
+  const [listMembersTotalPages, setListMembersTotalPages] = useState(1);
+  const [listMembersTotal, setListMembersTotal] = useState(0);
+  const [listMembersLoading, setListMembersLoading] = useState(false);
   const [sequenceLaunchLists, setSequenceLaunchLists] = useState<Record<number, number>>({});
   const [expandedSequenceId, setExpandedSequenceId] = useState<number | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
   const [userSearchEmail, setUserSearchEmail] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<SearchUser[]>([]);
+  const [userSearchOffset, setUserSearchOffset] = useState(0);
+  const [userSearchTotal, setUserSearchTotal] = useState(0);
+  const USER_SEARCH_LIMIT = 50;
   const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set());
   const [bulkFromListId, setBulkFromListId] = useState<number | ''>('');
   const [bulkPlanCode, setBulkPlanCode] = useState<PlanCode>('free');
@@ -252,27 +277,70 @@ export default function AdminMailings() {
     setTimeout(() => setMessage(null), 4000);
   };
 
-  const loadCampaigns = useCallback(async () => {
-    const res = await fetch('/api/admin/mail/campaigns');
+  const loadCampaignOptions = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/campaigns?forSelect=1');
     const data = await res.json();
-    if (res.ok) setCampaigns(data.campaigns || []);
+    if (res.ok) setCampaignOptions(data.campaigns || []);
   }, []);
 
-  const loadLists = useCallback(async () => {
-    const res = await fetch('/api/admin/mail/lists');
-    const data = await res.json();
-    if (res.ok) {
-      setLists(data.lists || []);
-    } else {
-      setError(data.error || 'Не удалось загрузить списки');
+  const loadCampaigns = useCallback(async (page = campaignsPage) => {
+    setCampaignsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/campaigns?page=${page}&limit=30`);
+      const data = await res.json();
+      if (res.ok) {
+        setCampaigns(data.campaigns || []);
+        setCampaignsPage(data.page || page);
+        setCampaignsTotalPages(data.totalPages || 1);
+        setCampaignsTotal(data.total || 0);
+      }
+    } finally {
+      setCampaignsLoading(false);
+      setCampaignsLoaded(true);
     }
+  }, [campaignsPage]);
+
+  const loadListOptions = useCallback(async () => {
+    const res = await fetch('/api/admin/mail/lists?forSelect=1');
+    const data = await res.json();
+    if (res.ok) setListOptions(data.lists || []);
   }, []);
 
-  const loadSequences = useCallback(async () => {
-    const res = await fetch('/api/admin/mail/sequences');
-    const data = await res.json();
-    if (res.ok) setSequences(data.sequences || []);
-  }, []);
+  const loadLists = useCallback(async (page = listsPage) => {
+    setListsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/lists?page=${page}&limit=30`);
+      const data = await res.json();
+      if (res.ok) {
+        setLists(data.lists || []);
+        setListsPage(data.page || page);
+        setListsTotalPages(data.totalPages || 1);
+        setListsTotal(data.total || 0);
+      } else {
+        setError(data.error || 'Не удалось загрузить списки');
+      }
+    } finally {
+      setListsLoading(false);
+      setListsLoaded(true);
+    }
+  }, [listsPage]);
+
+  const loadSequences = useCallback(async (page = sequencesPage) => {
+    setSequencesLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/sequences?page=${page}&limit=20`);
+      const data = await res.json();
+      if (res.ok) {
+        setSequences(data.sequences || []);
+        setSequencesPage(data.page || page);
+        setSequencesTotalPages(data.totalPages || 1);
+        setSequencesTotal(data.total || 0);
+      }
+    } finally {
+      setSequencesLoading(false);
+      setSequencesLoaded(true);
+    }
+  }, [sequencesPage]);
 
   const loadFooter = useCallback(async () => {
     const res = await fetch('/api/admin/mail/footer');
@@ -284,13 +352,13 @@ export default function AdminMailings() {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadCampaigns(), loadLists(), loadSequences(), loadFooter()]);
+      await Promise.all([loadCampaignOptions(), loadListOptions(), loadFooter()]);
     } catch {
       setError('Ошибка загрузки данных');
     } finally {
       setLoading(false);
     }
-  }, [loadCampaigns, loadLists, loadSequences, loadFooter]);
+  }, [loadCampaignOptions, loadListOptions, loadFooter]);
 
   useEffect(() => {
     loadAll();
@@ -298,21 +366,47 @@ export default function AdminMailings() {
 
   useEffect(() => {
     if (tab === 'campaigns' || tab === 'sequences' || tab === 'lists') {
-      loadLists();
+      loadListOptions();
+      loadCampaignOptions();
     }
-  }, [tab, loadLists]);
+  }, [tab, loadListOptions, loadCampaignOptions]);
 
-  const loadListMembers = async (listId: number) => {
-    const res = await fetch(`/api/admin/mail/lists/${listId}/members`);
-    const data = await res.json();
-    if (res.ok) {
-      setListMembers(data.members || []);
-      setSelectedListId(listId);
+  useEffect(() => {
+    if (tab === 'campaigns') loadCampaigns(campaignsPage);
+  }, [tab, campaignsPage, loadCampaigns]);
+
+  useEffect(() => {
+    if (tab === 'sequences') loadSequences(sequencesPage);
+  }, [tab, sequencesPage, loadSequences]);
+
+  useEffect(() => {
+    if (tab === 'lists') loadLists(listsPage);
+  }, [tab, listsPage, loadLists]);
+
+  const loadListMembers = async (listId: number, page = 1) => {
+    setListMembersLoading(true);
+    try {
+      const res = await fetch(`/api/admin/mail/lists/${listId}/members?page=${page}&limit=50`);
+      const data = await res.json();
+      if (res.ok) {
+        setListMembers(data.members || []);
+        setSelectedListId(listId);
+        setListMembersPage(data.page || page);
+        setListMembersTotalPages(data.totalPages || 1);
+        setListMembersTotal(data.total || 0);
+      }
+    } finally {
+      setListMembersLoading(false);
     }
   };
 
+  const selectList = (listId: number) => {
+    setListMembersPage(1);
+    void loadListMembers(listId, 1);
+  };
+
   const startNewCampaign = async () => {
-    await loadLists();
+    await loadListOptions();
     setEditingCampaign({
       name: '',
       subject: '',
@@ -369,7 +463,7 @@ export default function AdminMailings() {
       const saved = await saveCampaignDraft();
       if (!saved) return;
       setEditingCampaign(null);
-      await loadCampaigns();
+      await loadCampaigns(campaignsPage);
       showMsg('Рассылка сохранена');
     } finally {
       setLoading(false);
@@ -405,7 +499,7 @@ export default function AdminMailings() {
         return;
       }
       setEditingCampaign(null);
-      await loadCampaigns();
+      await loadCampaigns(campaignsPage);
       if (schedule) {
         showMsg(`Отправка запланирована на ${new Date(campaignScheduledAt).toLocaleString('ru-RU')}`);
       } else {
@@ -431,7 +525,7 @@ export default function AdminMailings() {
         return;
       }
       showMsg(`В очередь добавлено: ${data.queued} писем`);
-      await loadCampaigns();
+      await loadCampaigns(campaignsPage);
     } finally {
       setLoading(false);
     }
@@ -443,7 +537,7 @@ export default function AdminMailings() {
     const data = await res.json();
     if (res.ok) {
       showMsg('Отправка отменена, рассылка в черновике');
-      await loadCampaigns();
+      await loadCampaigns(campaignsPage);
     } else {
       setError(data.error || 'Ошибка');
     }
@@ -470,26 +564,31 @@ export default function AdminMailings() {
           ? `Рассылка удалена (очищено записей: ${data.deletedSends})`
           : 'Рассылка удалена'
       );
-      await loadCampaigns();
+      await loadCampaigns(campaignsPage);
     } finally {
       setLoading(false);
     }
   };
 
-  const searchUsersForList = async () => {
+  const searchUsersForList = async (append = false) => {
     if (!selectedListId) return;
     setListAddLoading(true);
     try {
+      const offset = append ? userSearchOffset + USER_SEARCH_LIMIT : 0;
       const params = new URLSearchParams({
         excludeListId: String(selectedListId),
-        limit: '100',
+        limit: String(USER_SEARCH_LIMIT),
+        offset: String(offset),
       });
       if (userSearchEmail.trim()) params.set('email', userSearchEmail.trim());
       const res = await fetch(`/api/admin/mail/users-search?${params}`);
       const data = await res.json();
       if (res.ok) {
-        setUserSearchResults(data.users || []);
-        setSelectedUserIds(new Set());
+        const users = data.users || [];
+        setUserSearchResults(append ? (prev) => [...prev, ...users] : users);
+        setUserSearchOffset(offset);
+        setUserSearchTotal(data.total || 0);
+        if (!append) setSelectedUserIds(new Set());
       } else {
         setError(data.error || 'Ошибка поиска');
       }
@@ -523,8 +622,9 @@ export default function AdminMailings() {
         return;
       }
       showMsg(`Добавлено: ${data.added} из ${data.matched}`);
-      await loadListMembers(selectedListId);
-      await loadLists();
+      await loadListMembers(selectedListId, listMembersPage);
+      await loadLists(listsPage);
+      await loadListOptions();
       setSelectedUserIds(new Set());
     } finally {
       setListAddLoading(false);
@@ -548,7 +648,8 @@ export default function AdminMailings() {
     const data = await res.json();
     if (res.ok) {
       showMsg(`В список добавлено: ${data.added}`);
-      await loadLists();
+      await loadLists(listsPage);
+      await loadListOptions();
     } else {
       setError(data.error || 'Ошибка');
     }
@@ -584,7 +685,8 @@ export default function AdminMailings() {
     const data = await res.json();
     if (res.ok) {
       setNewListName('');
-      await loadLists();
+      await loadLists(listsPage);
+      await loadListOptions();
       showMsg('Список создан');
     } else {
       setError(data.error);
@@ -678,7 +780,7 @@ export default function AdminMailings() {
         return;
       }
       setEditingSequence(null);
-      await loadSequences();
+      await loadSequences(sequencesPage);
       showMsg('Цепочка сохранена');
     } finally {
       setLoading(false);
@@ -713,7 +815,7 @@ export default function AdminMailings() {
         data.immediateSent ? `отправлено сейчас: ${data.immediateSent}` : '',
       ].filter(Boolean);
       showMsg(`Цепочка запущена (${parts.join(', ')})`);
-      await loadSequences();
+      await loadSequences(sequencesPage);
     } finally {
       setLoading(false);
     }
@@ -746,7 +848,7 @@ export default function AdminMailings() {
             ? 'Цепочка включена для покупок тарифа'
             : 'Цепочка включена для новых пользователей'
       );
-      await loadSequences();
+      await loadSequences(sequencesPage);
     } finally {
       setLoading(false);
     }
@@ -763,7 +865,7 @@ export default function AdminMailings() {
         return;
       }
       showMsg('Цепочка приостановлена');
-      await loadSequences();
+      await loadSequences(sequencesPage);
     } finally {
       setLoading(false);
     }
@@ -782,7 +884,7 @@ export default function AdminMailings() {
       if (editingSequence?.id === seq.id) setEditingSequence(null);
       if (expandedSequenceId === seq.id) setExpandedSequenceId(null);
       showMsg('Цепочка удалена');
-      await loadSequences();
+      await loadSequences(sequencesPage);
     } finally {
       setLoading(false);
     }
@@ -875,10 +977,15 @@ export default function AdminMailings() {
                 <button type="button" className={styles.btnPrimary} onClick={startNewCampaign}>
                   + Новая рассылка
                 </button>
-                <button type="button" className={styles.btnSecondary} onClick={loadCampaigns} disabled={loading}>
+                <button type="button" className={styles.btnSecondary} onClick={() => loadCampaigns(campaignsPage)} disabled={campaignsLoading}>
                   Обновить
                 </button>
               </div>
+              {!campaignsLoaded ? (
+                <div className={styles.tabLoading}>Загрузка рассылок...</div>
+              ) : (
+              <>
+              {campaignsLoading && <div className={styles.tabLoadingInline}>Обновление...</div>}
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -923,7 +1030,7 @@ export default function AdminMailings() {
                                 type="button"
                                 className={styles.btnSmall}
                                 onClick={async () => {
-                                  await loadLists();
+                                  await loadListOptions();
                                   setEditingCampaign(c);
                                   if (c.scheduledAt) {
                                     setCampaignSendMode('schedule');
@@ -943,7 +1050,7 @@ export default function AdminMailings() {
                               )}
                             </>
                           )}
-                          {c.status === 'sent' && lists.length > 0 && (
+                          {c.status === 'sent' && listOptions.length > 0 && (
                             <select
                               className={styles.selectInline}
                               defaultValue=""
@@ -954,7 +1061,7 @@ export default function AdminMailings() {
                               }}
                             >
                               <option value="">→ В список</option>
-                              {lists.map((l) => (
+                              {listOptions.map((l) => (
                                 <option key={l.id} value={l.id}>
                                   {l.name}
                                 </option>
@@ -974,7 +1081,7 @@ export default function AdminMailings() {
                         </td>
                       </tr>
                     ))}
-                    {campaigns.length === 0 && (
+                    {campaigns.length === 0 && !campaignsLoading && (
                       <tr>
                         <td colSpan={5} className={styles.empty}>
                           Нет рассылок
@@ -984,6 +1091,14 @@ export default function AdminMailings() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                page={campaignsPage}
+                totalPages={campaignsTotalPages}
+                total={campaignsTotal}
+                onPageChange={setCampaignsPage}
+              />
+              </>
+              )}
             </>
           ) : (
             <div className={styles.form}>
@@ -1016,7 +1131,7 @@ export default function AdminMailings() {
                       audienceType,
                       ...(audienceType === 'list' ? {} : { audienceListId: null }),
                     });
-                    if (audienceType === 'list') loadLists();
+                    if (audienceType === 'list') loadListOptions();
                   }}
                 >
                   <option value="all">Все зарегистрированные пользователи</option>
@@ -1060,17 +1175,17 @@ export default function AdminMailings() {
                       }
                     >
                       <option value="">Выберите список</option>
-                      {lists.map((l) => (
+                      {listOptions.map((l) => (
                         <option key={l.id} value={String(l.id)}>
                           {l.name} ({l.memberCount ?? 0} чел.)
                         </option>
                       ))}
                     </select>
-                    <button type="button" className={styles.btnSecondary} onClick={() => loadLists()}>
+                    <button type="button" className={styles.btnSecondary} onClick={() => loadListOptions()}>
                       Обновить
                     </button>
                   </div>
-                  {lists.length === 0 && (
+                  {listOptions.length === 0 && (
                     <span className={styles.fieldError}>
                       Списков нет. Создайте во вкладке «Списки», затем нажмите «Обновить».
                     </span>
@@ -1095,7 +1210,7 @@ export default function AdminMailings() {
                     }
                   >
                   <option value="">Выберите рассылку</option>
-                  {campaigns
+                  {campaignOptions
                     .filter((c) => c.status === 'sent' && c.id !== editingCampaign.id)
                     .map((c) => (
                       <option key={c.id} value={String(c.id)}>
@@ -1228,7 +1343,7 @@ export default function AdminMailings() {
                 <button type="button" className={styles.btnPrimary} onClick={startNewSequence}>
                   + Новая цепочка
                 </button>
-                <button type="button" className={styles.btnSecondary} onClick={loadSequences} disabled={loading}>
+                <button type="button" className={styles.btnSecondary} onClick={() => loadSequences(sequencesPage)} disabled={sequencesLoading}>
                   Обновить
                 </button>
               </div>
@@ -1237,6 +1352,11 @@ export default function AdminMailings() {
                 покупке тарифа. 3) Следите за статусами. Повторный запуск невозможен — только приостановка или
                 удаление.
               </p>
+              {!sequencesLoaded ? (
+                <div className={styles.tabLoading}>Загрузка цепочек...</div>
+              ) : (
+              <>
+              {sequencesLoading && <div className={styles.tabLoadingInline}>Обновление...</div>}
               {sequences.map((seq) => {
                 const status = sequenceStatus(seq);
                 const stats = seq.stats;
@@ -1340,7 +1460,7 @@ export default function AdminMailings() {
                             }
                           >
                             <option value="">Список для запуска</option>
-                            {lists.map((l) => (
+                            {listOptions.map((l) => (
                               <option key={l.id} value={String(l.id)}>
                                 {l.name} ({l.memberCount ?? 0})
                               </option>
@@ -1436,7 +1556,15 @@ export default function AdminMailings() {
                   </div>
                 );
               })}
-              {sequences.length === 0 && <p className={styles.empty}>Нет цепочек</p>}
+              {sequences.length === 0 && !sequencesLoading && <p className={styles.empty}>Нет цепочек</p>}
+              <AdminPagination
+                page={sequencesPage}
+                totalPages={sequencesTotalPages}
+                total={sequencesTotal}
+                onPageChange={setSequencesPage}
+              />
+              </>
+              )}
             </>
           ) : (
             <div className={styles.form}>
@@ -1532,7 +1660,7 @@ export default function AdminMailings() {
                     }
                   >
                     <option value="">Не исключать</option>
-                    {lists.map((list) => (
+                    {listOptions.map((list) => (
                       <option key={list.id} value={list.id}>
                         {list.name}
                       </option>
@@ -1670,19 +1798,35 @@ export default function AdminMailings() {
               Создать список
             </button>
           </div>
+          {!listsLoaded ? (
+            <div className={styles.tabLoading}>Загрузка списков...</div>
+          ) : (
+          <>
+          {listsLoading && <div className={styles.tabLoadingInline}>Обновление...</div>}
           <div className={styles.listsGrid}>
             {lists.map((list) => (
               <button
                 key={list.id}
                 type="button"
                 className={`${styles.listCard} ${selectedListId === list.id ? styles.listCardActive : ''}`}
-                onClick={() => loadListMembers(list.id)}
+                onClick={() => selectList(list.id)}
               >
                 <strong>{list.name}</strong>
                 <span>{list.memberCount ?? 0} получателей</span>
               </button>
             ))}
           </div>
+          <AdminPagination
+            page={listsPage}
+            totalPages={listsTotalPages}
+            total={listsTotal}
+            onPageChange={setListsPage}
+          />
+          {lists.length === 0 && !listsLoading && (
+            <p className={styles.empty}>Списков пока нет — создайте первый выше</p>
+          )}
+          </>
+          )}
           {selectedListId && (
             <>
               <div className={styles.addMembersPanel}>
@@ -1716,7 +1860,7 @@ export default function AdminMailings() {
                       <button
                         type="button"
                         className={styles.btnSecondary}
-                        onClick={searchUsersForList}
+                        onClick={() => searchUsersForList()}
                         disabled={listAddLoading}
                       >
                         Найти
@@ -1745,6 +1889,16 @@ export default function AdminMailings() {
                         >
                           Добавить выбранных ({selectedUserIds.size})
                         </button>
+                        {userSearchResults.length < userSearchTotal && (
+                          <button
+                            type="button"
+                            className={styles.btnSecondary}
+                            disabled={listAddLoading}
+                            onClick={() => searchUsersForList(true)}
+                          >
+                            Показать ещё ({userSearchResults.length} из {userSearchTotal})
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
@@ -1758,7 +1912,7 @@ export default function AdminMailings() {
                       onChange={(e) => setBulkFromListId(e.target.value ? Number(e.target.value) : '')}
                     >
                       <option value="">Выберите список</option>
-                      {lists
+                      {listOptions
                         .filter((l) => l.id !== selectedListId)
                         .map((l) => (
                           <option key={l.id} value={l.id}>
@@ -1831,7 +1985,7 @@ export default function AdminMailings() {
               </div>
 
               <div className={styles.tableWrap}>
-                <h3>Участники списка</h3>
+                <h3>Участники списка {listMembersLoading && <span className={styles.hint}>— загрузка...</span>}</h3>
                 <table className={styles.table}>
                   <thead>
                     <tr>
@@ -1855,8 +2009,9 @@ export default function AdminMailings() {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ userId: m.userId }),
                               });
-                              await loadListMembers(selectedListId);
-                              await loadLists();
+                              await loadListMembers(selectedListId, listMembersPage);
+                              await loadLists(listsPage);
+                              await loadListOptions();
                             }}
                           >
                             Удалить
@@ -1874,6 +2029,15 @@ export default function AdminMailings() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                page={listMembersPage}
+                totalPages={listMembersTotalPages}
+                total={listMembersTotal}
+                loading={listMembersLoading}
+                onPageChange={(page) => {
+                  if (selectedListId) void loadListMembers(selectedListId, page);
+                }}
+              />
             </>
           )}
         </div>
@@ -2081,28 +2245,14 @@ export default function AdminMailings() {
             </table>
           </div>
 
-          {history && history.totalPages > 1 && (
-            <div className={styles.pagination}>
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                disabled={historyPage <= 1 || historyLoading}
-                onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-              >
-                ← Назад
-              </button>
-              <span>
-                Стр. {history.page} из {history.totalPages} ({history.total} записей)
-              </span>
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                disabled={historyPage >= history.totalPages || historyLoading}
-                onClick={() => setHistoryPage((p) => p + 1)}
-              >
-                Вперёд →
-              </button>
-            </div>
+          {history && (
+            <AdminPagination
+              page={history.page}
+              totalPages={history.totalPages}
+              total={history.total}
+              loading={historyLoading}
+              onPageChange={setHistoryPage}
+            />
           )}
         </div>
       )}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DatePicker from '@/components/ui/DatePicker';
 import styles from './AdminPaymentsStats.module.css';
+import AdminPagination from './AdminPagination';
 
 type Period = 'week' | 'month' | 'custom';
 
@@ -33,6 +34,9 @@ interface PaymentsStatsResponse {
   totalPayments: number;
   totalManualAssignments?: number;
   rows: PaymentRow[];
+  page: number;
+  totalPages: number;
+  total: number;
 }
 
 function toInputDate(date: Date) {
@@ -46,17 +50,22 @@ export default function AdminPaymentsStats() {
   const [period, setPeriod] = useState<Period>('week');
   const [fromDate, setFromDate] = useState(() => toInputDate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)));
   const [toDate, setToDate] = useState(() => toInputDate(new Date()));
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<PaymentsStatsResponse | null>(null);
 
   const requestUrl = useMemo(() => {
-    const params = new URLSearchParams({ period });
+    const params = new URLSearchParams({ period, page: String(page), limit: '50' });
     if (period === 'custom') {
       params.set('from', fromDate);
       params.set('to', toDate);
     }
     return `/api/admin/payments/stats?${params.toString()}`;
+  }, [period, fromDate, toDate, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [period, fromDate, toDate]);
 
   const loadStats = async () => {
@@ -131,7 +140,7 @@ export default function AdminPaymentsStats() {
         </div>
       )}
 
-      {!loading && stats && stats.rows.length === 0 ? (
+      {!loading && stats && stats.total === 0 ? (
         <div className={styles.empty}>За выбранный период оплат и ручных назначений нет.</div>
       ) : (
         <div className={styles.tableWrap}>
@@ -162,6 +171,16 @@ export default function AdminPaymentsStats() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {stats && (
+        <AdminPagination
+          page={stats.page}
+          totalPages={stats.totalPages}
+          total={stats.total}
+          loading={loading}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

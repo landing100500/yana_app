@@ -6,15 +6,22 @@ import MailSequenceStep from '@/models/MailSequenceStep';
 import MailList from '@/models/MailList';
 import { getSequenceStats, repairLegacySequenceLaunch } from '@/lib/mail-marketing';
 import { normalizeSequenceRulesInput } from '@/lib/mail-sequence-rules';
+import { buildPaginationMeta, parsePagination } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await initDatabase();
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
 
-    const sequences = await MailSequence.findAll({ order: [['createdAt', 'DESC']] });
+    const { page, limit, offset } = parsePagination(request.nextUrl.searchParams, 20);
+    const { rows: sequences, count } = await MailSequence.findAndCountAll({
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+    });
+
     const withSteps = await Promise.all(
       sequences.map(async (seq) => {
         const repaired = await repairLegacySequenceLaunch(seq);
@@ -38,7 +45,10 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({ sequences: withSteps });
+    return NextResponse.json({
+      sequences: withSteps,
+      ...buildPaginationMeta(count, page, limit),
+    });
   } catch (error) {
     console.error('Mail sequences GET error:', error);
     return NextResponse.json({ error: 'Failed to load sequences' }, { status: 500 });

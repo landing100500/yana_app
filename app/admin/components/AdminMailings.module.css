@@ -183,6 +183,19 @@
   padding: 2rem !important;
 }
 
+.tabLoading {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 3rem 1rem;
+  font-size: 1rem;
+}
+
+.tabLoadingInline {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9rem;
+  margin: 0.5rem 0 1rem;
+}
+
 .error {
   background: rgba(220, 80, 80, 0.2);
   border: 1px solid rgba(220, 80, 80, 0.4);

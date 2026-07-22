@@ -4,12 +4,13 @@ import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailList from '@/models/MailList';
 import MailListMember from '@/models/MailListMember';
 import User from '@/models/User';
+import { buildPaginationMeta, parsePagination } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await initDatabase();
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
@@ -18,9 +19,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const list = await MailList.findByPk(Number(id));
     if (!list) return NextResponse.json({ error: 'List not found' }, { status: 404 });
 
-    const members = await MailListMember.findAll({
+    const { page, limit, offset } = parsePagination(request.nextUrl.searchParams, 50);
+
+    const { rows: members, count } = await MailListMember.findAndCountAll({
       where: { listId: list.id },
       order: [['createdAt', 'DESC']],
+      limit,
+      offset,
     });
 
     const userIds = members.map((m) => m.userId);
@@ -37,7 +42,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       user: userMap.get(m.userId) || null,
     }));
 
-    return NextResponse.json({ list, members: membersWithUsers });
+    return NextResponse.json({
+      list,
+      members: membersWithUsers,
+      ...buildPaginationMeta(count, page, limit),
+    });
   } catch (error) {
     console.error('Mail list members GET error:', error);
     return NextResponse.json({ error: 'Failed to load members' }, { status: 500 });

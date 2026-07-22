@@ -7,6 +7,7 @@ import User from '@/models/User';
 import { findManualAssignmentUsersInPeriod } from '@/lib/plan-manual-stats';
 import { formatRubAmount } from '@/lib/yookassa';
 import { PLAN_CONFIGS, PlanCode } from '@/lib/subscription';
+import { buildPaginationMeta, parsePagination } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,7 +174,9 @@ export async function GET(request: NextRequest) {
       return bTime - aTime;
     });
 
-    const totalAmountRub = [...paymentRows, ...manualRows].reduce((sum, row) => sum + row.amountRub, 0);
+    const totalAmountRub = rows.reduce((sum, row) => sum + row.amountRub, 0);
+    const { page, limit, offset } = parsePagination(searchParams, 50);
+    const pagedRows = rows.slice(offset, offset + limit);
 
     return NextResponse.json({
       period,
@@ -182,7 +185,8 @@ export async function GET(request: NextRequest) {
       totalAmountRub,
       totalPayments: paymentRows.length,
       totalManualAssignments: manualRows.length,
-      rows,
+      rows: pagedRows,
+      ...buildPaginationMeta(rows.length, page, limit),
     });
   } catch (error: any) {
     console.error('Admin payments stats error:', error);

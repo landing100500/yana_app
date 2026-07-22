@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import AdminPagination from './AdminPagination';
 import styles from './AdminUsersCharts.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
 
@@ -75,82 +76,87 @@ const PLAN_OPTIONS: { value: PlanCode; label: string }[] = [
 
 export default function AdminUsersCharts() {
   const [users, setUsers] = useState<User[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [planStats, setPlanStats] = useState<Record<PlanCode, number>>({
+    free: 0,
+    hours24: 0,
+    optimalLight: 0,
+    optimal: 0,
+    professional: 0,
+  });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [charts, setCharts] = useState<Chart[]>([]);
   const [selectedChart, setSelectedChart] = useState<ChartData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [loadingChart, setLoadingChart] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailFilter, setEmailFilter] = useState('');
+  const [debouncedEmailFilter, setDebouncedEmailFilter] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | PlanCode>('all');
   const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
   const [deleteModalUser, setDeleteModalUser] = useState<User | null>(null);
   const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
-  const planStats = useMemo(() => {
-    const counts: Record<PlanCode, number> = {
-      free: 0,
-      hours24: 0,
-      optimalLight: 0,
-      optimal: 0,
-      professional: 0,
-    };
-    for (const user of users) {
-      const code = user.planCode || 'free';
-      if (code in counts) counts[code]++;
-      else counts.free++;
-    }
-    return counts;
-  }, [users]);
-
-  const filteredUsers = useMemo(() => {
-    let result = users;
-    const email = emailFilter.trim().toLowerCase();
-    if (email) {
-      result = result.filter((u) => (u.email || '').toLowerCase().includes(email));
-    }
-    if (planFilter !== 'all') {
-      result = result.filter((u) => (u.planCode || 'free') === planFilter);
-    }
-    return result;
-  }, [users, emailFilter, planFilter]);
+  const totalFromStats = useMemo(
+    () => Object.values(planStats).reduce((sum, n) => sum + n, 0),
+    [planStats]
+  );
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const timer = window.setTimeout(() => {
+      setDebouncedEmailFilter(emailFilter.trim());
+      setPage(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [emailFilter]);
 
-  useEffect(() => {
-    if (selectedUserId) {
-      loadUserCharts(selectedUserId);
-    } else {
-      setCharts([]);
-      setSelectedChart(null);
-    }
-  }, [selectedUserId]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async (targetPage = page) => {
+    const isFirstLoad = !hasLoadedOnceRef.current;
     try {
-      setLoading(true);
+      if (isFirstLoad) setLoading(true);
+      else setTableLoading(true);
       setError(null);
-      const response = await fetch('/api/admin/users');
-      const data = await response.json();
+
+      const params = new URLSearchParams({
+        page: String(targetPage),
+        limit: '50',
+      });
+      if (debouncedEmailFilter) params.set('email', debouncedEmailFilter);
+      if (planFilter !== 'all') params.set('planCode', planFilter);
+
+      const response = await fetch(`/api/admin/users?${params}`);
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         setUsers(data.users || []);
+        setPage(data.page || targetPage);
+        setTotalPages(data.totalPages || 1);
+        setTotalUsers(data.total || 0);
+        if (data.planStats) setPlanStats(data.planStats);
+        hasLoadedOnceRef.current = true;
       } else {
         setError(data.error || 'Ошибка при загрузке пользователей');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError('Ошибка при загрузке пользователей');
       console.error(err);
     } finally {
       setLoading(false);
+      setTableLoading(false);
     }
-  };
+  }, [debouncedEmailFilter, planFilter, page]);
+
+  useEffect(() => {
+    loadUsers(page);
+  }, [page, debouncedEmailFilter, planFilter, loadUsers]);
 
   const loadUserCharts = async (userId: number) => {
     try {
@@ -172,6 +178,20 @@ export default function AdminUsersCharts() {
     } finally {
       setLoadingCharts(false);
     }
+  };
+
+  useEffect(() => {
+    if (selectedUserId) {
+      loadUserCharts(selectedUserId);
+    } else {
+      setCharts([]);
+      setSelectedChart(null);
+    }
+  }, [selectedUserId]);
+
+  const goToPage = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    setPage(nextPage);
   };
 
   const loadChart = async (chartId: number) => {
@@ -225,7 +245,7 @@ export default function AdminUsersCharts() {
         alert(data.error || 'Не удалось обновить тариф');
         return;
       }
-      await loadUsers();
+      await loadUsers(page);
     } catch (err) {
       alert('Ошибка сети при обновлении тарифа');
     } finally {
@@ -379,7 +399,14 @@ export default function AdminUsersCharts() {
     <div className={styles.container}>
       <h1 className={styles.title}>Пользователи</h1>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error && (
+        <div className={styles.error}>
+          {error}
+          <button type="button" className={styles.clearFiltersButton} onClick={() => loadUsers(page)}>
+            Повторить
+          </button>
+        </div>
+      )}
 
       <section className={styles.statsSection}>
         <h2 className={styles.sectionTitle}>Статистика по тарифам</h2>
@@ -392,7 +419,7 @@ export default function AdminUsersCharts() {
           ))}
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Всего</span>
-            <span className={styles.statValue}>{users.length}</span>
+            <span className={styles.statValue}>{totalFromStats}</span>
           </div>
         </div>
       </section>
@@ -414,7 +441,10 @@ export default function AdminUsersCharts() {
             Тариф
             <select
               value={planFilter}
-              onChange={(e) => setPlanFilter(e.target.value as 'all' | PlanCode)}
+              onChange={(e) => {
+                setPlanFilter(e.target.value as 'all' | PlanCode);
+                setPage(1);
+              }}
               className={styles.filterInput}
             >
               <option value="all">Все тарифы</option>
@@ -442,13 +472,16 @@ export default function AdminUsersCharts() {
 
       <h2 className={styles.sectionTitle}>
         Пользователи сервиса
-        {(emailFilter || planFilter !== 'all') && (
-          <span className={styles.filteredCount}> — {filteredUsers.length} из {users.length}</span>
-        )}
+        <span className={styles.filteredCount}>
+          {' '}
+          — {totalUsers} {debouncedEmailFilter || planFilter !== 'all' ? 'найдено' : 'всего'}
+          {totalPages > 1 && ` · страница ${page} из ${totalPages}`}
+        </span>
       </h2>
-      {filteredUsers.length === 0 ? (
+      {tableLoading && <div className={styles.loadingInline}>Обновление списка...</div>}
+      {users.length === 0 && !tableLoading ? (
         <div className={styles.empty}>
-          {users.length === 0 ? 'Пользователей не найдено' : 'Нет пользователей по заданным фильтрам'}
+          {totalUsers === 0 ? 'Пользователей не найдено' : 'Нет пользователей по заданным фильтрам'}
         </div>
       ) : (
         <div className={styles.tableWrap}>
@@ -465,7 +498,7 @@ export default function AdminUsersCharts() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
+              {users.map((user) => (
                 <tr key={user.id}>
                   <td>{user.name}</td>
                   <td>{user.email || user.phone || '—'}</td>
@@ -514,6 +547,16 @@ export default function AdminUsersCharts() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {totalPages > 1 && (
+        <AdminPagination
+          page={page}
+          totalPages={totalPages}
+          total={totalUsers}
+          loading={tableLoading}
+          onPageChange={goToPage}
+        />
       )}
 
       {deleteModalUser && (

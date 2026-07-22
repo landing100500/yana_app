@@ -2,16 +2,39 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { checkAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth';
 import MailCampaign from '@/models/MailCampaign';
+import { buildPaginationMeta, parsePagination } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await initDatabase();
     if (!(await checkAdminAuth())) return adminUnauthorizedResponse();
 
-    const campaigns = await MailCampaign.findAll({ order: [['createdAt', 'DESC']] });
-    return NextResponse.json({ campaigns });
+    const searchParams = request.nextUrl.searchParams;
+    const forSelect = searchParams.get('forSelect') === '1';
+
+    if (forSelect) {
+      const campaigns = await MailCampaign.findAll({
+        where: { status: 'sent' },
+        attributes: ['id', 'name', 'sentCount', 'status'],
+        order: [['createdAt', 'DESC']],
+        limit: 200,
+      });
+      return NextResponse.json({ campaigns });
+    }
+
+    const { page, limit, offset } = parsePagination(searchParams, 30);
+    const { rows: campaigns, count } = await MailCampaign.findAndCountAll({
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+    });
+
+    return NextResponse.json({
+      campaigns,
+      ...buildPaginationMeta(count, page, limit),
+    });
   } catch (error) {
     console.error('Mail campaigns GET error:', error);
     return NextResponse.json({ error: 'Failed to load campaigns' }, { status: 500 });

@@ -268,6 +268,33 @@ async function ensurePaymentsSchema() {
   }
 }
 
+async function ensureAdminPerfIndexes() {
+  const queryInterface = sequelize.getQueryInterface();
+  try {
+    const natalIndexes = (await queryInterface.showIndex('natal_charts')) as Array<{ name?: string; fields?: Array<{ attribute?: string }> }>;
+    const hasNatalUserIdIndex = natalIndexes.some((idx) =>
+      idx.fields?.some((field) => field.attribute === 'userId')
+    );
+    if (!hasNatalUserIdIndex) {
+      await queryInterface.addIndex('natal_charts', ['userId'], { name: 'natal_charts_user_id' });
+    }
+
+    const sessionIndexes = (await queryInterface.showIndex('sessions')) as Array<{ name?: string; fields?: Array<{ attribute?: string }> }>;
+    const hasSessionUserIdIndex = sessionIndexes.some((idx) =>
+      idx.fields?.some((field) => field.attribute === 'userId')
+    );
+    if (!hasSessionUserIdIndex) {
+      await queryInterface.addIndex('sessions', ['userId'], { name: 'sessions_user_id' });
+    }
+  } catch (error: unknown) {
+    const message = String((error as Error)?.message || '').toLowerCase();
+    if (message.includes('does not exist') || message.includes('unknown table') || message.includes('no such table')) {
+      return;
+    }
+    console.warn('[DB] admin perf indexes skipped:', error);
+  }
+}
+
 let initPromise: Promise<void> | null = null;
 let dbReady = false;
 
@@ -290,6 +317,7 @@ export async function initDatabase(): Promise<void> {
       // sync без alter — только создание отсутствующих таблиц
       await sequelize.sync({ force: false });
       await ensureMailSchema();
+      await ensureAdminPerfIndexes();
       console.log('Database models synchronized.');
 
       dbReady = true;
