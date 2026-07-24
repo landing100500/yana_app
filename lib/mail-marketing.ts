@@ -16,7 +16,7 @@ import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
 import { assertMarketingSendAllowed, isMarketingMailPaused } from '@/lib/mail-send-guard';
 import { isFatalSmtpProviderError, isPermanentRecipientBounce } from '@/lib/smtp-errors';
-import { validateEmailForSending } from '@/lib/email-validation';
+import { validateEmailForSending, validateEmailsForSendingBatch, normalizeEmail } from '@/lib/email-validation';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
 import {
   applyPlanPurchaseExclusions,
@@ -113,7 +113,9 @@ async function filterMailableRecipients(
   });
   const subByUser = new Map(subscribers.map((s) => [s.userId, s]));
 
-  const result: Array<{ userId: number; email: string }> = [];
+  type Candidate = { userId: number; email: string; subscriber: MailSubscriber };
+  const candidates: Candidate[] = [];
+
   for (const user of users) {
     const email = user.email!.trim();
     let subscriber = subByUser.get(user.id);
@@ -124,13 +126,20 @@ async function filterMailableRecipients(
       await subscriber.update({ email: email.toLowerCase() });
     }
     if (!subscriber.isSubscribed || subscriber.suppressedAt) continue;
+    candidates.push({ userId: user.id, email, subscriber });
+  }
 
-    const validation = await validateEmailForSending(email);
+  const validationByEmail = await validateEmailsForSendingBatch(candidates.map((c) => c.email));
+  const result: Array<{ userId: number; email: string }> = [];
+
+  for (const c of candidates) {
+    const key = normalizeEmail(c.email);
+    const validation = validationByEmail.get(key) || { ok: false, reason: 'invalid_syntax' };
     if (!validation.ok) {
-      await suppressMailSubscriber(user.id, `precheck:${validation.reason || 'invalid'}`);
+      await suppressMailSubscriber(c.userId, `precheck:${validation.reason || 'invalid'}`);
       continue;
     }
-    result.push({ userId: user.id, email });
+    result.push({ userId: c.userId, email: c.email });
   }
   return result;
 }

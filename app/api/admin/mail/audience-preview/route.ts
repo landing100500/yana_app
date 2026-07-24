@@ -26,14 +26,15 @@ async function countMailable(userIds: number[]): Promise<{ total: number; mailab
 
   const subscribers = await MailSubscriber.findAll({
     where: { userId: users.map((u) => u.id) },
-    attributes: ['userId', 'isSubscribed'],
+    attributes: ['userId', 'isSubscribed', 'suppressedAt'],
   });
   const subByUser = new Map(subscribers.map((s) => [s.userId, s]));
 
   let mailable = 0;
   for (const user of users) {
     const sub = subByUser.get(user.id);
-    // Нет записи в subscribers = ещё не отписался, считаем доступным (ensure создаст при enroll)
+    // Нет записи = ещё не отписался; suppressed — не считаем
+    if (sub?.suppressedAt) continue;
     if (!sub || sub.isSubscribed) mailable++;
   }
 

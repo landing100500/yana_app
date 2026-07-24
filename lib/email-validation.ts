@@ -62,27 +62,81 @@ export async function validateEmailForSending(email: string): Promise<EmailValid
   const checkMx = String(process.env.MAIL_VALIDATE_MX || 'true').toLowerCase() !== 'false';
   if (!checkMx) return { ok: true };
 
+  const mxOk = await ensureMxCached(domain);
+  return mxOk ? { ok: true } : { ok: false, reason: 'no_mx' };
+}
+
+async function ensureMxCached(domain: string): Promise<boolean> {
   const cached = mxCache.get(domain);
   if (cached && Date.now() - cached.at < MX_CACHE_TTL_MS) {
-    return cached.ok ? { ok: true } : { ok: false, reason: 'no_mx' };
+    return cached.ok;
   }
 
   try {
     const mx = await dns.resolveMx(domain);
     const ok = Array.isArray(mx) && mx.length > 0;
     mxCache.set(domain, { ok, at: Date.now() });
-    return ok ? { ok: true } : { ok: false, reason: 'no_mx' };
+    return ok;
   } catch {
-    // Некоторые домены принимают почту на A-записи без MX — пробуем A/AAAA
     try {
-      const a = await dns.resolve4(domain).catch(() => []);
-      const aaaa = a.length ? [] : await dns.resolve6(domain).catch(() => []);
+      const a = await dns.resolve4(domain).catch(() => [] as string[]);
+      const aaaa = a.length ? ([] as string[]) : await dns.resolve6(domain).catch(() => [] as string[]);
       const ok = a.length > 0 || aaaa.length > 0;
       mxCache.set(domain, { ok, at: Date.now() });
-      return ok ? { ok: true } : { ok: false, reason: 'no_mx' };
+      return ok;
     } catch {
       mxCache.set(domain, { ok: false, at: Date.now() });
-      return { ok: false, reason: 'no_mx' };
+      return false;
     }
   }
+}
+
+/**
+ * Пакетная валидация: MX один раз на домен, параллельно (не N DNS на каждого юзера).
+ */
+export async function validateEmailsForSendingBatch(
+  emails: string[],
+  concurrency = 20
+): Promise<Map<string, EmailValidationResult>> {
+  const out = new Map<string, EmailValidationResult>();
+  const normalized = emails.map((e) => normalizeEmail(e)).filter(Boolean);
+  const unique = Array.from(new Set(normalized));
+
+  const domainsNeeded = new Set<string>();
+  for (const email of unique) {
+    if (!isValidEmailSyntax(email)) {
+      out.set(email, { ok: false, reason: 'invalid_syntax' });
+      continue;
+    }
+    const domain = domainOf(email);
+    if (!domain) {
+      out.set(email, { ok: false, reason: 'invalid_syntax' });
+      continue;
+    }
+    if (BLOCKED_DOMAINS.has(domain)) {
+      out.set(email, { ok: false, reason: 'blocked_domain' });
+      continue;
+    }
+    const checkMx = String(process.env.MAIL_VALIDATE_MX || 'true').toLowerCase() !== 'false';
+    if (!checkMx) {
+      out.set(email, { ok: true });
+      continue;
+    }
+    domainsNeeded.add(domain);
+  }
+
+  const domains = Array.from(domainsNeeded);
+  for (let i = 0; i < domains.length; i += concurrency) {
+    const chunk = domains.slice(i, i + concurrency);
+    await Promise.all(chunk.map((d) => ensureMxCached(d)));
+  }
+
+  for (const email of unique) {
+    if (out.has(email)) continue;
+    const domain = domainOf(email)!;
+    const cached = mxCache.get(domain);
+    out.set(email, cached?.ok ? { ok: true } : { ok: false, reason: 'no_mx' });
+  }
+
+  return out;
 }
