@@ -324,6 +324,17 @@ export async function initDatabase(): Promise<void> {
     })().catch((error) => {
       initPromise = null;
       console.error('Unable to connect to the database:', error);
+      void import('@/lib/admin-alerts')
+        .then(({ alertAdminAsync }) => {
+          alertAdminAsync({
+            source: 'db/init',
+            severity: 'critical',
+            title: 'БД: initDatabase failed',
+            error,
+            dedupeMs: 10 * 60 * 1000,
+          });
+        })
+        .catch(() => undefined);
       throw error;
     });
   }

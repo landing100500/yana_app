@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { runDailyReminders } from '@/lib/daily-reminders';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error('Daily reminders cron error:', error);
+    alertAdminAsync({
+      source: 'cron/daily-reminders',
+      severity: 'critical',
+      title: 'Cron daily-reminders: падение',
+      error,
+    });
     return NextResponse.json({ error: 'Cron failed' }, { status: 500 });
   }
 }

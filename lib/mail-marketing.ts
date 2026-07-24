@@ -10,7 +10,8 @@ import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
 import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import { getUserPlanSnapshot, normalizePlanCode } from '@/lib/subscription';
-import { sendMarketingEmail, getAppBaseUrl } from '@/lib/email-transport';
+import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures } from '@/lib/email-transport';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
@@ -24,6 +25,9 @@ import {
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+let backgroundMailQueueRunning = false;
+let lastSmtpBurstAlertAt = 0;
 
 export function generateUnsubscribeToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -324,6 +328,19 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<boolea
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Send failed';
     await send.update({ status: 'failed', errorMessage: message });
+    const fails = getConsecutiveSmtpFailures();
+    if (fails >= 3 && Date.now() - lastSmtpBurstAlertAt > 5 * 60 * 1000) {
+      lastSmtpBurstAlertAt = Date.now();
+      alertAdminAsync({
+        source: 'mail/sendOne',
+        severity: 'critical',
+        title: 'SMTP: серия ошибок отправки рассылки',
+        detail: `Подряд неудачных отправок: ${fails}. Очередь может стоять.`,
+        meta: { sendId: send.id, email: send.email || check.email || null },
+        error,
+        dedupeMs: 5 * 60 * 1000,
+      });
+    }
     return false;
   }
 }
@@ -410,7 +427,11 @@ async function processSequencePendingSends(limit: number): Promise<number> {
 
 /** Фоновая обработка после клика «Отправить» — не блокирует HTTP */
 export function kickBackgroundMailQueue(): void {
-  void runBackgroundMailQueue();
+  if (backgroundMailQueueRunning) return;
+  backgroundMailQueueRunning = true;
+  void runBackgroundMailQueue().finally(() => {
+    backgroundMailQueueRunning = false;
+  });
 }
 
 async function runBackgroundMailQueue(): Promise<void> {
@@ -427,8 +448,24 @@ async function runBackgroundMailQueue(): Promise<void> {
       ) {
         break;
       }
+      if (result.sendsSent === 0 && result.sendsFailed > 0 && getConsecutiveSmtpFailures() >= 5) {
+        alertAdminAsync({
+          source: 'mail/background-queue',
+          severity: 'critical',
+          title: 'Фоновая очередь писем остановлена: SMTP недоступен',
+          detail: `failed=${result.sendsFailed}, consecutiveFailures=${getConsecutiveSmtpFailures()}`,
+          dedupeMs: 10 * 60 * 1000,
+        });
+        break;
+      }
     } catch (error) {
       console.error('Background mail queue error:', error);
+      alertAdminAsync({
+        source: 'mail/background-queue',
+        severity: 'critical',
+        title: 'Фоновая очередь писем: падение',
+        error,
+      });
       break;
     }
     await sleep(300);

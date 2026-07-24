@@ -8,6 +8,7 @@ import { buildSubscriptionReceipt } from '@/lib/yookassa-receipt';
 import { getPlanConfig, normalizePlanCode, PlanCode } from '@/lib/subscription';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +107,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Create payment error:', error);
+    alertAdminAsync({
+      source: 'payments/create',
+      severity: 'high',
+      title: 'Создание платежа: 500',
+      error,
+    });
     return NextResponse.json(
       { error: error?.message || 'Ошибка при создании платежа' },
       { status: 500 }

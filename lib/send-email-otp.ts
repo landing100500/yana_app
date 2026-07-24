@@ -1,11 +1,12 @@
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import User from '@/models/User';
 import UserAnketa from '@/models/UserAnketa';
 import EmailOtp from '@/models/EmailOtp';
 import EmailSendLog from '@/models/EmailSendLog';
 import { initDatabase } from '@/lib/initDb';
+import { isSmtpConfigured, sendSimpleEmail } from '@/lib/email-transport';
+import { alertAdminAsync, alertSmtpMisconfigured } from '@/lib/admin-alerts';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const EMAIL_COOLDOWN_MS = 60 * 1000;
@@ -20,30 +21,10 @@ export type SendEmailOtpResult =
   | { ok: false; status: number; error: string };
 
 async function sendOtpMail(email: string, code: string, subject: string): Promise<void> {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true';
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-  const from = process.env.SMTP_FROM || user;
-  const fromName = process.env.SMTP_FROM_NAME || 'YASNA';
-
-  if (!host || !user || !pass || !from) {
-    throw new Error('Email transport is not configured');
-  }
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
-
-  await transporter.sendMail({
-    from: fromName ? `"${fromName}" <${from}>` : from,
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || '';
+  await sendSimpleEmail({
     to: email,
     subject,
-    replyTo: from,
     text: [
       'Здравствуйте!',
       '',
@@ -65,7 +46,7 @@ async function sendOtpMail(email: string, code: string, subject: string): Promis
     ].join(''),
     headers: {
       'X-Auto-Response-Suppress': 'All',
-      'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`,
+      ...(from ? { 'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>` } : {}),
     },
   });
 }
@@ -75,6 +56,11 @@ export async function sendEmailOtp(
   options: { requireExistingUser: boolean }
 ): Promise<SendEmailOtpResult> {
   await initDatabase();
+
+  if (!isSmtpConfigured()) {
+    alertSmtpMisconfigured('auth/email-otp');
+    return { ok: false, status: 502, error: 'Почтовый сервис временно недоступен' };
+  }
 
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const sentLastHour = await EmailSendLog.count({
@@ -134,7 +120,18 @@ export async function sendEmailOtp(
     await EmailSendLog.create({ email });
     return { ok: true };
   } catch (error) {
+    console.error('OTP SMTP error:', error);
     await EmailOtp.destroy({ where: { email } });
+    alertAdminAsync({
+      source: options.requireExistingUser ? 'auth/reset' : 'auth/signup',
+      severity: 'high',
+      title: options.requireExistingUser
+        ? 'Восстановление: SMTP не отправил код'
+        : 'Регистрация: SMTP не отправил код',
+      detail: 'Пользователь не получит код — проверьте SMTP / лимиты Beget',
+      meta: { email },
+      error,
+    });
     return { ok: false, status: 502, error: 'Не удалось отправить письмо с кодом' };
   }
 }

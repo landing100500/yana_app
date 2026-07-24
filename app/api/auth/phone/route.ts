@@ -4,6 +4,7 @@ import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { formatPhoneValidationError, normalizePhoneDigits } from '@/lib/phone';
 import { sendEmailOtp } from '@/lib/send-email-otp';
 import User from '@/models/User';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 // import { sendPhoneSmsOtp } from '@/lib/send-phone-sms-otp';
 
 export async function POST(request: NextRequest) {
@@ -47,6 +48,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error('Phone auth error:', error);
+    alertAdminAsync({
+      source: 'auth/phone',
+      severity: 'high',
+      title: 'Регистрация: необработанная 500',
+      error,
+    });
     return NextResponse.json({ error: 'Произошла ошибка при обработке запроса' }, { status: 500 });
   }
 }

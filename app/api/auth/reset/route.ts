@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { sendEmailOtp } from '@/lib/send-email-otp';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 // import { normalizeRuPhoneDigits } from '@/lib/phone';
 // import { sendPhoneSmsOtp } from '@/lib/send-phone-sms-otp';
 
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error('Reset password error:', error);
+    alertAdminAsync({
+      source: 'auth/reset',
+      severity: 'high',
+      title: 'Сброс пароля: необработанная 500',
+      error,
+    });
     return NextResponse.json({ error: 'Произошла ошибка при обработке запроса' }, { status: 500 });
   }
 }

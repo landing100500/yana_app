@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDatabase } from '@/lib/initDb';
 import { findPaymentByYookassaId, syncPaymentWithYookassa } from '@/lib/payments';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error('YooKassa webhook error:', error);
+    alertAdminAsync({
+      source: 'payments/webhook',
+      severity: 'critical',
+      title: 'YooKassa webhook: ошибка обработки',
+      error,
+    });
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 }

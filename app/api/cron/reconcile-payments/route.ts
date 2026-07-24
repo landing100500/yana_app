@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import { initDatabase } from '@/lib/initDb';
 import Payment from '@/models/Payment';
 import { syncPaymentWithYookassa } from '@/lib/payments';
+import { alertAdminAsync } from '@/lib/admin-alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Cron reconcile error:', error);
+    alertAdminAsync({
+      source: 'cron/reconcile-payments',
+      severity: 'critical',
+      title: 'Cron reconcile-payments: падение',
+      error,
+    });
     return NextResponse.json({ error: error?.message || 'Reconcile failed' }, { status: 500 });
   }
 }
