@@ -149,6 +149,46 @@ export function alertSmtpMisconfigured(source: string): void {
   });
 }
 
+/** OpenAI / чат / любые AI-зависимости — critical, с дедупом */
+export function alertOpenAiFailure(
+  source: string,
+  error: unknown,
+  meta?: AlertOptions['meta']
+): void {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  const lower = msg.toLowerCase();
+  const billing =
+    lower.includes('insufficient_quota') ||
+    lower.includes('billing') ||
+    lower.includes('exceeded your current quota') ||
+    lower.includes('payment');
+  const rate = lower.includes('rate_limit') || lower.includes('429');
+  const deprecated =
+    lower.includes('deprecated') ||
+    lower.includes('model_not_found') ||
+    lower.includes('does not exist');
+
+  alertAdminAsync({
+    source,
+    severity: 'critical',
+    title: billing
+      ? 'OpenAI: закончился баланс / quota'
+      : deprecated
+        ? 'OpenAI: модель недоступна / deprecated'
+        : rate
+          ? 'OpenAI: rate limit'
+          : 'OpenAI / AI: сбой ответа пользователю',
+    detail: billing
+      ? 'Пользователи видят ошибку чата. Проверьте billing.openai.com и ключ API_GPT на VPS.'
+      : deprecated
+        ? 'Смените OPENAI_CHAT_MODEL в .env.production (см. platform.openai.com/docs/deprecations) и pm2 restart.'
+        : 'Пользователи видят «Извините, произошла ошибка…». Смотрите логи pm2 и ключ/модель.',
+    meta,
+    error,
+    dedupeMs: billing || deprecated ? 30 * 60 * 1000 : 10 * 60 * 1000,
+  });
+}
+
 /** Не трогает getSmtpConfig — только для subject from в алертах при отладке */
 export function peekSmtpFrom(): string | null {
   try {

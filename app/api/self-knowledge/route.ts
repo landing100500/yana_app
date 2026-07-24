@@ -5,6 +5,7 @@ import { initDatabase } from '@/lib/initDb';
 import NatalChart from '@/models/NatalChart';
 import User from '@/models/User';
 import { openai } from '@/lib/openai';
+import { alertOpenAiFailure, alertAdminAsync } from '@/lib/admin-alerts';
 import { reconcileUserPendingPayments } from '@/lib/payments';
 import { consumeFreeAiRequest, ensureFreePlanWindow, syncPlanDailyUsage } from '@/lib/subscription';
 import { getChatBlockState } from '@/lib/plan-access';
@@ -436,6 +437,7 @@ ${predictionMemoryBlock}
           controller.close();
         } catch (openaiError: any) {
           console.error('OpenAI API error:', openaiError);
+          alertOpenAiFailure('self-knowledge', openaiError, { model: 'gpt-4o-mini' });
           const errorMessage = 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
           controller.enqueue(new TextEncoder().encode(errorMessage));
           controller.close();
@@ -452,6 +454,13 @@ ${predictionMemoryBlock}
     });
   } catch (error: any) {
     console.error('Self-knowledge error:', error);
+    alertAdminAsync({
+      source: 'self-knowledge',
+      severity: 'critical',
+      title: 'Самопознание: падение API',
+      error,
+      dedupeMs: 10 * 60 * 1000,
+    });
     return NextResponse.json(
       { error: error.message || 'Произошла ошибка при обработке запроса' },
       { status: 500 }

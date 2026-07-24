@@ -10,6 +10,8 @@ import UserMemory from '@/models/UserMemory';
 import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
+import { getOpenAiChatModel } from '@/lib/openai-models';
+import { alertAdminAsync, alertOpenAiFailure } from '@/lib/admin-alerts';
 import {
   searchRelevantChunks,
   getSectionStyleChunks,
@@ -637,10 +639,11 @@ export async function POST(request: NextRequest) {
 
     phase = 'openai';
     let response = '';
+    const chatModel = getOpenAiChatModel();
     try {
       const createCompletion = async (requestMessages: any[]) =>
         openai.chat.completions.create({
-          model: 'gpt-5-chat-latest', // Основная чат-модель 5‑го поколения для диалога
+          model: chatModel,
           messages: requestMessages,
           max_completion_tokens: 1800,
         });
@@ -670,6 +673,7 @@ export async function POST(request: NextRequest) {
       console.log('AI answer metadata:', {
         userId,
         topicId: topic.id,
+        model: chatModel,
         usedChart: !!activeChart,
         isAtmakarakaQuery,
         isPredictionQuery,
@@ -685,10 +689,15 @@ export async function POST(request: NextRequest) {
     } catch (openaiError: any) {
       console.error('OpenAI API error:', openaiError);
       response = 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
-      
+
       if (openaiError.message) {
         console.error('Error details:', openaiError.message);
       }
+      alertOpenAiFailure('chat/message', openaiError, {
+        userId,
+        topicId: topic.id,
+        model: chatModel,
+      });
     }
 
     phase = 'save_assistant_message';
@@ -749,6 +758,19 @@ export async function POST(request: NextRequest) {
       })
     );
     if (error?.stack) console.error('[chat/message] stack:', error.stack);
+    alertAdminAsync({
+      source: 'chat/message',
+      severity: 'critical',
+      title: 'Чат: необработанная ошибка (500)',
+      detail: `phase=${phase}`,
+      meta: {
+        userId: logUserId,
+        topicId: logTopicId,
+        code: error?.code || null,
+      },
+      error,
+      dedupeMs: 10 * 60 * 1000,
+    });
     const debug = process.env.CHAT_ERROR_DEBUG === '1' || process.env.CHAT_ERROR_DEBUG === 'true';
     return NextResponse.json(
       {
