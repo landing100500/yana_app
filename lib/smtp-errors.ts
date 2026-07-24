@@ -37,12 +37,22 @@ export function isFatalSmtpProviderError(error: unknown): boolean {
 
 /**
  * Постоянный отказ по получателю — больше не слать на этот адрес.
- * (user unknown, mailbox unavailable, etc.)
+ * Включает iCloud 554 HM08 / local policy (Beget как раз за это банил).
  */
 export function isPermanentRecipientBounce(error: unknown): boolean {
   const msg = getSmtpErrorMessage(error).toLowerCase();
   const code = getSmtpResponseCode(error);
   if (isMailboxSendingDisabled(error)) return false;
+
+  if (
+    code === 554 ||
+    msg.includes('554 5.7.1') ||
+    msg.includes('[hm08]') ||
+    msg.includes('local policy') ||
+    msg.includes('message rejected due to local policy')
+  ) {
+    return true;
+  }
 
   if (code === 550 || code === 551 || code === 553) {
     if (

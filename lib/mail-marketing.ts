@@ -16,6 +16,7 @@ import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
 import { assertMarketingSendAllowed, isMarketingMailPaused } from '@/lib/mail-send-guard';
 import { isFatalSmtpProviderError, isPermanentRecipientBounce } from '@/lib/smtp-errors';
+import { validateEmailForSending } from '@/lib/email-validation';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
 import {
   applyPlanPurchaseExclusions,
@@ -69,6 +70,12 @@ async function isUserMailable(userId: number): Promise<{ ok: boolean; email?: st
     return { ok: false };
   }
 
+  const validation = await validateEmailForSending(user.email);
+  if (!validation.ok) {
+    await suppressMailSubscriber(user.id, `precheck:${validation.reason || 'invalid'}`);
+    return { ok: false };
+  }
+
   return { ok: true, email: user.email, subscriber };
 }
 
@@ -116,9 +123,14 @@ async function filterMailableRecipients(
     } else if (subscriber.email !== email.toLowerCase()) {
       await subscriber.update({ email: email.toLowerCase() });
     }
-    if (subscriber.isSubscribed && !subscriber.suppressedAt) {
-      result.push({ userId: user.id, email });
+    if (!subscriber.isSubscribed || subscriber.suppressedAt) continue;
+
+    const validation = await validateEmailForSending(email);
+    if (!validation.ok) {
+      await suppressMailSubscriber(user.id, `precheck:${validation.reason || 'invalid'}`);
+      continue;
     }
+    result.push({ userId: user.id, email });
   }
   return result;
 }
