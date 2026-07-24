@@ -2,30 +2,9 @@
  * Локальная проверка настроек рассылки (без отправки писем).
  * Запуск: npx tsx scripts/verify-mail-setup.ts
  */
-import fs from 'fs';
-import path from 'path';
+import { loadProjectEnvFiles } from '../lib/load-project-env';
 
-function loadEnvLocal() {
-  const envPath = path.join(process.cwd(), '.env.local');
-  if (!fs.existsSync(envPath)) return;
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let val = trimmed.slice(eq + 1).trim();
-    if (
-      (val.startsWith("'") && val.endsWith("'")) ||
-      (val.startsWith('"') && val.endsWith('"'))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = val;
-  }
-}
-
-loadEnvLocal();
+loadProjectEnvFiles();
 
 import { getAppBaseUrl } from '../lib/email-transport';
 import { DEFAULT_MAIL_FOOTER_HTML, wrapEmailBody } from '../lib/mail-footer';
@@ -52,6 +31,8 @@ async function main() {
   const smtpOk =
     !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASSWORD;
   check('SMTP', smtpOk, smtpOk ? `${process.env.SMTP_HOST}` : 'неполная конфигурация');
+
+  check('ADMIN_ALERTS_EMAIL', !!process.env.ADMIN_ALERTS_EMAIL, process.env.ADMIN_ALERTS_EMAIL || 'НЕ ЗАДАН');
 
   check('API_GPT (spam-check)', !!process.env.API_GPT, process.env.API_GPT ? 'задан' : 'НЕ ЗАДАН');
 

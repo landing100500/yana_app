@@ -152,7 +152,7 @@ export function alertSmtpMisconfigured(source: string): void {
 /** Не трогает getSmtpConfig — только для subject from в алертах при отладке */
 export function peekSmtpFrom(): string | null {
   try {
-    return getSmtpConfig().from;
+    return getSmtpConfig('transactional').from;
   } catch {
     return null;
   }

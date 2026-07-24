@@ -8,12 +8,24 @@ interface MailSubscriberAttributes {
   unsubscribeToken: string;
   isSubscribed: boolean;
   unsubscribedAt?: Date | null;
+  /** Не слать маркетинг (hard bounce), отдельно от unsubscribe */
+  suppressedAt?: Date | null;
+  suppressReason?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface MailSubscriberCreationAttributes
-  extends Optional<MailSubscriberAttributes, 'id' | 'isSubscribed' | 'unsubscribedAt' | 'createdAt' | 'updatedAt'> {}
+  extends Optional<
+    MailSubscriberAttributes,
+    | 'id'
+    | 'isSubscribed'
+    | 'unsubscribedAt'
+    | 'suppressedAt'
+    | 'suppressReason'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 class MailSubscriber
   extends Model<MailSubscriberAttributes, MailSubscriberCreationAttributes>
@@ -25,6 +37,8 @@ class MailSubscriber
   public unsubscribeToken!: string;
   public isSubscribed!: boolean;
   public unsubscribedAt?: Date | null;
+  public suppressedAt?: Date | null;
+  public suppressReason?: string | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -57,6 +71,14 @@ MailSubscriber.init(
     },
     unsubscribedAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    suppressedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    suppressReason: {
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
     createdAt: {

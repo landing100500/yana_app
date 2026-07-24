@@ -14,6 +14,8 @@ import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures } from '@
 import { alertAdminAsync } from '@/lib/admin-alerts';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
+import { assertMarketingSendAllowed, isMarketingMailPaused } from '@/lib/mail-send-guard';
+import { isFatalSmtpProviderError, isPermanentRecipientBounce } from '@/lib/smtp-errors';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
 import {
   applyPlanPurchaseExclusions,
@@ -63,11 +65,23 @@ async function isUserMailable(userId: number): Promise<{ ok: boolean; email?: st
   }
 
   const subscriber = await ensureMailSubscriber(user.id, user.email);
-  if (!subscriber.isSubscribed) {
+  if (!subscriber.isSubscribed || subscriber.suppressedAt) {
     return { ok: false };
   }
 
   return { ok: true, email: user.email, subscriber };
+}
+
+export async function suppressMailSubscriber(
+  userId: number,
+  reason: string
+): Promise<void> {
+  const subscriber = await MailSubscriber.findOne({ where: { userId } });
+  if (!subscriber || subscriber.suppressedAt) return;
+  await subscriber.update({
+    suppressedAt: new Date(),
+    suppressReason: reason.slice(0, 500),
+  });
 }
 
 /** Пакетная проверка подписки — без N отдельных запросов при большой аудитории */
@@ -102,7 +116,7 @@ async function filterMailableRecipients(
     } else if (subscriber.email !== email.toLowerCase()) {
       await subscriber.update({ email: email.toLowerCase() });
     }
-    if (subscriber.isSubscribed) {
+    if (subscriber.isSubscribed && !subscriber.suppressedAt) {
       result.push({ userId: user.id, email });
     }
   }
@@ -305,11 +319,19 @@ export async function addCampaignRecipientsToList(campaignId: number, listId: nu
   return added;
 }
 
-async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<boolean> {
+type SendOneResult = 'sent' | 'failed' | 'skipped';
+
+async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<SendOneResult> {
+  const allow = await assertMarketingSendAllowed();
+  if (!allow.ok) {
+    // pending остаётся — не жжём получателей при паузе/дневном лимите
+    return 'skipped';
+  }
+
   const check = await isUserMailable(send.userId);
   if (!check.ok || !check.subscriber || !check.email) {
     await send.update({ status: 'failed', errorMessage: 'User not mailable or unsubscribed' });
-    return false;
+    return 'failed';
   }
 
   const footer = await getMailFooterHtml();
@@ -324,10 +346,17 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<boolea
       unsubscribeUrl,
     });
     await send.update({ status: 'sent', sentAt: new Date(), email: check.email });
-    return true;
+    return 'sent';
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Send failed';
     await send.update({ status: 'failed', errorMessage: message });
+    if (isPermanentRecipientBounce(error)) {
+      await suppressMailSubscriber(send.userId, message);
+    }
+    if (isFatalSmtpProviderError(error)) {
+      // pause уже выставлен в email-transport; дальше очередь должна остановиться
+      return 'failed';
+    }
     const fails = getConsecutiveSmtpFailures();
     if (fails >= 3 && Date.now() - lastSmtpBurstAlertAt > 5 * 60 * 1000) {
       lastSmtpBurstAlertAt = Date.now();
@@ -341,7 +370,7 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<boolea
         dedupeMs: 5 * 60 * 1000,
       });
     }
-    return false;
+    return 'failed';
   }
 }
 
@@ -384,8 +413,10 @@ async function processBroadcastChunk(campaign: MailCampaign, chunkLimit: number)
   });
 
   for (const send of pendingSends) {
-    const ok = await sendOneMailSend(send, campaign.htmlBody);
-    if (ok) sent++;
+    if (await isMarketingMailPaused()) break;
+    const result = await sendOneMailSend(send, campaign.htmlBody);
+    if (result === 'skipped') break;
+    if (result === 'sent') sent++;
     else failed++;
     await sleep(mailQueueConfig.broadcastDelayMs);
   }
@@ -413,13 +444,15 @@ async function processSequencePendingSends(limit: number): Promise<number> {
 
   let processed = 0;
   for (const send of pending) {
+    if (await isMarketingMailPaused()) break;
     const step = await MailSequenceStep.findByPk(send.sequenceStepId!);
     if (!step) {
       await send.update({ status: 'failed', errorMessage: 'Sequence step not found' });
       continue;
     }
-    const ok = await sendOneMailSend(send, step.htmlBody);
-    if (ok) processed++;
+    const result = await sendOneMailSend(send, step.htmlBody);
+    if (result === 'skipped') break;
+    if (result === 'sent') processed++;
     await sleep(mailQueueConfig.sequenceDelayMs);
   }
   return processed;
@@ -446,6 +479,9 @@ async function runBackgroundMailQueue(): Promise<void> {
         result.scheduledActivated === 0 &&
         pendingLeft === 0
       ) {
+        break;
+      }
+      if (result.blockedReason || (await isMarketingMailPaused())) {
         break;
       }
       if (result.sendsSent === 0 && result.sendsFailed > 0 && getConsecutiveSmtpFailures() >= 5) {
@@ -478,11 +514,25 @@ export async function processMailQueue(limit?: number): Promise<{
   sendsFailed: number;
   sequencesProcessed: number;
   scheduledActivated: number;
+  blockedReason?: string;
 }> {
   const cfg = mailQueueConfig;
+  const allow = await assertMarketingSendAllowed();
+  if (!allow.ok) {
+    return {
+      campaignsProcessed: 0,
+      sendsSent: 0,
+      sendsFailed: 0,
+      sequencesProcessed: 0,
+      scheduledActivated: 0,
+      blockedReason: allow.reason,
+    };
+  }
+
   const totalLimit = limit ?? cfg.queueLimit;
-  const broadcastBudget = Math.max(1, Math.floor(totalLimit * cfg.broadcastBudgetRatio));
-  const sequenceBudget = Math.max(1, totalLimit - broadcastBudget);
+  const budgetCap = Math.min(totalLimit, allow.remaining ?? totalLimit);
+  const broadcastBudget = Math.max(1, Math.floor(budgetCap * cfg.broadcastBudgetRatio));
+  const sequenceBudget = Math.max(1, budgetCap - broadcastBudget);
 
   let sendsSent = 0;
   let sendsFailed = 0;
@@ -521,10 +571,12 @@ export async function processMailQueue(limit?: number): Promise<{
     });
 
     for (const send of orphanSends) {
+      if (await isMarketingMailPaused()) break;
       const campaign = await MailCampaign.findByPk(send.campaignId!);
       if (!campaign || (campaign.status !== 'queued' && campaign.status !== 'sending')) continue;
-      const ok = await sendOneMailSend(send, campaign.htmlBody);
-      if (ok) sendsSent++;
+      const result = await sendOneMailSend(send, campaign.htmlBody);
+      if (result === 'skipped') break;
+      if (result === 'sent') sendsSent++;
       else sendsFailed++;
       await refreshCampaignCounters(campaign.id);
       await sleep(cfg.broadcastDelayMs);
@@ -544,6 +596,7 @@ export async function processMailQueue(limit?: number): Promise<{
   });
 
   for (const enrollment of dueEnrollments) {
+    if (await isMarketingMailPaused()) break;
     const sequence = await MailSequence.findByPk(enrollment.sequenceId);
     if (!sequence?.isActive || !sequence.launchedAt) continue;
 
@@ -621,8 +674,9 @@ export async function processSequenceEnrollment(enrollmentId: number): Promise<b
     status: 'pending',
   });
 
-  const ok = await sendOneMailSend(send, step.htmlBody);
-  if (!ok) return true;
+  const result = await sendOneMailSend(send, step.htmlBody);
+  if (result === 'skipped') return false;
+  if (result !== 'sent') return true;
 
   const following = steps.find((s) => s.stepOrder === nextStepOrder + 1);
   await enrollment.update({

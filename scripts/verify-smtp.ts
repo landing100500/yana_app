@@ -1,31 +1,29 @@
 /**
- * Проверка SMTP (реальное тестовое письмо на ADMIN_ALERTS_EMAIL или SMTP_FROM).
+ * Проверка SMTP на VPS/локально.
+ * Загружает .env / .env.production / .env.local
+ *
  * npx tsx scripts/verify-smtp.ts
  */
 import fs from 'fs';
 import path from 'path';
+import { loadProjectEnvFiles, smtpEnvDiagnostics } from '../lib/load-project-env';
 
-function loadEnvLocal() {
-  const envPath = path.join(process.cwd(), '.env.local');
-  if (!fs.existsSync(envPath)) return;
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let val = trimmed.slice(eq + 1).trim();
-    if (
-      (val.startsWith("'") && val.endsWith("'")) ||
-      (val.startsWith('"') && val.endsWith('"'))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = val;
-  }
+const loaded = loadProjectEnvFiles();
+console.log('Env files loaded:', loaded.length ? loaded.join(', ') : '(none found)');
+console.log(
+  'Exists:',
+  ['.env', '.env.production', '.env.local']
+    .map((f) => `${f}=${fs.existsSync(path.join(process.cwd(), f)) ? 'yes' : 'no'}`)
+    .join(', ')
+);
+
+const diag = smtpEnvDiagnostics();
+console.log('SMTP env present:', diag.present);
+if (diag.missing.length) {
+  console.error('SMTP FAIL: missing', diag.missing.join(', '));
+  console.error('Добавь SMTP_* в /var/www/yana_app/.env.production и перезапусти: pm2 restart yana_app --update-env');
+  process.exit(1);
 }
-
-loadEnvLocal();
 
 async function main() {
   const { createMailTransporter, getSmtpConfig, sendSimpleEmail, resetMailTransporter } = await import(

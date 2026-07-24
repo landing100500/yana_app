@@ -1,6 +1,10 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { embedMailImagesInHtml, type MailImageAttachment } from '@/lib/mail-email-images';
 import { normalizeHtmlForEmailSend } from '@/lib/mail-editor-html';
+import { isConnectionError, isMailboxSendingDisabled } from '@/lib/smtp-errors';
+import { pauseMarketingMail } from '@/lib/mail-send-guard';
+
+export type SmtpChannel = 'transactional' | 'marketing';
 
 export interface SendMarketingEmailOptions {
   to: string;
@@ -26,72 +30,110 @@ type SmtpConfig = {
   pass: string;
   from: string;
   fromName: string;
+  channel: SmtpChannel;
 };
 
-let cachedTransporter: Transporter | null = null;
+const transporters: Partial<Record<SmtpChannel, Transporter>> = {};
 let consecutiveSendFailures = 0;
+let lastFatalTripAt = 0;
 
-export function getSmtpConfig(): SmtpConfig {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true';
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-  const from = process.env.SMTP_FROM || user;
-  const fromName = process.env.SMTP_FROM_NAME || 'YASNA';
-
-  if (!host || !user || !pass || !from) {
-    throw new Error('Email transport is not configured (SMTP_HOST/USER/PASSWORD/FROM)');
-  }
-
-  return { host, port, secure, user, pass, from, fromName };
+function envTrim(name: string): string {
+  return String(process.env[name] || '').trim();
 }
 
-export function isSmtpConfigured(): boolean {
+/**
+ * marketing: всегда SMTP_* (рассылки)
+ * transactional (OTP/алерты): SMTP_OTP_* если задан USER/HOST, иначе fallback на SMTP_*
+ */
+export function getSmtpConfig(channel: SmtpChannel = 'transactional'): SmtpConfig {
+  const useOtp =
+    channel === 'transactional' &&
+    Boolean(envTrim('SMTP_OTP_USER') || envTrim('SMTP_OTP_HOST'));
+  const prefix = useOtp ? 'SMTP_OTP_' : 'SMTP_';
+
+  const host = envTrim(`${prefix}HOST`) || envTrim('SMTP_HOST');
+  const port = Number(envTrim(`${prefix}PORT`) || envTrim('SMTP_PORT') || 587);
+  const secureRaw = envTrim(`${prefix}SECURE`) || envTrim('SMTP_SECURE');
+  const secure = secureRaw.toLowerCase() === 'true';
+  const user = envTrim(`${prefix}USER`) || envTrim('SMTP_USER');
+  const pass = envTrim(`${prefix}PASSWORD`) || envTrim('SMTP_PASSWORD');
+  const from = envTrim(`${prefix}FROM`) || envTrim('SMTP_FROM') || user;
+  const fromName =
+    envTrim(`${prefix}FROM_NAME`) || envTrim('SMTP_FROM_NAME') || 'YASNA';
+
+  const missing = [
+    !host && 'HOST',
+    !user && 'USER',
+    !pass && 'PASSWORD',
+    !from && 'FROM',
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Email transport (${channel}) is not configured (missing: ${missing.join(', ')}). ` +
+        `Проверьте SMTP_* и SMTP_OTP_* в .env.production`
+    );
+  }
+
+  return { host, port, secure, user, pass, from, fromName, channel };
+}
+
+export function isSmtpConfigured(channel: SmtpChannel = 'transactional'): boolean {
   try {
-    getSmtpConfig();
+    getSmtpConfig(channel);
     return true;
   } catch {
     return false;
   }
 }
 
-/** Один pooled transporter на процесс — без этого Beget SMTP душит под нагрузкой. */
-export function createMailTransporter(): Transporter {
-  if (cachedTransporter) return cachedTransporter;
+function createChannelTransporter(channel: SmtpChannel): Transporter {
+  const existing = transporters[channel];
+  if (existing) return existing;
 
-  const { host, port, secure, user, pass } = getSmtpConfig();
-  cachedTransporter = nodemailer.createTransport({
+  const { host, port, secure, user, pass } = getSmtpConfig(channel);
+  const maxConnDefault = channel === 'marketing' ? 1 : 1;
+  const rateDefault = channel === 'marketing' ? 2 : 3;
+
+  const transporter = nodemailer.createTransport({
     host,
     port,
     secure,
     auth: { user, pass },
     pool: true,
-    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 2),
-    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
+    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || maxConnDefault),
+    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 40),
     rateDelta: Number(process.env.SMTP_RATE_DELTA_MS || 1000),
-    rateLimit: Number(process.env.SMTP_RATE_LIMIT || 5),
+    rateLimit: Number(process.env.SMTP_RATE_LIMIT || rateDefault),
     connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 30000),
     tls: {
-      // Beget иногда с самоподписанными цепочками на shared SMTP
-      rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false',
+      rejectUnauthorized:
+        String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false',
     },
   });
 
-  return cachedTransporter;
+  transporters[channel] = transporter;
+  return transporter;
 }
 
-/** Сброс пула после фатальных ошибок соединения */
-export function resetMailTransporter(): void {
-  const current = cachedTransporter;
-  cachedTransporter = null;
-  if (current) {
-    try {
-      current.close();
-    } catch {
-      /* ignore */
+/** @deprecated use createChannelTransporter — оставлен для скриптов */
+export function createMailTransporter(): Transporter {
+  return createChannelTransporter('transactional');
+}
+
+export function resetMailTransporter(channel?: SmtpChannel): void {
+  const channels: SmtpChannel[] = channel ? [channel] : ['transactional', 'marketing'];
+  for (const ch of channels) {
+    const current = transporters[ch];
+    transporters[ch] = undefined;
+    if (current) {
+      try {
+        current.close();
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -115,48 +157,60 @@ export function htmlToPlainText(html: string): string {
     .trim();
 }
 
-function isConnectionError(error: unknown): boolean {
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  const code = String((error as { code?: string })?.code || '').toLowerCase();
-  return (
-    code.includes('econn') ||
-    code.includes('etimedout') ||
-    code.includes('esocket') ||
-    code.includes('econnreset') ||
-    msg.includes('timeout') ||
-    msg.includes('connection') ||
-    msg.includes('socket') ||
-    msg.includes('greet')
-  );
+async function tripMarketingOnFatal(error: unknown, channel: SmtpChannel): Promise<void> {
+  if (channel !== 'marketing') return;
+  // Только бан ящика Beget — дневной/часовой кап сами растягивают очередь без паузы
+  if (!isMailboxSendingDisabled(error)) return;
+  if (Date.now() - lastFatalTripAt < 10_000) return;
+  lastFatalTripAt = Date.now();
+
+  const reason = `Beget отключил отправку с ящика: ${getSmtpErrorMessageSafe(error)}`;
+  try {
+    await pauseMarketingMail(reason);
+  } catch (e) {
+    console.error('[email-transport] failed to persist marketing pause:', e);
+  }
 }
 
-export async function sendSimpleEmail(options: SendSimpleEmailOptions): Promise<void> {
-  const { from, fromName } = getSmtpConfig();
-  const transporter = createMailTransporter();
+function getSmtpErrorMessageSafe(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
 
+async function sendViaChannel(
+  channel: SmtpChannel,
+  mail: Parameters<Transporter['sendMail']>[0]
+): Promise<void> {
+  const transporter = createChannelTransporter(channel);
   try {
-    await transporter.sendMail({
-      from: fromName ? `"${fromName}" <${from}>` : from,
-      to: options.to,
-      subject: options.subject,
-      replyTo: from,
-      text: options.text,
-      html: options.html,
-      headers: options.headers,
-    });
+    await transporter.sendMail(mail);
     consecutiveSendFailures = 0;
   } catch (error) {
     consecutiveSendFailures += 1;
     if (isConnectionError(error)) {
-      resetMailTransporter();
+      resetMailTransporter(channel);
     }
+    await tripMarketingOnFatal(error, channel);
     throw error;
   }
 }
 
+/** OTP, алерты, транзакционные письма */
+export async function sendSimpleEmail(options: SendSimpleEmailOptions): Promise<void> {
+  const { from, fromName } = getSmtpConfig('transactional');
+  await sendViaChannel('transactional', {
+    from: fromName ? `"${fromName}" <${from}>` : from,
+    to: options.to,
+    subject: options.subject,
+    replyTo: from,
+    text: options.text,
+    html: options.html,
+    headers: options.headers,
+  });
+}
+
+/** Маркетинг / рассылки / цепочки */
 export async function sendMarketingEmail(options: SendMarketingEmailOptions): Promise<void> {
-  const { from, fromName } = getSmtpConfig();
-  const transporter = createMailTransporter();
+  const { from, fromName } = getSmtpConfig('marketing');
 
   const htmlPrepared = normalizeHtmlForEmailSend(options.html);
   const { html: htmlWithCid, attachments: imageAttachments } = await embedMailImagesInHtml(htmlPrepared);
@@ -179,25 +233,16 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     encoding: 'base64' as const,
   }));
 
-  try {
-    await transporter.sendMail({
-      from: fromName ? `"${fromName}" <${from}>` : from,
-      to: options.to,
-      subject: options.subject,
-      replyTo: from,
-      html: htmlWithCid,
-      text: options.text || htmlToPlainText(htmlWithCid),
-      headers,
-      attachments: inlineAttachments.length > 0 ? inlineAttachments : undefined,
-    });
-    consecutiveSendFailures = 0;
-  } catch (error) {
-    consecutiveSendFailures += 1;
-    if (isConnectionError(error)) {
-      resetMailTransporter();
-    }
-    throw error;
-  }
+  await sendViaChannel('marketing', {
+    from: fromName ? `"${fromName}" <${from}>` : from,
+    to: options.to,
+    subject: options.subject,
+    replyTo: from,
+    html: htmlWithCid,
+    text: options.text || htmlToPlainText(htmlWithCid),
+    headers,
+    attachments: inlineAttachments.length > 0 ? inlineAttachments : undefined,
+  });
 }
 
 export function getAppBaseUrl(): string {

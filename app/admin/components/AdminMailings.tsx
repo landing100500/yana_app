@@ -247,6 +247,21 @@ export default function AdminMailings() {
   const [launchAudiencePreview, setLaunchAudiencePreview] = useState<
     Record<number, { loading: boolean; mailable: number | null; total: number | null }>
   >({});
+  const [sendGuard, setSendGuard] = useState<{
+    sentToday: number;
+    sentLastHour: number;
+    dailyCap: number;
+    hourlyCap: number;
+    remainingToday: number;
+    remainingHour: number;
+    remaining: number;
+    paused: { paused: boolean; reason: string | null; pausedAt: string | null };
+    smtp?: {
+      transactionalFrom: string | null;
+      marketingFrom: string | null;
+      sameMailbox: boolean;
+    };
+  } | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
   const [userSearchEmail, setUserSearchEmail] = useState('');
@@ -1073,6 +1088,21 @@ export default function AdminMailings() {
     }
   }, [historyUrl]);
 
+  const loadSendGuard = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/mail/send-guard');
+      if (!res.ok) return;
+      const data = await res.json();
+      setSendGuard(data);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSendGuard();
+  }, [loadSendGuard]);
+
   useEffect(() => {
     if (tab === 'history') {
       loadHistory();
@@ -1083,6 +1113,78 @@ export default function AdminMailings() {
     <div className={styles.wrap}>
       <h1 className={styles.title}>Рассылки</h1>
       <p className={styles.subtitle}>Email-рассылки, цепочки писем и управление списками</p>
+
+      {sendGuard && (
+        <div
+          className={
+            sendGuard.paused.paused || sendGuard.remaining <= 0
+              ? styles.guardBannerDanger
+              : styles.guardBanner
+          }
+        >
+          <div>
+            <strong>
+              {sendGuard.paused.paused
+                ? 'Маркетинг на паузе (бан SMTP)'
+                : sendGuard.remainingToday <= 0
+                  ? 'Дневной лимит — очередь ждёт завтра'
+                  : sendGuard.remainingHour <= 0
+                    ? 'Часовой лимит — очередь ждёт следующий час'
+                    : 'Лимиты (очередь растягивается сама)'}
+            </strong>
+            <div className={styles.guardMeta}>
+              День: {sendGuard.sentToday}/{sendGuard.dailyCap} · Час: {sendGuard.sentLastHour}/
+              {sendGuard.hourlyCap} · можно сейчас: {sendGuard.remaining}
+              {sendGuard.paused.reason ? ` · ${sendGuard.paused.reason}` : ''}
+              {sendGuard.smtp?.sameMailbox
+                ? ' · SMTP_OTP_* не задан — OTP и маркетинг на одном ящике'
+                : ' · OTP отделён (SMTP_OTP_*)'}
+            </div>
+          </div>
+          <div className={styles.guardActions}>
+            {sendGuard.paused.paused ? (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={async () => {
+                  const res = await fetch('/api/admin/mail/send-guard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'resume' }),
+                  });
+                  if (res.ok) {
+                    showMsg('Маркетинг возобновлён');
+                    loadSendGuard();
+                  }
+                }}
+              >
+                Снять паузу
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={async () => {
+                  const res = await fetch('/api/admin/mail/send-guard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'pause', reason: 'Пауза вручную из админки' }),
+                  });
+                  if (res.ok) {
+                    showMsg('Маркетинг поставлен на паузу');
+                    loadSendGuard();
+                  }
+                }}
+              >
+                Пауза
+              </button>
+            )}
+            <button type="button" className={styles.btnSecondary} onClick={loadSendGuard}>
+              Обновить
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={styles.tabs}>
         {(['campaigns', 'sequences', 'lists', 'footer', 'history'] as Tab[]).map((t) => (

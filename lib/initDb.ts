@@ -176,6 +176,24 @@ async function ensureMailSchema() {
       });
     }
 
+    try {
+      const subscribersTable = await queryInterface.describeTable('mail_subscribers');
+      if (!subscribersTable.suppressedAt) {
+        await queryInterface.addColumn('mail_subscribers', 'suppressedAt', {
+          type: DataTypes.DATE,
+          allowNull: true,
+        });
+      }
+      if (!subscribersTable.suppressReason) {
+        await queryInterface.addColumn('mail_subscribers', 'suppressReason', {
+          type: DataTypes.STRING(500),
+          allowNull: true,
+        });
+      }
+    } catch {
+      // таблица появится на sync
+    }
+
     const campaignsTable = await queryInterface.describeTable('mail_campaigns');
     if (!campaignsTable.scheduledAt) {
       await queryInterface.addColumn('mail_campaigns', 'scheduledAt', {

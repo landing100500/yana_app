@@ -30,7 +30,20 @@ export async function POST(request: NextRequest) {
     await initDatabase();
     const limit = Number(request.nextUrl.searchParams.get('limit') || mailQueueConfig.queueLimit);
     const result = await processMailQueue(limit);
-    if (result.sendsFailed > 0 && result.sendsSent === 0) {
+    if (result.blockedReason) {
+      const isRateCap =
+        result.blockedReason.includes('Дневной лимит') ||
+        result.blockedReason.includes('Часовой лимит');
+      if (!isRateCap) {
+        alertAdminAsync({
+          source: 'cron/mail-queue',
+          severity: 'high',
+          title: 'Cron mail-queue: маркетинг на паузе',
+          detail: result.blockedReason,
+          dedupeMs: 60 * 60 * 1000,
+        });
+      }
+    } else if (result.sendsFailed > 0 && result.sendsSent === 0) {
       alertAdminAsync({
         source: 'cron/mail-queue',
         severity: 'high',
