@@ -10,7 +10,7 @@ import UserMemory from '@/models/UserMemory';
 import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { getOpenAiChatModel } from '@/lib/openai-models';
+import { getOpenAiChatCompletionParams } from '@/lib/openai-models';
 import { alertAdminAsync, alertOpenAiFailure } from '@/lib/admin-alerts';
 import {
   searchRelevantChunks,
@@ -639,13 +639,18 @@ export async function POST(request: NextRequest) {
 
     phase = 'openai';
     let response = '';
-    const chatModel = getOpenAiChatModel();
+    const chatParams = getOpenAiChatCompletionParams();
+    const chatModel = chatParams.model;
     try {
-      const createCompletion = async (requestMessages: any[]) =>
+      const createCompletion = async (
+        requestMessages: any[],
+        overrides?: Partial<{ max_completion_tokens: number; reasoning_effort: typeof chatParams.reasoning_effort }>
+      ) =>
         openai.chat.completions.create({
           model: chatModel,
           messages: requestMessages,
-          max_completion_tokens: 1800,
+          max_completion_tokens: overrides?.max_completion_tokens ?? chatParams.max_completion_tokens,
+          reasoning_effort: overrides?.reasoning_effort ?? chatParams.reasoning_effort,
         });
 
       let completion;
@@ -657,7 +662,26 @@ export async function POST(request: NextRequest) {
       }
 
       response = completion.choices?.[0]?.message?.content || '';
-      const finishReason = completion.choices?.[0]?.finish_reason;
+      let finishReason = completion.choices?.[0]?.finish_reason;
+      let usage = completion.usage;
+
+      // Sol: reasoning съел бюджет → content пустой, finish_reason=length. Retry с большим бюджетом.
+      if (!response && finishReason === 'length') {
+        const retryTokens = Math.min(chatParams.max_completion_tokens * 2, 32_000);
+        console.warn('[chat/message] empty content after reasoning budget; retry', {
+          model: chatModel,
+          max_completion_tokens: retryTokens,
+          usage,
+        });
+        completion = await createCompletion(messages as any, {
+          max_completion_tokens: retryTokens,
+          reasoning_effort: 'minimal',
+        });
+        response = completion.choices?.[0]?.message?.content || '';
+        finishReason = completion.choices?.[0]?.finish_reason;
+        usage = completion.usage;
+      }
+
       if (finishReason === 'length' && response) {
         const continueCompletion = await createCompletion([
           ...(messages as any),
@@ -668,12 +692,23 @@ export async function POST(request: NextRequest) {
         if (continuation) response = `${response}\n\n${continuation}`.trim();
       }
       if (!response) {
+        console.error('[chat/message] empty OpenAI content', {
+          model: chatModel,
+          finishReason,
+          usage,
+          reasoning_effort: chatParams.reasoning_effort,
+          max_completion_tokens: chatParams.max_completion_tokens,
+        });
         response = 'Извините, не удалось получить ответ. Повторите запрос, пожалуйста.';
       }
       console.log('AI answer metadata:', {
         userId,
         topicId: topic.id,
         model: chatModel,
+        reasoning_effort: chatParams.reasoning_effort,
+        max_completion_tokens: chatParams.max_completion_tokens,
+        finishReason,
+        usage,
         usedChart: !!activeChart,
         isAtmakarakaQuery,
         isPredictionQuery,

@@ -40,6 +40,19 @@
 ### Авторизация
 - [ ] SMS-авторизация через SMS.ru — см. [SMS_AUTH_ROADMAP.md](./SMS_AUTH_ROADMAP.md)
 
+### Антиспам регистрации (без капчи)
+
+**Сейчас:** только лимиты OTP по email (cooldown 60с, ≤5/час) и ≤5 попыток кода. Honeypot / IP rate limit **нет**.  
+Точки входа: лендинг `app/page.tsx` → `POST /api/auth/phone`, также `/api/auth/reset`.
+
+- [ ] **Honeypot** — скрытый input (`website` / аналог), который боты заполняют; в UI `display:none` / off-screen, `tabIndex=-1`, `autocomplete=off`, без label для людей
+- [ ] **Сервер: поле должно быть пустым** — в `POST /api/auth/phone` (и reset) если honeypot непустой → `400`/`204` без создания юзера и без отправки OTP (тихо или с нейтральной ошибкой)
+- [ ] **Timing / min form fill time** — на клиенте timestamp открытия формы; на сервере отклонять, если submit быстрее N мс (например 1500–3000), чтобы отсечь мгновенный bot POST
+- [ ] **Rate limit по IP** — лимит запросов OTP с одного IP (через `lib/client-ip.ts`), отдельно от лимита по email; хранение: память процесса или таблица/Redis; ответ `429`
+- [ ] (опционально позже) алерт админу при всплеске honeypot/IP rejects
+
+**Не делать в этой задаче:** captcha / Turnstile / hCaptcha.
+
 ---
 
 ## На будущее
@@ -81,18 +94,23 @@
 - [ ] CI/CD на VPS — см. [VPS_DEPLOY_ROADMAP.md](./VPS_DEPLOY_ROADMAP.md)
 - [ ] Staging-окружение для теста платежей и cron
 
+### БД: utf8mb4 (emoji / 4-byte Unicode в чате)
+
+**Симптом (уже ловили алерт):**  
+`[CRITICAL] Чат: необработанная ошибка (500)` · `source: chat/message` · `phase=topic`  
+`Conversion from collation utf8mb4_unicode_ci into utf8mb3_general_ci impossible for parameter`
+
+**Причина:** при создании темы (`ChatTopic.create`, title = первые 50 символов сообщения) или записи в `messages` — в тексте emoji/редкий Unicode, а таблица/колонка ещё **utf8mb3**. Соединение шлёт utf8mb4 → MySQL падает.
+
+**Пока:** не чиним сразу — смотрим частоту алертов на `ADMIN_ALERTS_EMAIL` (дедуп ~10 мин, так что «1 письмо» ≠ «1 инцидент»).
+
+- [ ] Наблюдать частоту алертов с текстом `utf8mb3` / `utf8mb4` / `phase=topic`
+- [ ] Если повторяется часто — миграция:
+  - `ALTER TABLE chat_topics CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+  - `ALTER TABLE messages CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+  - по желанию остальные текстовые таблицы чата (`user_memories`, `chat_topic_summaries`, …) и `ALTER DATABASE … utf8mb4`
+  - в `lib/db.ts`: `dialectOptions.charset = 'utf8mb4'`, `define.charset/collate`
+- [ ] Перед ALTER — бэкап; на Beget учитывать лок большой `messages`
+
 ---
 
-## Приоритеты (рекомендация)
-
-| Приоритет | Задача |
-|-----------|--------|
-| P0 | Проверка webhook ЮKassa на проде |
-| P1 | Cron напоминаний на проде (`CRON_SECRET` + расписание) |
-| P2 | Email-дублирование напоминаний |
-| P3 | Web Push (разрешения → подписка → cron) |
-| P4 | SMS-авторизация, автопродление |
-
----
-
-*Последнее обновление: май 2026*
