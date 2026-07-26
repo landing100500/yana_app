@@ -3,14 +3,21 @@
  * npx tsx scripts/openai-ping.ts
  */
 import { loadProjectEnvFiles } from '../lib/load-project-env';
+import {
+  getOpenAiChatMaxCompletionTokens,
+  getOpenAiChatModel,
+  getOpenAiChatReasoningEffort,
+} from '../lib/openai-models';
 
 loadProjectEnvFiles();
 
 async function main() {
   const key = String(process.env.API_GPT || '').trim();
-  const chatModel = String(process.env.OPENAI_CHAT_MODEL || 'gpt-5.6-sol').trim();
+  const chatModel = getOpenAiChatModel();
   console.log('API_GPT:', key ? `set(len=${key.length}, prefix=${key.slice(0, 7)}…)` : 'MISSING');
   console.log('OPENAI_CHAT_MODEL:', chatModel);
+  console.log('reasoning_effort:', getOpenAiChatReasoningEffort());
+  console.log('max_completion_tokens:', getOpenAiChatMaxCompletionTokens());
   if (!key) process.exit(1);
 
   const OpenAI = (await import('openai')).default;
@@ -37,9 +44,12 @@ async function main() {
     const r2 = await client.chat.completions.create({
       model: chatModel,
       messages: [{ role: 'user', content: 'Ответь одним словом: ok' }],
-      max_completion_tokens: 20,
+      max_completion_tokens: getOpenAiChatMaxCompletionTokens(),
+      reasoning_effort: getOpenAiChatReasoningEffort(),
     });
     console.log('chat model OK:', r2.choices[0]?.message?.content);
+    console.log('finish_reason:', r2.choices[0]?.finish_reason);
+    console.log('usage:', r2.usage);
   } catch (e: any) {
     console.error('chat model FAIL:', e?.message || e);
     process.exit(2);

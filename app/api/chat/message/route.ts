@@ -10,7 +10,7 @@ import UserMemory from '@/models/UserMemory';
 import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { getOpenAiChatModel } from '@/lib/openai-models';
+import { getOpenAiChatModel, getOpenAiChatMaxCompletionTokens, getOpenAiChatReasoningEffort } from '@/lib/openai-models';
 import { alertAdminAsync, alertOpenAiFailure } from '@/lib/admin-alerts';
 import {
   searchRelevantChunks,
@@ -645,7 +645,9 @@ export async function POST(request: NextRequest) {
         openai.chat.completions.create({
           model: chatModel,
           messages: requestMessages,
-          max_completion_tokens: 1800,
+          max_completion_tokens: getOpenAiChatMaxCompletionTokens(),
+          // Sol по умолчанию думает; none ≈ поведение gpt-5-chat-latest на том же пайплайне.
+          reasoning_effort: getOpenAiChatReasoningEffort(),
         });
 
       let completion;
