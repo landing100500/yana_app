@@ -653,11 +653,17 @@ export async function POST(request: NextRequest) {
           reasoning_effort: overrides?.reasoning_effort ?? chatParams.reasoning_effort,
         });
 
+      const isTransientOpenAiStatus = (err: unknown) => {
+        const status = Number((err as { status?: number })?.status || 0);
+        return status === 408 || status === 409 || status === 429 || status >= 500;
+      };
+
       let completion;
       try {
         completion = await createCompletion(messages as any);
-      } catch {
-        // Иногда первая попытка падает транзиентно, повтор проходит.
+      } catch (firstErr) {
+        // 4xx не ретраим — только удлиняем запрос → nginx 502.
+        if (!isTransientOpenAiStatus(firstErr)) throw firstErr;
         completion = await createCompletion(messages as any);
       }
 
@@ -665,9 +671,9 @@ export async function POST(request: NextRequest) {
       let finishReason = completion.choices?.[0]?.finish_reason;
       let usage = completion.usage;
 
-      // Sol: reasoning съел бюджет → content пустой, finish_reason=length. Retry с большим бюджетом.
+      // Sol: reasoning съел бюджет → content пустой, finish_reason=length. Один retry, без удвоения latency-цепочки.
       if (!response && finishReason === 'length') {
-        const retryTokens = Math.min(chatParams.max_completion_tokens * 2, 32_000);
+        const retryTokens = Math.min(Math.max(chatParams.max_completion_tokens, 12_000), 24_000);
         console.warn('[chat/message] empty content after reasoning budget; retry', {
           model: chatModel,
           max_completion_tokens: retryTokens,
@@ -682,7 +688,8 @@ export async function POST(request: NextRequest) {
         usage = completion.usage;
       }
 
-      if (finishReason === 'length' && response) {
+      // Continuation только если уже есть текст и обрезка небольшая — иначе 2× Sol = 502.
+      if (finishReason === 'length' && response && response.length < 6000) {
         const continueCompletion = await createCompletion([
           ...(messages as any),
           { role: 'assistant', content: response },

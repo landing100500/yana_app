@@ -6,8 +6,9 @@ const DEFAULT_CHAT_MODEL = 'gpt-5.6-sol';
 const DEFAULT_MINI_MODEL = 'gpt-4o-mini';
 
 /** Бюджет output+reasoning для Sol/GPT-5.x — 1800 часто съедается reasoning → пустой content. */
-const DEFAULT_CHAT_MAX_COMPLETION_TOKENS = 12_000;
-const DEFAULT_CHAT_REASONING_EFFORT: ReasoningEffort = 'low';
+const DEFAULT_CHAT_MAX_COMPLETION_TOKENS = 8_000;
+/** minimal быстрее low и реже упирается в nginx timeout на тяжёлом RAG. */
+const DEFAULT_CHAT_REASONING_EFFORT: ReasoningEffort = 'minimal';
 
 export function getOpenAiChatModel(): string {
   return String(process.env.OPENAI_CHAT_MODEL || DEFAULT_CHAT_MODEL).trim() || DEFAULT_CHAT_MODEL;
