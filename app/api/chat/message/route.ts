@@ -10,7 +10,7 @@ import UserMemory from '@/models/UserMemory';
 import User from '@/models/User';
 import { initDatabase } from '@/lib/initDb';
 import { openai } from '@/lib/openai';
-import { getOpenAiChatCompletionParams } from '@/lib/openai-models';
+import { getOpenAiChatModel } from '@/lib/openai-models';
 import { alertAdminAsync, alertOpenAiFailure } from '@/lib/admin-alerts';
 import {
   searchRelevantChunks,
@@ -639,57 +639,26 @@ export async function POST(request: NextRequest) {
 
     phase = 'openai';
     let response = '';
-    const chatParams = getOpenAiChatCompletionParams();
-    const chatModel = chatParams.model;
+    const chatModel = getOpenAiChatModel();
     try {
-      const createCompletion = async (
-        requestMessages: any[],
-        overrides?: Partial<{ max_completion_tokens: number; reasoning_effort: typeof chatParams.reasoning_effort }>
-      ) =>
+      const createCompletion = async (requestMessages: any[]) =>
         openai.chat.completions.create({
           model: chatModel,
           messages: requestMessages,
-          max_completion_tokens: overrides?.max_completion_tokens ?? chatParams.max_completion_tokens,
-          reasoning_effort: overrides?.reasoning_effort ?? chatParams.reasoning_effort,
+          max_completion_tokens: 1800,
         });
-
-      const isTransientOpenAiStatus = (err: unknown) => {
-        const status = Number((err as { status?: number })?.status || 0);
-        return status === 408 || status === 409 || status === 429 || status >= 500;
-      };
 
       let completion;
       try {
         completion = await createCompletion(messages as any);
-      } catch (firstErr) {
-        // 4xx не ретраим — только удлиняем запрос → nginx 502.
-        if (!isTransientOpenAiStatus(firstErr)) throw firstErr;
+      } catch {
+        // Иногда первая попытка падает транзиентно, повтор проходит.
         completion = await createCompletion(messages as any);
       }
 
       response = completion.choices?.[0]?.message?.content || '';
-      let finishReason = completion.choices?.[0]?.finish_reason;
-      let usage = completion.usage;
-
-      // Sol: reasoning съел бюджет → content пустой, finish_reason=length. Один retry, без удвоения latency-цепочки.
-      if (!response && finishReason === 'length') {
-        const retryTokens = Math.min(Math.max(chatParams.max_completion_tokens, 12_000), 24_000);
-        console.warn('[chat/message] empty content after reasoning budget; retry', {
-          model: chatModel,
-          max_completion_tokens: retryTokens,
-          usage,
-        });
-        completion = await createCompletion(messages as any, {
-          max_completion_tokens: retryTokens,
-          reasoning_effort: 'minimal',
-        });
-        response = completion.choices?.[0]?.message?.content || '';
-        finishReason = completion.choices?.[0]?.finish_reason;
-        usage = completion.usage;
-      }
-
-      // Continuation только если уже есть текст и обрезка небольшая — иначе 2× Sol = 502.
-      if (finishReason === 'length' && response && response.length < 6000) {
+      const finishReason = completion.choices?.[0]?.finish_reason;
+      if (finishReason === 'length' && response) {
         const continueCompletion = await createCompletion([
           ...(messages as any),
           { role: 'assistant', content: response },
@@ -699,23 +668,12 @@ export async function POST(request: NextRequest) {
         if (continuation) response = `${response}\n\n${continuation}`.trim();
       }
       if (!response) {
-        console.error('[chat/message] empty OpenAI content', {
-          model: chatModel,
-          finishReason,
-          usage,
-          reasoning_effort: chatParams.reasoning_effort,
-          max_completion_tokens: chatParams.max_completion_tokens,
-        });
         response = 'Извините, не удалось получить ответ. Повторите запрос, пожалуйста.';
       }
       console.log('AI answer metadata:', {
         userId,
         topicId: topic.id,
         model: chatModel,
-        reasoning_effort: chatParams.reasoning_effort,
-        max_completion_tokens: chatParams.max_completion_tokens,
-        finishReason,
-        usage,
         usedChart: !!activeChart,
         isAtmakarakaQuery,
         isPredictionQuery,

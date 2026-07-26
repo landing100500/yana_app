@@ -504,14 +504,7 @@ export default function ChatPage() {
       try {
         data = await response.json();
       } catch {
-        if (response.status === 502 || response.status === 504) {
-          throw new Error(
-            `HTTP ${response.status}: gateway timeout — Sol/RAG не успел за лимит nginx. Проверьте proxy_read_timeout и OPENAI_CHAT_REASONING_EFFORT=minimal.`
-          );
-        }
-        throw new Error(
-          `HTTP ${response.status}: ответ не JSON (nginx timeout, падение Node или обрыв соединения)`
-        );
+        throw new Error(`HTTP ${response.status}: ответ не JSON (часто nginx timeout или падение процесса)`);
       }
 
       if (response.ok) {
