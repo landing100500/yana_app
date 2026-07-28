@@ -21,7 +21,7 @@ function envFloat(name: string, fallback: number): number {
   return Math.min(1, Math.max(0.1, n));
 }
 
-function useUnisenderGo(): boolean {
+function isUnisenderGoEnvConfigured(): boolean {
   return Boolean(String(process.env.API_UNISENDER_GO || '').trim());
 }
 
@@ -30,7 +30,7 @@ function useUnisenderGo(): boolean {
  * С Unisender Go Beget-капы не нужны — дефолты выше, daily/hourly = 0 (без потолка).
  * С SMTP (fallback) — прежние жёсткие капы под Beget.
  */
-const viaGo = useUnisenderGo();
+const viaGo = isUnisenderGoEnvConfigured();
 
 export const mailQueueConfig = {
   /** Писем за один проход cron */
