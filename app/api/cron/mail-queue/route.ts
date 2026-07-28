@@ -31,15 +31,21 @@ export async function POST(request: NextRequest) {
     const limit = Number(request.nextUrl.searchParams.get('limit') || mailQueueConfig.queueLimit);
     const result = await processMailQueue(limit);
     if (result.blockedReason) {
-      const isRateCap =
-        result.blockedReason.includes('Дневной лимит') ||
-        result.blockedReason.includes('Часовой лимит');
-      if (!isRateCap) {
+      const reason = result.blockedReason;
+      const isExpectedPause =
+        reason.includes('Дневной лимит') ||
+        reason.includes('Часовой лимит') ||
+        reason.includes('Пауза вручную') ||
+        reason.includes('Unisender Go') ||
+        reason.includes('приостановлена') ||
+        reason.includes('бан SMTP');
+      // Ожидаемая пауза/кап — не спамим почту; админ и так видит баннер
+      if (!isExpectedPause) {
         alertAdminAsync({
           source: 'cron/mail-queue',
           severity: 'high',
-          title: 'Cron mail-queue: маркетинг на паузе',
-          detail: result.blockedReason,
+          title: 'Cron mail-queue: маркетинг заблокирован',
+          detail: reason,
           dedupeMs: 60 * 60 * 1000,
         });
       }
