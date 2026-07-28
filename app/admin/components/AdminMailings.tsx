@@ -268,6 +268,7 @@ export default function AdminMailings() {
       sameMailbox: boolean;
     };
   } | null>(null);
+  const [sendGuardError, setSendGuardError] = useState<string | null>(null);
 
   const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
   const [userSearchEmail, setUserSearchEmail] = useState('');
@@ -1097,11 +1098,22 @@ export default function AdminMailings() {
   const loadSendGuard = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/mail/send-guard');
-      if (!res.ok) return;
+      if (!res.ok) {
+        setSendGuardError(`send-guard HTTP ${res.status}`);
+        return;
+      }
       const data = await res.json();
-      setSendGuard(data);
-    } catch {
-      /* ignore */
+      if (!data || typeof data.sentToday !== 'number') {
+        setSendGuardError('Некорректный ответ send-guard');
+        return;
+      }
+      setSendGuard({
+        ...data,
+        paused: data.paused || { paused: false, reason: null, pausedAt: null },
+      });
+      setSendGuardError(null);
+    } catch (e) {
+      setSendGuardError(e instanceof Error ? e.message : 'Ошибка загрузки send-guard');
     }
   }, []);
 
@@ -1120,90 +1132,98 @@ export default function AdminMailings() {
       <h1 className={styles.title}>Рассылки</h1>
       <p className={styles.subtitle}>Email-рассылки, цепочки писем и управление списками</p>
 
-      {sendGuard && (() => {
-        const unlimitedDaily = sendGuard.dailyCap <= 0;
-        const unlimitedHourly = sendGuard.hourlyCap <= 0;
-        const dayBlocked = !unlimitedDaily && sendGuard.remainingToday <= 0;
-        const hourBlocked = !unlimitedHourly && sendGuard.remainingHour <= 0;
-        const isDanger = sendGuard.paused.paused || dayBlocked || hourBlocked;
-        const viaGo = sendGuard.provider?.marketing === 'unisender_go';
-        const title = sendGuard.paused.paused
-          ? 'Маркетинг на паузе'
-          : dayBlocked
-            ? 'Дневной лимит — очередь ждёт завтра'
-            : hourBlocked
-              ? 'Часовой лимит — очередь ждёт следующий час'
-              : viaGo
-                ? 'Unisender Go — без Beget-лимитов'
-                : 'Лимиты (очередь растягивается сама)';
-        const dayLabel = unlimitedDaily
-          ? `${sendGuard.sentToday}/∞`
-          : `${sendGuard.sentToday}/${sendGuard.dailyCap}`;
-        const hourLabel = unlimitedHourly
-          ? `${sendGuard.sentLastHour}/∞`
-          : `${sendGuard.sentLastHour}/${sendGuard.hourlyCap}`;
-        const remainingLabel =
-          unlimitedDaily && unlimitedHourly ? 'без лимита' : String(sendGuard.remaining);
-
-        return (
-          <div className={isDanger ? styles.guardBannerDanger : styles.guardBanner}>
-            <div>
-              <strong>{title}</strong>
-              <div className={styles.guardMeta}>
-                День: {dayLabel} · Час: {hourLabel} · можно сейчас: {remainingLabel}
-                {sendGuard.paused.reason ? ` · ${sendGuard.paused.reason}` : ''}
-                {viaGo
-                  ? ` · From: ${sendGuard.provider?.unisenderGoFrom || 'mail@yasna.chat'}`
+      <div
+        className={
+          sendGuardError || sendGuard?.paused?.paused
+            ? styles.guardBannerDanger
+            : styles.guardBanner
+        }
+      >
+        <div>
+          <strong>
+            {!sendGuard && !sendGuardError
+              ? 'Статус отправки…'
+              : sendGuardError
+                ? 'Статус отправки недоступен'
+                : sendGuard?.paused?.paused
+                  ? 'Маркетинг на паузе'
+                  : sendGuard && sendGuard.dailyCap > 0 && sendGuard.remainingToday <= 0
+                    ? 'Дневной лимит — очередь ждёт завтра'
+                    : sendGuard && sendGuard.hourlyCap > 0 && sendGuard.remainingHour <= 0
+                      ? 'Часовой лимит — очередь ждёт следующий час'
+                      : sendGuard?.provider?.marketing === 'unisender_go'
+                        ? 'Unisender Go — без Beget-лимитов'
+                        : 'Статус маркетинговой отправки'}
+          </strong>
+          <div className={styles.guardMeta}>
+            {sendGuardError ? (
+              sendGuardError
+            ) : sendGuard ? (
+              <>
+                Сегодня: {sendGuard.sentToday}
+                {sendGuard.dailyCap > 0 ? `/${sendGuard.dailyCap}` : ' (без дневного лимита)'}
+                {' · '}
+                Час: {sendGuard.sentLastHour}
+                {sendGuard.hourlyCap > 0 ? `/${sendGuard.hourlyCap}` : ' (без часового лимита)'}
+                {sendGuard.paused?.reason ? ` · ${sendGuard.paused.reason}` : ''}
+                {sendGuard.provider?.marketing === 'unisender_go'
+                  ? ` · From: ${sendGuard.provider.unisenderGoFrom || 'mail@yasna.chat'}`
                   : sendGuard.smtp?.sameMailbox
                     ? ' · SMTP_OTP_* не задан — OTP и маркетинг на одном ящике'
-                    : ' · OTP отделён (SMTP_OTP_*)'}
-              </div>
-            </div>
-            <div className={styles.guardActions}>
-              {sendGuard.paused.paused ? (
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  onClick={async () => {
-                    const res = await fetch('/api/admin/mail/send-guard', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'resume' }),
-                    });
-                    if (res.ok) {
-                      showMsg('Маркетинг возобновлён');
-                      loadSendGuard();
-                    }
-                  }}
-                >
-                  Снять паузу
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  onClick={async () => {
-                    const res = await fetch('/api/admin/mail/send-guard', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'pause', reason: 'Пауза вручную из админки' }),
-                    });
-                    if (res.ok) {
-                      showMsg('Маркетинг поставлен на паузу');
-                      loadSendGuard();
-                    }
-                  }}
-                >
-                  Пауза
-                </button>
-              )}
-              <button type="button" className={styles.btnSecondary} onClick={loadSendGuard}>
-                Обновить
-              </button>
-            </div>
+                    : ' · OTP на SMTP'}
+              </>
+            ) : (
+              'Загрузка…'
+            )}
           </div>
-        );
-      })()}
+        </div>
+        <div className={styles.guardActions}>
+          {sendGuard?.paused?.paused ? (
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={async () => {
+                const res = await fetch('/api/admin/mail/send-guard', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'resume' }),
+                });
+                if (res.ok) {
+                  showMsg('Маркетинг возобновлён');
+                  loadSendGuard();
+                } else {
+                  showMsg('Не удалось снять паузу');
+                }
+              }}
+            >
+              Снять паузу
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={async () => {
+                const res = await fetch('/api/admin/mail/send-guard', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'pause', reason: 'Пауза вручную из админки' }),
+                });
+                if (res.ok) {
+                  showMsg('Маркетинг поставлен на паузу');
+                  loadSendGuard();
+                } else {
+                  showMsg('Не удалось поставить паузу');
+                }
+              }}
+            >
+              Пауза
+            </button>
+          )}
+          <button type="button" className={styles.btnSecondary} onClick={loadSendGuard}>
+            Обновить
+          </button>
+        </div>
+      </div>
 
       <div className={styles.tabs}>
         {(['campaigns', 'sequences', 'lists', 'footer', 'history'] as Tab[]).map((t) => (
