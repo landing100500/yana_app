@@ -8,6 +8,11 @@ import {
 } from '@/lib/mail-send-guard';
 import { getSmtpConfig, isSmtpConfigured } from '@/lib/email-transport';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
+import {
+  isUnisenderGoConfigured,
+  getUnisenderGoFromEmail,
+  getUnisenderGoFromName,
+} from '@/lib/unisender-go';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +35,18 @@ export async function GET() {
       /* */
     }
 
+    const unisenderGo = isUnisenderGoConfigured();
+
     return NextResponse.json({
       ...budget,
       queue: mailQueueConfig,
+      provider: {
+        marketing: unisenderGo ? 'unisender_go' : 'smtp',
+        transactional: 'smtp',
+        unisenderGoConfigured: unisenderGo,
+        unisenderGoFrom: unisenderGo ? getUnisenderGoFromEmail() : null,
+        unisenderGoFromName: unisenderGo ? getUnisenderGoFromName() : null,
+      },
       smtp: {
         transactionalConfigured: isSmtpConfigured('transactional'),
         marketingConfigured: isSmtpConfigured('marketing'),

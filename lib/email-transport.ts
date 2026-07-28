@@ -1,8 +1,15 @@
 import nodemailer, { type Transporter } from 'nodemailer';
+import crypto from 'crypto';
 import { embedMailImagesInHtml, type MailImageAttachment } from '@/lib/mail-email-images';
 import { normalizeHtmlForEmailSend } from '@/lib/mail-editor-html';
 import { isConnectionError, isMailboxSendingDisabled } from '@/lib/smtp-errors';
 import { pauseMarketingMail } from '@/lib/mail-send-guard';
+import {
+  isUnisenderGoConfigured,
+  sendViaUnisenderGo,
+  getUnisenderGoFromEmail,
+  getUnisenderGoFromName,
+} from '@/lib/unisender-go';
 
 export type SmtpChannel = 'transactional' | 'marketing';
 
@@ -42,7 +49,7 @@ function envTrim(name: string): string {
 }
 
 /**
- * marketing: всегда SMTP_* (рассылки)
+ * marketing: всегда SMTP_* (рассылки) — только fallback, если Unisender Go не настроен
  * transactional (OTP/алерты): SMTP_OTP_* если задан USER/HOST, иначе fallback на SMTP_*
  */
 export function getSmtpConfig(channel: SmtpChannel = 'transactional'): SmtpConfig {
@@ -194,7 +201,7 @@ async function sendViaChannel(
   }
 }
 
-/** OTP, алерты, транзакционные письма */
+/** OTP, алерты, транзакционные письма — всегда SMTP (Beget), не Unisender. */
 export async function sendSimpleEmail(options: SendSimpleEmailOptions): Promise<void> {
   const { from, fromName } = getSmtpConfig('transactional');
   await sendViaChannel('transactional', {
@@ -208,12 +215,45 @@ export async function sendSimpleEmail(options: SendSimpleEmailOptions): Promise<
   });
 }
 
-/** Маркетинг / рассылки / цепочки */
+/** Маркетинг / рассылки / цепочки — Unisender Go если задан API_UNISENDER_GO, иначе SMTP. */
 export async function sendMarketingEmail(options: SendMarketingEmailOptions): Promise<void> {
-  const { from, fromName } = getSmtpConfig('marketing');
-
   const htmlPrepared = normalizeHtmlForEmailSend(options.html);
   const { html: htmlWithCid, attachments: imageAttachments } = await embedMailImagesInHtml(htmlPrepared);
+  const text = options.text || htmlToPlainText(htmlWithCid);
+
+  if (isUnisenderGoConfigured()) {
+    try {
+      const inlineAttachments = imageAttachments.map((img: MailImageAttachment) => ({
+        type: img.contentType,
+        // Unisender: name = CID в cid:...
+        name: img.cid,
+        content: img.content.toString('base64'),
+      }));
+
+      await sendViaUnisenderGo({
+        to: options.to,
+        subject: options.subject,
+        html: htmlWithCid,
+        text,
+        unsubscribeUrl: options.unsubscribeUrl,
+        inlineAttachments,
+        idempotenceKey: crypto.randomBytes(16).toString('hex'),
+        metadata: {
+          source: 'yasna-marketing',
+          from: getUnisenderGoFromEmail(),
+          from_name: getUnisenderGoFromName(),
+        },
+      });
+      consecutiveSendFailures = 0;
+      return;
+    } catch (error) {
+      consecutiveSendFailures += 1;
+      throw error;
+    }
+  }
+
+  // Fallback: старый SMTP-маркетинг (если ключ Unisender не задан)
+  const { from, fromName } = getSmtpConfig('marketing');
 
   const headers: Record<string, string> = {
     'X-Auto-Response-Suppress': 'All',
@@ -239,7 +279,7 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
     subject: options.subject,
     replyTo: from,
     html: htmlWithCid,
-    text: options.text || htmlToPlainText(htmlWithCid),
+    text,
     headers,
     attachments: inlineAttachments.length > 0 ? inlineAttachments : undefined,
   });

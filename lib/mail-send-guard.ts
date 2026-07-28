@@ -105,15 +105,17 @@ export async function getMarketingSendBudget(): Promise<{
   ]);
   const dailyCap = mailQueueConfig.dailySendCap;
   const hourlyCap = mailQueueConfig.hourlySendCap;
-  const remainingToday = Math.max(0, dailyCap - sentToday);
-  const remainingHour = Math.max(0, hourlyCap - sentLastHour);
+  const remainingToday =
+    dailyCap <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, dailyCap - sentToday);
+  const remainingHour =
+    hourlyCap <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, hourlyCap - sentLastHour);
   return {
     sentToday,
     sentLastHour,
     dailyCap,
     hourlyCap,
-    remainingToday,
-    remainingHour,
+    remainingToday: dailyCap <= 0 ? -1 : remainingToday,
+    remainingHour: hourlyCap <= 0 ? -1 : remainingHour,
     remaining: Math.min(remainingToday, remainingHour),
     paused,
   };
@@ -138,14 +140,15 @@ export async function assertMarketingSendAllowed(): Promise<{
   }
 
   const budget = await getMarketingSendBudget();
-  if (budget.remainingHour <= 0) {
+  // 0 = без капа (Unisender Go). Иначе — старые Beget-лимиты.
+  if (budget.hourlyCap > 0 && budget.remainingHour <= 0) {
     return {
       ok: false,
       reason: `Часовой лимит (${budget.sentLastHour}/${budget.hourlyCap}). Pending ждут — продолжим через час.`,
       remaining: 0,
     };
   }
-  if (budget.remainingToday <= 0) {
+  if (budget.dailyCap > 0 && budget.remainingToday <= 0) {
     return {
       ok: false,
       reason: `Дневной лимит (${budget.sentToday}/${budget.dailyCap}). Pending ждут — продолжим завтра.`,
@@ -153,5 +156,10 @@ export async function assertMarketingSendAllowed(): Promise<{
     };
   }
 
-  return { ok: true, remaining: budget.remaining };
+  const remaining =
+    budget.hourlyCap <= 0 && budget.dailyCap <= 0
+      ? Number.MAX_SAFE_INTEGER
+      : budget.remaining;
+
+  return { ok: true, remaining };
 }

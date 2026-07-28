@@ -44,6 +44,26 @@ export function isPermanentRecipientBounce(error: unknown): boolean {
   const code = getSmtpResponseCode(error);
   if (isMailboxSendingDisabled(error)) return false;
 
+  // Unisender Go / ESP
+  const apiCode = (error as { code?: number | string })?.code;
+  if (
+    apiCode === 204 ||
+    apiCode === 205 ||
+    msg.includes('invalid email') ||
+    msg.includes('recipient is unavailable') ||
+    msg.includes('unsubscribed') ||
+    msg.includes('email is in suppression list')
+  ) {
+    // не всё из этого — permanent bounce; suppression/unsubscribed уже отфильтрованы у нас
+    if (
+      msg.includes('invalid email') ||
+      msg.includes('recipient is unavailable') ||
+      msg.includes('email is in suppression list')
+    ) {
+      return true;
+    }
+  }
+
   if (
     code === 554 ||
     msg.includes('554 5.7.1') ||
