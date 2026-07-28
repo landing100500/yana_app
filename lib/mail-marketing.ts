@@ -14,8 +14,8 @@ import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures } from '@
 import { alertAdminAsync } from '@/lib/admin-alerts';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
-import { assertMarketingSendAllowed, isMarketingMailPaused } from '@/lib/mail-send-guard';
-import { isFatalSmtpProviderError, isPermanentRecipientBounce } from '@/lib/smtp-errors';
+import { isFatalSmtpProviderError, isPermanentRecipientBounce, isProviderQuotaExhaustedError } from '@/lib/smtp-errors';
+import { assertMarketingSendAllowed, isMarketingMailPaused, pauseMarketingMail } from '@/lib/mail-send-guard';
 import { validateEmailForSending, validateEmailsForSendingBatch, normalizeEmail } from '@/lib/email-validation';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
 import {
@@ -370,6 +370,26 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<SendOn
     return 'sent';
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Send failed';
+
+    // Лимит тарифа Unisender — pending оставляем, пауза, не долбим API
+    if (isProviderQuotaExhaustedError(error)) {
+      await pauseMarketingMail(`Unisender Go: дневной лимит тарифа. ${message}`.slice(0, 1000));
+      if (Date.now() - lastSmtpBurstAlertAt > 30 * 60 * 1000) {
+        lastSmtpBurstAlertAt = Date.now();
+        alertAdminAsync({
+          source: 'mail/sendOne',
+          severity: 'high',
+          title: 'Unisender Go: дневной лимит тарифа — маркетинг на паузе',
+          detail:
+            'Очередь остановлена. Pending сохранены. Завтра нажмите «Снять паузу» или дождитесь авто-снятия, если добавите.',
+          meta: { sendId: send.id, email: send.email || check.email || null },
+          error,
+          dedupeMs: 30 * 60 * 1000,
+        });
+      }
+      return 'skipped';
+    }
+
     await send.update({ status: 'failed', errorMessage: message });
     if (isPermanentRecipientBounce(error)) {
       await suppressMailSubscriber(send.userId, message);
@@ -384,7 +404,7 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<SendOn
       alertAdminAsync({
         source: 'mail/sendOne',
         severity: 'critical',
-        title: 'SMTP: серия ошибок отправки рассылки',
+        title: 'SMTP/ESP: серия ошибок отправки рассылки',
         detail: `Подряд неудачных отправок: ${fails}. Очередь может стоять.`,
         meta: { sendId: send.id, email: send.email || check.email || null },
         error,

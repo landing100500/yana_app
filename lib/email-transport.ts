@@ -2,7 +2,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import crypto from 'crypto';
 import { embedMailImagesInHtml, type MailImageAttachment } from '@/lib/mail-email-images';
 import { normalizeHtmlForEmailSend } from '@/lib/mail-editor-html';
-import { isConnectionError, isMailboxSendingDisabled } from '@/lib/smtp-errors';
+import { isConnectionError, isMailboxSendingDisabled, isProviderQuotaExhaustedError } from '@/lib/smtp-errors';
 import { pauseMarketingMail } from '@/lib/mail-send-guard';
 import {
   isUnisenderGoConfigured,
@@ -166,12 +166,15 @@ export function htmlToPlainText(html: string): string {
 
 async function tripMarketingOnFatal(error: unknown, channel: SmtpChannel): Promise<void> {
   if (channel !== 'marketing') return;
-  // Только бан ящика Beget — дневной/часовой кап сами растягивают очередь без паузы
-  if (!isMailboxSendingDisabled(error)) return;
+  const quota = isProviderQuotaExhaustedError(error);
+  const mailbox = isMailboxSendingDisabled(error);
+  if (!quota && !mailbox) return;
   if (Date.now() - lastFatalTripAt < 10_000) return;
   lastFatalTripAt = Date.now();
 
-  const reason = `Beget отключил отправку с ящика: ${getSmtpErrorMessageSafe(error)}`;
+  const reason = quota
+    ? `Unisender Go: дневной лимит тарифа исчерпан: ${getSmtpErrorMessageSafe(error)}`
+    : `Beget отключил отправку с ящика: ${getSmtpErrorMessageSafe(error)}`;
   try {
     await pauseMarketingMail(reason);
   } catch (e) {
@@ -248,6 +251,7 @@ export async function sendMarketingEmail(options: SendMarketingEmailOptions): Pr
       return;
     } catch (error) {
       consecutiveSendFailures += 1;
+      await tripMarketingOnFatal(error, 'marketing');
       throw error;
     }
   }

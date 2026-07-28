@@ -21,9 +21,22 @@ export function isMailboxSendingDisabled(error: unknown): boolean {
   );
 }
 
+/** Unisender Go / ESP: дневной лимит тарифа — очередь надо поставить на паузу, pending не жечь. */
+export function isProviderQuotaExhaustedError(error: unknown): boolean {
+  const msg = getSmtpErrorMessage(error).toLowerCase();
+  return (
+    msg.includes('reached your daily limit') ||
+    msg.includes('daily limit of') ||
+    msg.includes('try again tomorrow') ||
+    msg.includes('emails_included') ||
+    (msg.includes('daily') && msg.includes('limit') && msg.includes('contact our support'))
+  );
+}
+
 /** Фатальные ошибки провайдера — продолжать долбить очередь бессмысленно. */
 export function isFatalSmtpProviderError(error: unknown): boolean {
   if (isMailboxSendingDisabled(error)) return true;
+  if (isProviderQuotaExhaustedError(error)) return true;
   const msg = getSmtpErrorMessage(error).toLowerCase();
   const code = getSmtpResponseCode(error);
   return (
