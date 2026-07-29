@@ -1,12 +1,8 @@
-/* Минимальный SW для критериев установки PWA (Chrome/Edge). Кэширование не используем — всегда сеть. */
-self.addEventListener('install', (event) => {
+/* SW только для installability PWA. Без fetch interception — меньше риска белого/чёрного экрана. */
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
 });

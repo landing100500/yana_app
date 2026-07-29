@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Op } from 'sequelize';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { formatPhoneValidationError, normalizePhoneDigits } from '@/lib/phone';
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
     const phone = normalizePhoneDigits(String(rawPhone || '').trim());
     if (!phone) {
       return NextResponse.json({ error: formatPhoneValidationError() }, { status: 400 });
+    }
+
+    const phoneOwner = await User.findOne({ where: { phone } });
+    if (phoneOwner && normalizeEmail(String(phoneOwner.email || '')) !== email) {
+      return NextResponse.json(
+        { error: 'Этот номер телефона уже используется в другом аккаунте' },
+        { status: 409 }
+      );
     }
 
     const existingUser = await User.findOne({ where: { email } });

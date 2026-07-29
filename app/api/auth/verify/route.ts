@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { Op } from 'sequelize';
 import User from '@/models/User';
 import Session from '@/models/Session';
 import UserAnketa from '@/models/UserAnketa';
@@ -101,6 +101,13 @@ export async function POST(request: NextRequest) {
         lifeDifficulties: null,
       });
     } else if (!resetPin && !user.phone && phone) {
+      const phoneOwner = await User.findOne({ where: { phone, id: { [Op.ne]: user.id } } });
+      if (phoneOwner) {
+        return NextResponse.json(
+          { error: 'Этот номер телефона уже используется в другом аккаунте' },
+          { status: 409 }
+        );
+      }
       user.set('phone', phone);
       await user.save();
     }
@@ -139,15 +146,6 @@ export async function POST(request: NextRequest) {
     });
 
     setAuthCookie(response, token);
-
-    const cookieStore = await cookies();
-    cookieStore.set('auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60,
-      path: '/',
-    });
 
     return response;
   } catch (error: unknown) {
