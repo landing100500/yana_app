@@ -435,10 +435,13 @@ ${predictionMemoryBlock}
             try {
               const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
               const delivered = await maybeDeliverTrialEndLetter(currentUser, { skipChat: true });
-              if (delivered && !delivered.alreadySent && delivered.bodyText) {
-                controller.enqueue(
-                  new TextEncoder().encode(`\n\n---\n\n${delivered.bodyText}`)
-                );
+              if (delivered && !delivered.alreadySent) {
+                const chunks = [delivered.personalizedText, delivered.upsellText].filter(Boolean);
+                if (chunks.length) {
+                  controller.enqueue(
+                    new TextEncoder().encode(`\n\n---\n\n${chunks.join('\n\n---\n\n')}`)
+                  );
+                }
               }
             } catch (trialErr) {
               console.warn('[self-knowledge] trial-end letter failed:', trialErr);

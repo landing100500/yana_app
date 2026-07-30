@@ -21,7 +21,12 @@ async function userHasSucceededPayment(userId: number): Promise<boolean> {
 const FALLBACK_TOPIC_TITLE = 'Завершение пробного';
 
 export type TrialEndDeliveryResult = {
+  /** Только персоналка (для почты и истории). */
   bodyText: string;
+  /** То же, что bodyText — персоналка. */
+  personalizedText: string;
+  /** Отдельное сообщение про тарифы (только чат). */
+  upsellText: string;
   alreadySent: boolean;
   chatSent: boolean;
   emailSent: boolean;
@@ -37,11 +42,21 @@ function escapeHtml(text: string): string {
 }
 
 function bodyToEmailHtml(bodyText: string): string {
-  const withLinks = escapeHtml(bodyText).replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" style="color:#6b5b95;">$1</a>'
-  );
-  return `<div style="font-family:Georgia,serif;font-size:16px;line-height:1.55;color:#222;white-space:pre-wrap;">${withLinks}</div>`;
+  const paragraphs = bodyText
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => {
+      const withBreaks = escapeHtml(p).replace(/\n/g, '<br/>');
+      const withLinks = withBreaks.replace(
+        /(https?:\/\/[^\s<]+)/g,
+        '<a href="$1" style="color:#6b5b95;">$1</a>'
+      );
+      return `<p style="margin:0 0 1.1em;font-family:Georgia,serif;font-size:16px;line-height:1.55;color:#222;">${withLinks}</p>`;
+    })
+    .join('');
+  return `<div>${paragraphs}</div>`;
 }
 
 async function resolveTopicId(userId: number, preferredTopicId?: number | null): Promise<number> {
@@ -98,6 +113,8 @@ export async function maybeDeliverTrialEndLetter(
   if (existing) {
     return {
       bodyText: existing.bodyText,
+      personalizedText: existing.bodyText,
+      upsellText: buildSessionEndedUpsellMessage(),
       alreadySent: true,
       chatSent: existing.chatSent,
       emailSent: existing.emailSent,
@@ -112,14 +129,15 @@ export async function maybeDeliverTrialEndLetter(
   }
 
   const templates = await getTrialEndTemplates();
-  const personalized = composeTrialEndLetter({
+  const personalizedText = composeTrialEndLetter({
     templates,
     lagneshaHouse: resolved.lagneshaHouse,
     lagnaSign: resolved.lagnaSign,
     gender: resolved.gender,
   });
-  // Персоналка + прежний upsell по тарифам
-  const bodyText = `${personalized.trim()}\n\n${buildSessionEndedUpsellMessage()}`;
+  const upsellText = buildSessionEndedUpsellMessage();
+  // В истории/почте — только персоналка с абзацами
+  const bodyText = personalizedText;
 
   let chatSent = false;
   let topicId: number | null = null;
@@ -129,7 +147,12 @@ export async function maybeDeliverTrialEndLetter(
       await Message.create({
         topicId,
         role: 'assistant',
-        content: bodyText,
+        content: personalizedText,
+      });
+      await Message.create({
+        topicId,
+        role: 'assistant',
+        content: upsellText,
       });
       chatSent = true;
     } catch (err) {
@@ -147,8 +170,8 @@ export async function maybeDeliverTrialEndLetter(
       await sendMarketingEmail({
         to: email,
         subject: 'Ясна — твой следующий шаг',
-        html: bodyToEmailHtml(bodyText),
-        text: bodyText,
+        html: bodyToEmailHtml(personalizedText),
+        text: personalizedText,
       });
       emailSent = true;
     } catch (err: any) {
@@ -177,6 +200,8 @@ export async function maybeDeliverTrialEndLetter(
 
     return {
       bodyText,
+      personalizedText,
+      upsellText,
       alreadySent: false,
       chatSent,
       emailSent,
@@ -189,6 +214,8 @@ export async function maybeDeliverTrialEndLetter(
       if (again) {
         return {
           bodyText: again.bodyText,
+          personalizedText: again.bodyText,
+          upsellText,
           alreadySent: true,
           chatSent: again.chatSent,
           emailSent: again.emailSent,
@@ -200,6 +227,8 @@ export async function maybeDeliverTrialEndLetter(
     return chatSent || emailSent
       ? {
           bodyText,
+          personalizedText,
+          upsellText,
           alreadySent: false,
           chatSent,
           emailSent,

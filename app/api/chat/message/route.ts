@@ -710,13 +710,15 @@ export async function POST(request: NextRequest) {
     });
 
     let trialEndLetter: string | null = null;
+    let trialEndUpsell: string | null = null;
     if (planBefore.code === 'free') {
       await consumeFreeAiRequest(currentUser);
       try {
         const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
         const delivered = await maybeDeliverTrialEndLetter(currentUser, { topicId: topic.id });
         if (delivered && !delivered.alreadySent) {
-          trialEndLetter = delivered.bodyText;
+          trialEndLetter = delivered.personalizedText;
+          trialEndUpsell = delivered.upsellText;
         }
       } catch (trialErr) {
         console.warn('[chat/message] trial-end letter failed:', trialErr);
@@ -754,6 +756,7 @@ export async function POST(request: NextRequest) {
       response,
       topicId: topic.id,
       ...(trialEndLetter ? { trialEndLetter } : {}),
+      ...(trialEndUpsell ? { trialEndUpsell } : {}),
     });
   } catch (error: any) {
     const errMessage = error?.message || String(error);

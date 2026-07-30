@@ -504,6 +504,7 @@ export default function ChatPage() {
         response?: string;
         topicId?: number;
         trialEndLetter?: string;
+        trialEndUpsell?: string;
         error?: string;
         detail?: string;
       } | null = null;
@@ -533,6 +534,17 @@ export default function ChatPage() {
               id: (Date.now() + 2).toString(),
               role: 'assistant' as const,
               content: data.trialEndLetter as string,
+              timestamp: new Date(),
+            },
+          ]);
+        }
+        if (data.trialEndUpsell) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 3).toString(),
+              role: 'assistant' as const,
+              content: data.trialEndUpsell as string,
               timestamp: new Date(),
             },
           ]);

@@ -42,11 +42,11 @@ export async function buildChatBlockMessage(user: User, snapshot: UserPlanSnapsh
   }
 
   if (snapshot.code === 'free' && !hasPaid) {
-    // Письмо должно уйти сразу после 10-го запроса; здесь — страховка,
-    // если по какой-то причине не ушло. Уже отправленное не дублируем в 403.
+    // Письмо должно уйти сразу после 10-го запроса; здесь — страховка.
+    // При доставке в чат уже пишутся 2 сообщения; в 403 показываем тарифы.
     const delivered = await maybeDeliverTrialEndLetter(user, { forceIfBlocked: true });
     if (delivered && !delivered.alreadySent) {
-      return delivered.bodyText;
+      return delivered.upsellText;
     }
   }
 

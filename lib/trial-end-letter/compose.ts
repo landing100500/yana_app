@@ -53,6 +53,8 @@ export function composeTrialEndLetter(params: {
   const { templates, lagneshaHouse, lagnaSign, gender } = params;
   const p1 = pickGendered(templates.part1[String(lagneshaHouse)], gender).trim();
   const p2 = pickGendered(templates.part2[String(lagnaSign)], gender).trim();
-  const p3 = templates.part3.trim();
-  return [p1, p2, p3].filter(Boolean).join('\n');
+  // part3 уже может содержать абзацы из админки — сохраняем как есть
+  const p3 = templates.part3.replace(/\r\n/g, '\n').trim();
+  // Между частями 1 / 2 / 3 — пустая строка (абзацы)
+  return [p1, p2, p3].filter(Boolean).join('\n\n');
 }
