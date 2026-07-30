@@ -17,6 +17,7 @@ import PhoneOtp from '@/models/PhoneOtp';
 import SmsSendLog from '@/models/SmsSendLog';
 import EmailOtp from '@/models/EmailOtp';
 import EmailSendLog from '@/models/EmailSendLog';
+import TrialEndLetterSend from '@/models/TrialEndLetterSend';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,6 +79,7 @@ export async function DELETE(
     await UserMemory.destroy({ where: { userId }, transaction });
     await UserAnketa.destroy({ where: { userId }, transaction });
     await NatalChart.destroy({ where: { userId }, transaction });
+    await TrialEndLetterSend.destroy({ where: { userId }, transaction });
     await Session.destroy({ where: { userId }, transaction });
 
     if (userPhone) {

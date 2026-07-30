@@ -9,6 +9,10 @@ import {
   buildFreePromoEndedMessage,
   buildSessionEndedUpsellMessage,
 } from '@/lib/plan-messages';
+import {
+  getTrialEndLetterBodyForUser,
+  maybeDeliverTrialEndLetter,
+} from '@/lib/trial-end-letter';
 
 export function isChatTimeBlocked(snapshot: UserPlanSnapshot): boolean {
   if (snapshot.hasUnlimitedTime) return false;
@@ -38,6 +42,13 @@ export async function buildChatBlockMessage(user: User, snapshot: UserPlanSnapsh
 
   if (hasPaid && snapshot.code !== 'free') {
     return buildSessionEndedUpsellMessage();
+  }
+
+  if (snapshot.code === 'free' && !hasPaid) {
+    const delivered = await maybeDeliverTrialEndLetter(user, { forceIfBlocked: true });
+    if (delivered?.bodyText) return delivered.bodyText;
+    const stored = await getTrialEndLetterBodyForUser(user.id);
+    if (stored) return stored;
   }
 
   if (snapshot.code === 'free' && isFreePromoPeriodEnded(user) && !hasPaid) {

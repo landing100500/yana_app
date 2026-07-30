@@ -500,7 +500,13 @@ export default function ChatPage() {
         }),
       });
 
-      let data: { response?: string; topicId?: number; error?: string; detail?: string } | null = null;
+      let data: {
+        response?: string;
+        topicId?: number;
+        trialEndLetter?: string;
+        error?: string;
+        detail?: string;
+      } | null = null;
       try {
         data = await response.json();
       } catch {
@@ -519,6 +525,18 @@ export default function ChatPage() {
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
+
+        if (data.trialEndLetter) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 2).toString(),
+              role: 'assistant' as const,
+              content: data.trialEndLetter as string,
+              timestamp: new Date(),
+            },
+          ]);
+        }
 
         // Обновляем currentTopicId если он был создан или изменен
         if (data.topicId) {

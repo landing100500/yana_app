@@ -23,6 +23,7 @@ import '@/models/MailSend';
 import '@/models/MailSequence';
 import '@/models/MailSequenceStep';
 import '@/models/MailSequenceEnrollment';
+import '@/models/TrialEndLetterSend';
 
 async function ensureAuthSchema() {
   const queryInterface = sequelize.getQueryInterface();

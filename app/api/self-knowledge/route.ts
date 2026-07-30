@@ -432,6 +432,12 @@ ${predictionMemoryBlock}
 
           if (isFreePlan) {
             await consumeFreeAiRequest(currentUser);
+            try {
+              const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
+              await maybeDeliverTrialEndLetter(currentUser);
+            } catch (trialErr) {
+              console.warn('[self-knowledge] trial-end letter failed:', trialErr);
+            }
           }
 
           controller.close();

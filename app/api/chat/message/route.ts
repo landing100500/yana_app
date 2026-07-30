@@ -709,8 +709,18 @@ export async function POST(request: NextRequest) {
       content: response,
     });
 
+    let trialEndLetter: string | null = null;
     if (planBefore.code === 'free') {
       await consumeFreeAiRequest(currentUser);
+      try {
+        const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
+        const delivered = await maybeDeliverTrialEndLetter(currentUser, { topicId: topic.id });
+        if (delivered && !delivered.alreadySent) {
+          trialEndLetter = delivered.bodyText;
+        }
+      } catch (trialErr) {
+        console.warn('[chat/message] trial-end letter failed:', trialErr);
+      }
     }
 
     const sectionRefsMap = new Map<string, string>();
@@ -743,6 +753,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       response,
       topicId: topic.id,
+      ...(trialEndLetter ? { trialEndLetter } : {}),
     });
   } catch (error: any) {
     const errMessage = error?.message || String(error);
