@@ -28,28 +28,26 @@ export function parseAnketaGender(raw: string | null | undefined): TrialGender |
   return null;
 }
 
-type ChartPlanetFields = {
-  sun: number;
-  moon: number;
-  mercury: number;
-  venus: number;
-  mars: number;
-  jupiter: number;
-  saturn: number;
-  ascendant: number;
-};
-
-function getPlanetLongitude(chart: ChartPlanetFields, field: string): number | null {
-  const key = field as keyof ChartPlanetFields;
-  const value = chart[key];
-  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+function getPlanetLongitude(chart: Record<string, unknown>, field: string): number | null {
+  const raw = chart[field];
+  // DECIMAL из MySQL часто приходит строкой
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(value)) return null;
   return value;
 }
 
-export async function resolveTrialEndInputs(userId: number): Promise<TrialEndResolveResult | null> {
+export type TrialEndResolveFailReason =
+  | 'no_gender'
+  | 'no_chart'
+  | 'bad_ascendant'
+  | 'bad_lagnesha';
+
+export async function resolveTrialEndInputs(
+  userId: number
+): Promise<TrialEndResolveResult | { ok: false; reason: TrialEndResolveFailReason }> {
   const anketa = await UserAnketa.findOne({ where: { userId } });
   const gender = parseAnketaGender(anketa?.gender);
-  if (!gender) return null;
+  if (!gender) return { ok: false, reason: 'no_gender' };
 
   let chart = await NatalChart.findOne({
     where: { userId, isMain: true },
@@ -61,15 +59,18 @@ export async function resolveTrialEndInputs(userId: number): Promise<TrialEndRes
       order: [['updatedAt', 'DESC']],
     });
   }
-  if (!chart) return null;
+  if (!chart) return { ok: false, reason: 'no_chart' };
 
   const ascendant = Number(chart.ascendant);
-  if (!Number.isFinite(ascendant)) return null;
+  if (!Number.isFinite(ascendant)) return { ok: false, reason: 'bad_ascendant' };
 
   const lagnaSign = longitudeToSignIndex(ascendant);
   const planetField = SIGN_RULER[lagnaSign];
-  const planetLon = getPlanetLongitude(chart as unknown as ChartPlanetFields, planetField);
-  if (planetLon == null) return null;
+  const planetLon = getPlanetLongitude(
+    chart.get({ plain: true }) as unknown as Record<string, unknown>,
+    planetField
+  );
+  if (planetLon == null) return { ok: false, reason: 'bad_lagnesha' };
 
   const lagneshaHouse = wholeSignHouse(planetLon, lagnaSign);
 
@@ -79,4 +80,10 @@ export async function resolveTrialEndInputs(userId: number): Promise<TrialEndRes
     lagneshaHouse,
     gender,
   };
+}
+
+export function isTrialEndResolveResult(
+  value: TrialEndResolveResult | { ok: false; reason: TrialEndResolveFailReason }
+): value is TrialEndResolveResult {
+  return !('ok' in value && value.ok === false);
 }

@@ -9,10 +9,7 @@ import {
   buildFreePromoEndedMessage,
   buildSessionEndedUpsellMessage,
 } from '@/lib/plan-messages';
-import {
-  getTrialEndLetterBodyForUser,
-  maybeDeliverTrialEndLetter,
-} from '@/lib/trial-end-letter';
+import { maybeDeliverTrialEndLetter } from '@/lib/trial-end-letter';
 
 export function isChatTimeBlocked(snapshot: UserPlanSnapshot): boolean {
   if (snapshot.hasUnlimitedTime) return false;
@@ -45,10 +42,12 @@ export async function buildChatBlockMessage(user: User, snapshot: UserPlanSnapsh
   }
 
   if (snapshot.code === 'free' && !hasPaid) {
+    // Письмо должно уйти сразу после 10-го запроса; здесь — страховка,
+    // если по какой-то причине не ушло. Уже отправленное не дублируем в 403.
     const delivered = await maybeDeliverTrialEndLetter(user, { forceIfBlocked: true });
-    if (delivered?.bodyText) return delivered.bodyText;
-    const stored = await getTrialEndLetterBodyForUser(user.id);
-    if (stored) return stored;
+    if (delivered && !delivered.alreadySent) {
+      return delivered.bodyText;
+    }
   }
 
   if (snapshot.code === 'free' && isFreePromoPeriodEnded(user) && !hasPaid) {

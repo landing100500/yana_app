@@ -214,7 +214,9 @@ export default function AdminTrialEnd() {
       <div className={styles.header}>
         <h1 className={styles.title}>Завершение пробного</h1>
         <p className={styles.subtitle}>
-          Персональное сообщение в чат и на почту после 10 бесплатных запросов
+          Персональное сообщение в чат и на почту после 10 бесплатных запросов.
+          Дом и знак для каждого человека считаются сами из его карты — ниже только
+          тексты-шаблоны, которые подставляются.
         </p>
       </div>
 
@@ -228,6 +230,11 @@ export default function AdminTrialEnd() {
           />
           Активировать опцию
         </label>
+        {!enabled && (
+          <span style={{ color: 'rgba(240,180,120,0.95)', fontSize: '0.9rem' }}>
+            Сейчас выключено — уходит обычный текст про тарифы
+          </span>
+        )}
       </div>
 
       <div className={styles.tabs}>
@@ -254,12 +261,15 @@ export default function AdminTrialEnd() {
         <div className={styles.section}>
           <div className={styles.block}>
             <h2 className={styles.sectionTitle}>1. Область интересов (дом лагнеши)</h2>
-            <p className={styles.hint}>Дом, в котором стоит управитель восходящего знака</p>
+            <p className={styles.hint}>
+              Это не выбор дома для пользователя. Выбери дом, чтобы отредактировать
+              текст для этого дома. При отправке дом лагнеши берётся из карты человека автоматически.
+            </p>
             <div className={styles.row}>
               <select className={styles.select} value={house} onChange={(e) => setHouse(e.target.value)}>
                 {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((h) => (
                   <option key={h} value={h}>
-                    {h} дом
+                    Редактировать текст: {h} дом
                   </option>
                 ))}
               </select>
@@ -280,11 +290,15 @@ export default function AdminTrialEnd() {
 
           <div className={styles.block}>
             <h2 className={styles.sectionTitle}>2. Амбиции (восходящий знак)</h2>
+            <p className={styles.hint}>
+              Тоже только редактор: выбери знак, чтобы править его текст. У пользователя
+              подставится его лагна из карты.
+            </p>
             <div className={styles.row}>
               <select className={styles.select} value={sign} onChange={(e) => setSign(e.target.value)}>
                 {SIGN_NAMES.map((name, i) => (
                   <option key={name} value={String(i)}>
-                    {name}
+                    Редактировать текст: {name}
                   </option>
                 ))}
               </select>

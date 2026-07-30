@@ -1,5 +1,10 @@
 export { composeTrialEndLetter, mergeTrialEndTemplates } from './compose';
-export { resolveTrialEndInputs, wholeSignHouse, parseAnketaGender } from './resolve';
+export {
+  resolveTrialEndInputs,
+  wholeSignHouse,
+  parseAnketaGender,
+  isTrialEndResolveResult,
+} from './resolve';
 export {
   getTrialEndLetterEnabled,
   setTrialEndLetterEnabled,

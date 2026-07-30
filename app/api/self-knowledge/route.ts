@@ -434,7 +434,12 @@ ${predictionMemoryBlock}
             await consumeFreeAiRequest(currentUser);
             try {
               const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
-              await maybeDeliverTrialEndLetter(currentUser);
+              const delivered = await maybeDeliverTrialEndLetter(currentUser, { skipChat: true });
+              if (delivered && !delivered.alreadySent && delivered.bodyText) {
+                controller.enqueue(
+                  new TextEncoder().encode(`\n\n---\n\n${delivered.bodyText}`)
+                );
+              }
             } catch (trialErr) {
               console.warn('[self-knowledge] trial-end letter failed:', trialErr);
             }

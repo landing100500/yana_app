@@ -1,14 +1,22 @@
 import User from '@/models/User';
 import ChatTopic from '@/models/ChatTopic';
 import Message from '@/models/Message';
+import Payment from '@/models/Payment';
 import TrialEndLetterSend from '@/models/TrialEndLetterSend';
 import { sendMarketingEmail } from '@/lib/email-transport';
-import { userHasSucceededPayment } from '@/lib/plan-access';
+import { buildSessionEndedUpsellMessage } from '@/lib/plan-messages';
 import { getUserPlanSnapshot, FREE_AI_REQUESTS_LIMIT } from '@/lib/subscription';
 import { composeTrialEndLetter } from './compose';
-import { resolveTrialEndInputs } from './resolve';
+import { isTrialEndResolveResult, resolveTrialEndInputs } from './resolve';
 import { getTrialEndLetterEnabled, getTrialEndTemplates } from './settings';
 import { SIGN_NAMES_RU } from './types';
+
+async function userHasSucceededPayment(userId: number): Promise<boolean> {
+  const count = await Payment.count({
+    where: { userId, status: 'succeeded' },
+  });
+  return count > 0;
+}
 
 const FALLBACK_TOPIC_TITLE = 'Завершение пробного';
 
@@ -61,18 +69,30 @@ async function resolveTopicId(userId: number, preferredTopicId?: number | null):
  */
 export async function maybeDeliverTrialEndLetter(
   user: User,
-  options?: { topicId?: number | null; forceIfBlocked?: boolean }
+  options?: { topicId?: number | null; forceIfBlocked?: boolean; skipChat?: boolean }
 ): Promise<TrialEndDeliveryResult | null> {
   const enabled = await getTrialEndLetterEnabled();
-  if (!enabled) return null;
+  if (!enabled) {
+    console.warn('[trial-end-letter] skip: disabled', user.id);
+    return null;
+  }
 
   const snapshot = getUserPlanSnapshot(user);
-  if (snapshot.code !== 'free') return null;
-  if (await userHasSucceededPayment(user.id)) return null;
+  if (snapshot.code !== 'free') {
+    console.warn('[trial-end-letter] skip: not free', user.id, snapshot.code);
+    return null;
+  }
+  if (await userHasSucceededPayment(user.id)) {
+    console.warn('[trial-end-letter] skip: has payment', user.id);
+    return null;
+  }
 
   const used = Number((user as any).freeAiRequestsUsed) || 0;
   const atLimit = used >= FREE_AI_REQUESTS_LIMIT;
-  if (!atLimit && !options?.forceIfBlocked) return null;
+  if (!atLimit && !options?.forceIfBlocked) {
+    console.warn('[trial-end-letter] skip: not at limit', user.id, used);
+    return null;
+  }
 
   const existing = await TrialEndLetterSend.findOne({ where: { userId: user.id } });
   if (existing) {
@@ -86,28 +106,37 @@ export async function maybeDeliverTrialEndLetter(
   }
 
   const resolved = await resolveTrialEndInputs(user.id);
-  if (!resolved) return null;
+  if (!isTrialEndResolveResult(resolved)) {
+    console.warn('[trial-end-letter] skip: resolve failed', user.id, resolved.reason);
+    return null;
+  }
 
   const templates = await getTrialEndTemplates();
-  const bodyText = composeTrialEndLetter({
+  const personalized = composeTrialEndLetter({
     templates,
     lagneshaHouse: resolved.lagneshaHouse,
     lagnaSign: resolved.lagnaSign,
     gender: resolved.gender,
   });
+  // Персоналка + прежний upsell по тарифам
+  const bodyText = `${personalized.trim()}\n\n${buildSessionEndedUpsellMessage()}`;
 
   let chatSent = false;
   let topicId: number | null = null;
-  try {
-    topicId = await resolveTopicId(user.id, options?.topicId);
-    await Message.create({
-      topicId,
-      role: 'assistant',
-      content: bodyText,
-    });
-    chatSent = true;
-  } catch (err) {
-    console.error('[trial-end-letter] chat save failed', user.id, err);
+  if (!options?.skipChat) {
+    try {
+      topicId = await resolveTopicId(user.id, options?.topicId);
+      await Message.create({
+        topicId,
+        role: 'assistant',
+        content: bodyText,
+      });
+      chatSent = true;
+    } catch (err) {
+      console.error('[trial-end-letter] chat save failed', user.id, err);
+    }
+  } else {
+    chatSent = true; // текст уйдёт в том же ответе стрима/клиента
   }
 
   let emailSent = false;
