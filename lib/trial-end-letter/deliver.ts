@@ -4,7 +4,7 @@ import Message from '@/models/Message';
 import Payment from '@/models/Payment';
 import TrialEndLetterSend from '@/models/TrialEndLetterSend';
 import { sendMarketingEmail } from '@/lib/email-transport';
-import { buildSessionEndedUpsellMessage } from '@/lib/plan-messages';
+import { buildSessionEndedUpsellMessage, buildSessionEndedUpsellEmailMessage } from '@/lib/plan-messages';
 import { getUserPlanSnapshot, FREE_AI_REQUESTS_LIMIT } from '@/lib/subscription';
 import { composeTrialEndLetter } from './compose';
 import { isTrialEndResolveResult, resolveTrialEndInputs } from './resolve';
@@ -166,6 +166,8 @@ export async function maybeDeliverTrialEndLetter(
   let emailError: string | null = null;
   const email = (user.email || '').trim() || null;
   if (email) {
+    const upsellEmailText = buildSessionEndedUpsellEmailMessage();
+    const errors: string[] = [];
     try {
       await sendMarketingEmail({
         to: email,
@@ -175,9 +177,22 @@ export async function maybeDeliverTrialEndLetter(
       });
       emailSent = true;
     } catch (err: any) {
-      emailError = err?.message || String(err);
-      console.error('[trial-end-letter] email failed', user.id, emailError);
+      errors.push(`personal: ${err?.message || String(err)}`);
+      console.error('[trial-end-letter] email #1 failed', user.id, err);
     }
+    try {
+      await sendMarketingEmail({
+        to: email,
+        subject: 'Ясна — продолжим',
+        html: bodyToEmailHtml(upsellEmailText),
+        text: upsellEmailText,
+      });
+      emailSent = true;
+    } catch (err: any) {
+      errors.push(`upsell: ${err?.message || String(err)}`);
+      console.error('[trial-end-letter] email #2 failed', user.id, err);
+    }
+    if (errors.length) emailError = errors.join('; ');
   } else {
     emailError = 'no_email';
   }

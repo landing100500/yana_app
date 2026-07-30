@@ -12,7 +12,16 @@ export function getTariffsLinkMarkdown(label = 'перейти к тарифам
   return `[${label}](${TARIFFS_PATH})`;
 }
 
-export function buildSessionEndedUpsellMessage(): string {
+export function getTariffsAbsoluteUrl(): string {
+  const base =
+    (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://yasna.chat').replace(
+      /\/$/,
+      ''
+    );
+  return `${base}${TARIFFS_PATH}`;
+}
+
+function buildUpsellLines(tariffsCta: string): string {
   return [
     'Бесплатные запросы к ИИ закончились. Мы можем продолжить и решить твои вопросы за 24 часа, оплата 900 рублей.',
     '',
@@ -23,8 +32,17 @@ export function buildSessionEndedUpsellMessage(): string {
     'Профессиональный доступ на 180 дней, неограниченное количество карт, + совместимость между ними. Уверенные консультации и дополнительный доход. Оплата 49000 рублей.',
     '',
     'Какой тариф выбираем?',
-    getTariffsLinkMarkdown('Выбрать тариф'),
+    tariffsCta,
   ].join('\n');
+}
+
+export function buildSessionEndedUpsellMessage(): string {
+  return buildUpsellLines(getTariffsLinkMarkdown('Выбрать тариф'));
+}
+
+/** Тот же текст для email: абсолютная ссылка вместо markdown. */
+export function buildSessionEndedUpsellEmailMessage(): string {
+  return buildUpsellLines(getTariffsAbsoluteUrl());
 }
 
 export function buildFreePromoEndedMessage(userName?: string | null): string {
