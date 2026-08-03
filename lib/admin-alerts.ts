@@ -149,12 +149,30 @@ export function alertSmtpMisconfigured(source: string): void {
   });
 }
 
+/** Клиент оборвал стрим / контроллер уже закрыт — не OpenAI billing/model. */
+function isClientStreamDisconnectError(error: unknown): boolean {
+  if (!error) return false;
+  if (typeof error === 'object' && (error as { name?: string }).name === 'AbortError') return true;
+  const lower = (error instanceof Error ? error.message : String(error || '')).toLowerCase();
+  return (
+    lower.includes('controller is already closed') ||
+    lower.includes('invalid state') ||
+    lower.includes('aborted') ||
+    lower.includes('readable stream is locked')
+  );
+}
+
 /** OpenAI / чат / любые AI-зависимости — critical, с дедупом */
 export function alertOpenAiFailure(
   source: string,
   error: unknown,
   meta?: AlertOptions['meta']
 ): void {
+  if (isClientStreamDisconnectError(error)) {
+    console.warn(`[admin-alerts] skip OpenAI alert (${source}): client disconnect`, error);
+    return;
+  }
+
   const msg = error instanceof Error ? error.message : String(error || '');
   const lower = msg.toLowerCase();
   const billing =

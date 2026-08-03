@@ -400,37 +400,88 @@ ${predictionMemoryBlock}
 "Чтобы получить расширенный разбор, предложи перейти к тарифам: [Тарифы](/tariffs)".
 `;
 
+    const encoder = new TextEncoder();
+    const abort = new AbortController();
+
+    const isControllerOpen = (controller: ReadableStreamDefaultController<Uint8Array>) =>
+      controller.desiredSize !== null;
+
+    const safeEnqueue = (controller: ReadableStreamDefaultController<Uint8Array>, text: string) => {
+      if (!isControllerOpen(controller)) return false;
+      try {
+        controller.enqueue(encoder.encode(text));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const safeClose = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+      if (!isControllerOpen(controller)) return;
+      try {
+        controller.close();
+      } catch {
+        /* already closed */
+      }
+    };
+
+    const isClientDisconnectError = (error: unknown) => {
+      if (!error) return false;
+      if (typeof error === 'object' && (error as { name?: string }).name === 'AbortError') return true;
+      const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+      return (
+        msg.includes('controller is already closed') ||
+        msg.includes('invalid state') ||
+        msg.includes('aborted') ||
+        msg.includes('readable stream is locked')
+      );
+    };
+
     // Создаем потоковый ответ
-    const stream = new ReadableStream({
+    const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: getPromptServerNowBlock() + SYSTEM_PROMPT },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-            stream: true,
-          });
+          const completion = await openai.chat.completions.create(
+            {
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: getPromptServerNowBlock() + SYSTEM_PROMPT },
+                { role: 'user', content: userPrompt },
+              ],
+              temperature: 0.7,
+              max_tokens: 4000,
+              stream: true,
+            },
+            { signal: abort.signal }
+          );
 
           let fullResponse = '';
+          let streamOk = true;
 
           for await (const chunk of completion) {
+            if (abort.signal.aborted || !isControllerOpen(controller)) {
+              streamOk = false;
+              break;
+            }
             const content = chunk.choices[0]?.delta?.content || '';
             if (content) {
               fullResponse += content;
-              controller.enqueue(new TextEncoder().encode(content));
+              if (!safeEnqueue(controller, content)) {
+                streamOk = false;
+                break;
+              }
             }
           }
 
-          if (questionNumber !== null && nextQuestionText) {
+          if (abort.signal.aborted) streamOk = false;
+
+          if (streamOk && questionNumber !== null && nextQuestionText) {
             const followUp = `\n\nПродолжим? Хочешь, разберем следующий вопрос: "${nextQuestionText}"`;
-            controller.enqueue(new TextEncoder().encode(followUp));
+            safeEnqueue(controller, followUp);
           }
 
-          if (isFreePlan) {
+          // Лимит только если основной стрим доехал; post-enqueue (followUp/trial) — best-effort
+          if (streamOk && isFreePlan) {
             await consumeFreeAiRequest(currentUser);
             try {
               const { maybeDeliverTrialEndLetter } = await import('@/lib/trial-end-letter');
@@ -438,9 +489,7 @@ ${predictionMemoryBlock}
               if (delivered && !delivered.alreadySent) {
                 const chunks = [delivered.personalizedText, delivered.upsellText].filter(Boolean);
                 if (chunks.length) {
-                  controller.enqueue(
-                    new TextEncoder().encode(`\n\n---\n\n${chunks.join('\n\n---\n\n')}`)
-                  );
+                  safeEnqueue(controller, `\n\n---\n\n${chunks.join('\n\n---\n\n')}`);
                 }
               }
             } catch (trialErr) {
@@ -448,14 +497,21 @@ ${predictionMemoryBlock}
             }
           }
 
-          controller.close();
-        } catch (openaiError: any) {
+          safeClose(controller);
+        } catch (openaiError: unknown) {
+          if (isClientDisconnectError(openaiError) || abort.signal.aborted) {
+            safeClose(controller);
+            return;
+          }
           console.error('OpenAI API error:', openaiError);
           alertOpenAiFailure('self-knowledge', openaiError, { model: 'gpt-4o-mini' });
           const errorMessage = 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
-          controller.enqueue(new TextEncoder().encode(errorMessage));
-          controller.close();
+          safeEnqueue(controller, errorMessage);
+          safeClose(controller);
         }
+      },
+      cancel() {
+        abort.abort();
       },
     });
 

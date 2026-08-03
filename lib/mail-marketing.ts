@@ -14,7 +14,12 @@ import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures } from '@
 import { alertAdminAsync } from '@/lib/admin-alerts';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
-import { isFatalSmtpProviderError, isPermanentRecipientBounce, isProviderQuotaExhaustedError } from '@/lib/smtp-errors';
+import {
+  isEspRecipientReject,
+  isFatalSmtpProviderError,
+  isPermanentRecipientBounce,
+  isProviderQuotaExhaustedError,
+} from '@/lib/smtp-errors';
 import { assertMarketingSendAllowed, isMarketingMailPaused, pauseMarketingMail } from '@/lib/mail-send-guard';
 import { validateEmailForSending, validateEmailsForSendingBatch, normalizeEmail } from '@/lib/email-validation';
 import type { MailCampaignStatus } from '@/models/MailCampaign';
@@ -393,6 +398,10 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<SendOn
     await send.update({ status: 'failed', errorMessage: message });
     if (isPermanentRecipientBounce(error)) {
       await suppressMailSubscriber(send.userId, message);
+    }
+    if (isEspRecipientReject(error)) {
+      // Per-recipient reject у ESP — не ESP down; не шумим CRITICAL burst
+      return 'failed';
     }
     if (isFatalSmtpProviderError(error)) {
       // pause уже выставлен в email-transport; дальше очередь должна остановиться

@@ -48,6 +48,35 @@ export function isFatalSmtpProviderError(error: unknown): boolean {
   );
 }
 
+/** Unisender Go failed_emails statuses that mean «не слать больше». */
+const UNISENDER_PERMANENT_FAILED_STATUSES = new Set([
+  'invalid',
+  'permanent_unavailable',
+  'unsubscribed',
+  'spam',
+  'blocked',
+]);
+
+/** temporary_unavailable — 3 суток у Go; suppress не ставим. */
+const UNISENDER_TEMPORARY_FAILED_STATUSES = new Set(['temporary_unavailable', 'duplicate']);
+
+/** Статусы из body.failed_emails ответа Unisender Go. */
+export function getUnisenderFailedEmailStatuses(error: unknown): string[] {
+  const body = (error as { body?: unknown })?.body;
+  if (!body || typeof body !== 'object') return [];
+  const failed = (body as { failed_emails?: unknown }).failed_emails;
+  if (!failed || typeof failed !== 'object' || Array.isArray(failed)) return [];
+  return Object.values(failed as Record<string, unknown>).map((v) => String(v).toLowerCase());
+}
+
+/** Отказ ESP по конкретному адресу (не квота/не SMTP down) — без CRITICAL burst. */
+export function isEspRecipientReject(error: unknown): boolean {
+  const msg = getSmtpErrorMessage(error).toLowerCase();
+  if (msg.includes('no valid recipients')) return true;
+  if (getUnisenderFailedEmailStatuses(error).length > 0) return true;
+  return isPermanentRecipientBounce(error);
+}
+
 /**
  * Постоянный отказ по получателю — больше не слать на этот адрес.
  * Включает iCloud 554 HM08 / local policy (Beget как раз за это банил).
@@ -56,6 +85,24 @@ export function isPermanentRecipientBounce(error: unknown): boolean {
   const msg = getSmtpErrorMessage(error).toLowerCase();
   const code = getSmtpResponseCode(error);
   if (isMailboxSendingDisabled(error)) return false;
+
+  const failedStatuses = getUnisenderFailedEmailStatuses(error);
+  if (failedStatuses.length > 0) {
+    // Только temporary/duplicate → не suppress. Любой permanent → suppress.
+    // Смесь permanent+temporary при одном recipients[] (мы шлём 1 email) — тоже suppress.
+    if (failedStatuses.every((s) => UNISENDER_TEMPORARY_FAILED_STATUSES.has(s))) {
+      return false;
+    }
+    if (failedStatuses.some((s) => UNISENDER_PERMANENT_FAILED_STATUSES.has(s))) {
+      return true;
+    }
+  }
+
+  // Unisender Go: «No valid recipients» без failed_emails (или неизвестный статус) —
+  // один to: значит адрес отклонён; suppress, иначе снова в очередь + CRITICAL.
+  if (msg.includes('no valid recipients')) {
+    return true;
+  }
 
   // Unisender Go / ESP
   const apiCode = (error as { code?: number | string })?.code;
