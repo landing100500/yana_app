@@ -74,6 +74,20 @@ const PLAN_OPTIONS: { value: PlanCode; label: string }[] = [
   { value: 'professional', label: 'Профессиональный' },
 ];
 
+const PLAN_PRICES: Record<Exclude<PlanCode, 'free'>, number> = {
+  hours24: 900,
+  optimalLight: 2990,
+  optimal: 9900,
+  professional: 49000,
+};
+
+const PLAN_DEFAULT_MONTHS: Record<Exclude<PlanCode, 'free'>, string> = {
+  hours24: '1',
+  optimalLight: '1',
+  optimal: '1',
+  professional: '6',
+};
+
 export default function AdminUsersCharts() {
   const [users, setUsers] = useState<User[]>([]);
   const [page, setPage] = useState(1);
@@ -246,9 +260,9 @@ export default function AdminUsersCharts() {
       return;
     }
     setPlanModal({ userId, planCode, currentPlanCode });
-    setPlanMonths(planCode === 'professional' ? '6' : planCode === 'hours24' ? '1' : '1');
+    setPlanMonths(PLAN_DEFAULT_MONTHS[planCode]);
     setPlanStartMode('from_now');
-    setPlanStatsAmount('');
+    setPlanStatsAmount(String(PLAN_PRICES[planCode]));
   };
 
   const applyPlanChange = async (
@@ -284,20 +298,24 @@ export default function AdminUsersCharts() {
   const submitPlanModal = () => {
     if (!planModal) return;
     const months = Number(planMonths);
+    const statsRaw = planStatsAmount.trim().replace(',', '.');
+    const statsAmount = Number(statsRaw);
+    if (!Number.isFinite(statsAmount) || statsAmount < 0) {
+      alert('Укажите корректную сумму для статистики (>= 0)');
+      return;
+    }
     const payload: {
       planCode: PlanCode;
       months?: number;
       startMode: 'from_now' | 'extend';
-      statsAmountRub?: number | null;
+      statsAmountRub: number;
     } = {
       planCode: planModal.planCode,
       startMode: planStartMode,
+      statsAmountRub: statsAmount,
     };
     if (Number.isFinite(months) && months > 0) {
       payload.months = months;
-    }
-    if (planStatsAmount.trim() !== '') {
-      payload.statsAmountRub = Number(planStatsAmount.replace(',', '.'));
     }
     void applyPlanChange(planModal.userId, payload);
   };
@@ -615,61 +633,83 @@ export default function AdminUsersCharts() {
       )}
 
       {planModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modal}>
-            <h3>Выдача тарифа</h3>
-            <p>
-              Тариф:{' '}
+        <div className={styles.modalOverlay} onClick={() => setPlanModal(null)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>Выдача тарифа</h2>
+            <p className={styles.modalHint}>
               {PLAN_OPTIONS.find((p) => p.value === planModal.planCode)?.label || planModal.planCode}
+              {' · '}
+              user #{planModal.userId}
             </p>
-            <label className={styles.modalLabel}>
-              Месяцев (1 мес = 30 дней)
-              <input
-                className={styles.modalInput}
-                type="number"
-                min={1}
-                max={120}
-                value={planMonths}
-                onChange={(e) => setPlanMonths(e.target.value)}
-              />
-            </label>
-            <label className={styles.modalLabel}>
-              Старт
-              <select
-                className={styles.modalInput}
-                value={planStartMode}
-                onChange={(e) => setPlanStartMode(e.target.value as 'from_now' | 'extend')}
-              >
-                <option value="from_now">С нуля (от сейчас)</option>
-                <option value="extend">От текущего срока (продлить)</option>
-              </select>
-            </label>
-            <label className={styles.modalLabel}>
-              Сумма в статистике дохода (пусто = цена тарифа, 0 = не учитывать)
-              <input
-                className={styles.modalInput}
-                value={planStatsAmount}
-                onChange={(e) => setPlanStatsAmount(e.target.value)}
-                placeholder="пусто / 0 / сумма"
-              />
-            </label>
-            <div className={styles.modalActions}>
-              <button
-                type="button"
-                className={styles.modalCancel}
-                onClick={() => setPlanModal(null)}
-                disabled={updatingPlanUserId === planModal.userId}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className={styles.modalSubmit}
-                onClick={submitPlanModal}
-                disabled={updatingPlanUserId === planModal.userId}
-              >
-                Выдать
-              </button>
+
+            <div className={styles.modalForm}>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel} htmlFor="plan-months">
+                  Срок, месяцев
+                </label>
+                <input
+                  id="plan-months"
+                  className={styles.modalInput}
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={planMonths}
+                  onChange={(e) => setPlanMonths(e.target.value)}
+                />
+                <span className={styles.modalFieldHint}>1 месяц = 30 дней</span>
+              </div>
+
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel} htmlFor="plan-start">
+                  Дата старта
+                </label>
+                <select
+                  id="plan-start"
+                  className={styles.modalInput}
+                  value={planStartMode}
+                  onChange={(e) => setPlanStartMode(e.target.value as 'from_now' | 'extend')}
+                >
+                  <option value="from_now">С нуля (от сейчас)</option>
+                  <option value="extend">Продлить от текущего срока</option>
+                </select>
+              </div>
+
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel} htmlFor="plan-stats">
+                  Сумма в статистике дохода, ₽
+                </label>
+                <input
+                  id="plan-stats"
+                  className={styles.modalInput}
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={planStatsAmount}
+                  onChange={(e) => setPlanStatsAmount(e.target.value)}
+                />
+                <span className={styles.modalFieldHint}>
+                  По умолчанию цена тарифа. Поставьте 0, чтобы не учитывать в доходе.
+                </span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.modalCancel}
+                  onClick={() => setPlanModal(null)}
+                  disabled={updatingPlanUserId === planModal.userId}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className={styles.modalSubmit}
+                  onClick={submitPlanModal}
+                  disabled={updatingPlanUserId === planModal.userId}
+                >
+                  Выдать
+                </button>
+              </div>
             </div>
           </div>
         </div>

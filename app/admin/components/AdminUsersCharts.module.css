@@ -395,6 +395,12 @@
   font-weight: 500;
 }
 
+.modalFieldHint {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.35;
+}
+
 .modalInput {
   padding: 0.65rem 1rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -404,6 +410,16 @@
   caret-color: rgba(255, 255, 255, 0.95);
   -webkit-text-fill-color: rgba(255, 255, 255, 0.95);
   font-size: 1rem;
+}
+
+.modal select.modalInput {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.6) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6) 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 11px) calc(50% - 3px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 
 .modalInput:focus {
@@ -423,7 +439,8 @@
   display: flex;
   gap: 0.75rem;
   justify-content: flex-end;
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.25rem;
 }
 
 .modalCancel {
