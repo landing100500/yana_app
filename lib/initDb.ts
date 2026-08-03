@@ -24,6 +24,11 @@ import '@/models/MailSequence';
 import '@/models/MailSequenceStep';
 import '@/models/MailSequenceEnrollment';
 import '@/models/TrialEndLetterSend';
+import '@/models/PartnerProfile';
+import '@/models/PartnerReferral';
+import '@/models/PartnerLedger';
+import '@/models/PartnerWithdrawal';
+import '@/models/PartnerVerification';
 
 async function ensureAuthSchema() {
   const queryInterface = sequelize.getQueryInterface();
@@ -120,6 +125,18 @@ async function ensureAuthSchema() {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,
         defaultValue: 0,
+      });
+    }
+    if (!usersTable.referredByUserId) {
+      await queryInterface.addColumn('users', 'referredByUserId', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!usersTable.manualPlanStatsAmountRub) {
+      await queryInterface.addColumn('users', 'manualPlanStatsAmountRub', {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: true,
       });
     }
   } catch (error) {
@@ -273,6 +290,19 @@ async function ensurePaymentsSchema() {
     if (!paymentsTable.paidAt) {
       await queryInterface.addColumn('payments', 'paidAt', {
         type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!paymentsTable.referralPromo) {
+      await queryInterface.addColumn('payments', 'referralPromo', {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      });
+    }
+    if (!paymentsTable.durationDaysOverride) {
+      await queryInterface.addColumn('payments', 'durationDaysOverride', {
+        type: DataTypes.INTEGER.UNSIGNED,
         allowNull: true,
       });
     }

@@ -14,6 +14,8 @@ interface PaymentAttributes {
   status: PaymentStatus;
   idempotenceKey: string;
   paidAt?: Date | null;
+  referralPromo?: boolean;
+  durationDaysOverride?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -21,7 +23,13 @@ interface PaymentAttributes {
 interface PaymentCreationAttributes
   extends Optional<
     PaymentAttributes,
-    'id' | 'yookassaPaymentId' | 'paidAt' | 'createdAt' | 'updatedAt'
+    | 'id'
+    | 'yookassaPaymentId'
+    | 'paidAt'
+    | 'referralPromo'
+    | 'durationDaysOverride'
+    | 'createdAt'
+    | 'updatedAt'
   > {}
 
 class Payment extends Model<PaymentAttributes, PaymentCreationAttributes> implements PaymentAttributes {
@@ -34,6 +42,8 @@ class Payment extends Model<PaymentAttributes, PaymentCreationAttributes> implem
   public status!: PaymentStatus;
   public idempotenceKey!: string;
   public paidAt?: Date | null;
+  public referralPromo!: boolean;
+  public durationDaysOverride?: number | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -83,6 +93,15 @@ Payment.init(
     },
     paidAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    referralPromo: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    durationDaysOverride: {
+      type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
     },
     createdAt: {

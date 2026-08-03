@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Op } from 'sequelize';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { formatPhoneValidationError, normalizePhoneDigits } from '@/lib/phone';
 import { sendEmailOtp } from '@/lib/send-email-otp';
 import User from '@/models/User';
 import { alertAdminAsync } from '@/lib/admin-alerts';
+import { attachReferralOnRegistration, REFERRAL_COOKIE_NAME } from '@/lib/partner';
 // import { sendPhoneSmsOtp } from '@/lib/send-phone-sms-otp';
 
 export async function POST(request: NextRequest) {
@@ -48,6 +48,16 @@ export async function POST(request: NextRequest) {
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    const user = await User.findOne({ where: { email } });
+    const refCode = request.cookies.get(REFERRAL_COOKIE_NAME)?.value;
+    if (user && refCode && !user.password && !(user as any).referredByUserId) {
+      try {
+        await attachReferralOnRegistration({ userId: user.id, referralCode: refCode });
+      } catch (attachError) {
+        console.warn('Referral attach on signup OTP failed:', attachError);
+      }
     }
 
     return NextResponse.json({

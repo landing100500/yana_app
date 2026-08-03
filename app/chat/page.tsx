@@ -953,6 +953,15 @@ export default function ChatPage() {
                   >
                     Мои карты
                   </button>
+                  <button
+                    className={styles.menuItem}
+                    onClick={() => {
+                      router.push('/partner');
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    Партнерка
+                  </button>
                   {userProfile?.plan?.chartComparison && (
                     <button
                       className={styles.menuItem}

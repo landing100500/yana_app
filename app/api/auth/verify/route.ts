@@ -8,6 +8,7 @@ import UserAnketa from '@/models/UserAnketa';
 import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { attachReferralOnRegistration, REFERRAL_COOKIE_NAME } from '@/lib/partner';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,16 @@ function setAuthCookie(response: NextResponse, token: string) {
     maxAge: 30 * 24 * 60 * 60,
     path: '/',
   });
+}
+
+async function tryAttachReferral(request: NextRequest, userId: number) {
+  const refCode = request.cookies.get(REFERRAL_COOKIE_NAME)?.value;
+  if (!refCode) return;
+  try {
+    await attachReferralOnRegistration({ userId, referralCode: refCode });
+  } catch (error) {
+    console.warn('Referral attach failed:', error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -67,6 +78,7 @@ export async function POST(request: NextRequest) {
     await EmailOtp.destroy({ where: { email } });
 
     let user = await User.findOne({ where: { email } });
+    let wasJustCreated = false;
 
     if (resetPin) {
       if (!user) {
@@ -88,6 +100,7 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       user = await User.create({ email, phone });
+      wasJustCreated = true;
       await UserAnketa.create({
         userId: user.id,
         gender: null,
@@ -110,6 +123,14 @@ export async function POST(request: NextRequest) {
       }
       user.set('phone', phone);
       await user.save();
+    }
+
+    // Атрибуция только для новых или только что созданных при OTP (ещё без PIN)
+    const createdRecently =
+      user.createdAt && Date.now() - new Date(user.createdAt).getTime() < 48 * 60 * 60 * 1000;
+    const noPinYet = !user.password;
+    if (wasJustCreated || (createdRecently && noPinYet && !(user as any).referredByUserId)) {
+      await tryAttachReferral(request, user.id);
     }
 
     const hasPin = Boolean(user.password && user.password.length > 0);

@@ -45,10 +45,20 @@ export async function GET(request: NextRequest) {
       await ensureFreePlanWindow(user);
       await syncPlanDailyUsage(user);
       const plan = getUserPlanSnapshot(user);
+
+      let isReferral = false;
+      try {
+        const { isReferralUser } = await import('@/lib/partner');
+        isReferral = await isReferralUser(user.id);
+      } catch {
+        isReferral = false;
+      }
+
       return NextResponse.json({
         email: user.email || null,
         name: user.name || null,
         plan,
+        isReferral,
       });
     } catch (jwtError) {
       return NextResponse.json(

@@ -11,6 +11,8 @@ interface UserAttributes {
   planAssignedAt?: Date | null;
   planExpiresAt?: Date | null;
   planManuallyAssignedAt?: Date | null;
+  referredByUserId?: number | null;
+  manualPlanStatsAmountRub?: string | null;
   freeWindowStartedAt?: Date | null;
   freeMinutesUsed?: number;
   freeAiRequestsUsed?: number;
@@ -35,6 +37,8 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public planAssignedAt?: Date | null;
   public planExpiresAt?: Date | null;
   public planManuallyAssignedAt?: Date | null;
+  public referredByUserId?: number | null;
+  public manualPlanStatsAmountRub?: string | null;
   public freeWindowStartedAt?: Date | null;
   public freeMinutesUsed?: number;
   public freeAiRequestsUsed?: number;
@@ -87,6 +91,14 @@ User.init(
     },
     planManuallyAssignedAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    referredByUserId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+    },
+    manualPlanStatsAmountRub: {
+      type: DataTypes.DECIMAL(14, 2),
       allowNull: true,
     },
     freeWindowStartedAt: {

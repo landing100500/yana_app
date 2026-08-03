@@ -143,30 +143,43 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const manualRows = (manualUsers as any[]).map((manualUser) => {
-      const user = userById.get(Number(manualUser.id)) || manualUser;
-      const planCode = String(manualUser.planCode || '');
-      const planTitle = getPlanTitle(planCode);
-      const amountRub = getPlanPriceRub(planCode);
-      return {
-        id: -Number(manualUser.id),
-        paidAt: manualUser.manualEventAt,
-        amountValue: formatRubAmount(amountRub),
-        amountRub,
-        currency: 'RUB',
-        planCode,
-        planTitle,
-        description: `Тариф «${planTitle}» — добавлен вручную`,
-        isManual: true,
-        yookassaPaymentId: null,
-        user: {
-          id: user?.id ?? null,
-          name: user?.name ?? null,
-          email: user?.email ?? null,
-          phone: user?.phone ?? null,
-        },
-      };
-    });
+    const manualRows = (manualUsers as any[])
+      .map((manualUser) => {
+        const user = userById.get(Number(manualUser.id)) || manualUser;
+        const planCode = String(manualUser.planCode || '');
+        const planTitle = getPlanTitle(planCode);
+        const customAmount = manualUser.manualPlanStatsAmountRub;
+        let amountRub: number;
+        if (customAmount != null && customAmount !== '') {
+          const n = Number(customAmount);
+          amountRub = Number.isFinite(n) ? n : getPlanPriceRub(planCode);
+        } else {
+          amountRub = getPlanPriceRub(planCode);
+        }
+        // 0 — не учитывать в доходе
+        if (amountRub === 0) {
+          return null;
+        }
+        return {
+          id: -Number(manualUser.id),
+          paidAt: manualUser.manualEventAt,
+          amountValue: formatRubAmount(amountRub),
+          amountRub,
+          currency: 'RUB',
+          planCode,
+          planTitle,
+          description: `Тариф «${planTitle}» — добавлен вручную`,
+          isManual: true,
+          yookassaPaymentId: null,
+          user: {
+            id: user?.id ?? null,
+            name: user?.name ?? null,
+            email: user?.email ?? null,
+            phone: user?.phone ?? null,
+          },
+        };
+      })
+      .filter(Boolean) as any[];
 
     const rows = [...paymentRows, ...manualRows].sort((a, b) => {
       const aTime = new Date(a.paidAt).getTime();

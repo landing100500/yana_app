@@ -48,6 +48,16 @@ const PLAN_COLUMNS: PlanColumn[] = [
   { code: 'professional', title: 'Профессиональный', price: '49 000 ₽', paid: true },
 ];
 
+const PROMO_MONTHLY = new Set<PlanCode>(['optimalLight', 'optimal']);
+
+function formatPromoPrice(basePriceLabel: string): string {
+  // «2 990 ₽» → «5 980 ₽» (×2)
+  const digits = basePriceLabel.replace(/[^\d]/g, '');
+  const n = Number(digits);
+  if (!Number.isFinite(n) || n <= 0) return basePriceLabel;
+  return `${(n * 2).toLocaleString('ru-RU')} ₽`;
+}
+
 const FEATURE_ROWS: FeatureRow[] = [
   {
     label: 'Срок доступа',
@@ -105,6 +115,7 @@ export default function TariffsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentPlan, setCurrentPlan] = useState<PlanSnapshot | null>(null);
+  const [isReferral, setIsReferral] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
 
@@ -126,6 +137,7 @@ export default function TariffsPageContent() {
     }
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.plan) setCurrentPlan(data.plan);
+    if (res.ok) setIsReferral(Boolean(data?.isReferral));
     return res.ok;
   }, []);
 
@@ -237,7 +249,7 @@ export default function TariffsPageContent() {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planCode }),
+          body: JSON.stringify({ planCode, promo2plus1: isReferral && PROMO_MONTHLY.has(planCode) }),
           signal: controller.signal,
         });
       } finally {
@@ -289,6 +301,13 @@ export default function TariffsPageContent() {
           <span className={styles.currentPlanValue}>{currentPlan?.title || '—'}</span>
         </p>
 
+        {isReferral && (
+          <div className={`${styles.notice} ${styles.noticeSuccess}`}>
+            По реферальной ссылке для тарифов «Оптимальный Лайт» и «Оптимальный»: оплатите 2 месяца —
+            3-й в подарок (90 дней доступа).
+          </div>
+        )}
+
         {paymentNotice && (
           <div
             className={`${styles.notice} ${
@@ -308,7 +327,9 @@ export default function TariffsPageContent() {
             <thead>
               <tr>
                 <th className={styles.featureCol} scope="col">Возможности</th>
-                {PLAN_COLUMNS.map((plan) => (
+                {PLAN_COLUMNS.map((plan) => {
+                  const promo = isReferral && PROMO_MONTHLY.has(plan.code);
+                  return (
                   <th
                     key={plan.code}
                     scope="col"
@@ -316,27 +337,43 @@ export default function TariffsPageContent() {
                   >
                     <div className={styles.planHeader}>
                       <span className={styles.planTitle}>{plan.title}</span>
-                      <span className={styles.planPrice}>{plan.price}</span>
+                      <span className={styles.planPrice}>
+                        {promo ? formatPromoPrice(plan.price) : plan.price}
+                      </span>
+                      {promo && (
+                        <span className={styles.currentBadge}>2+1</span>
+                      )}
                       {currentPlan?.code === plan.code && (
                         <span className={styles.currentBadge}>Ваш тариф</span>
                       )}
                     </div>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {FEATURE_ROWS.map((row) => (
                 <tr key={row.label}>
                   <th className={styles.featureCol} scope="row">{row.label}</th>
-                  {PLAN_COLUMNS.map((plan) => (
+                  {PLAN_COLUMNS.map((plan) => {
+                    let value = row.values[plan.code];
+                    if (
+                      isReferral &&
+                      PROMO_MONTHLY.has(plan.code) &&
+                      row.label === 'Срок доступа'
+                    ) {
+                      value = '90 дней (2+1)';
+                    }
+                    return (
                     <td
                       key={plan.code}
                       className={`${styles.planCol} ${currentPlan?.code === plan.code ? styles.planColCurrent : ''}`}
                     >
-                      {renderFeatureValue(row.values[plan.code])}
+                      {renderFeatureValue(value)}
                     </td>
-                  ))}
+                    );
+                  })}
                 </tr>
               ))}
               <tr className={styles.actionRow}>

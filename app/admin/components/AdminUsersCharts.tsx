@@ -99,6 +99,14 @@ export default function AdminUsersCharts() {
   const [debouncedEmailFilter, setDebouncedEmailFilter] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | PlanCode>('all');
   const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
+  const [planModal, setPlanModal] = useState<{
+    userId: number;
+    planCode: PlanCode;
+    currentPlanCode: PlanCode;
+  } | null>(null);
+  const [planMonths, setPlanMonths] = useState('1');
+  const [planStartMode, setPlanStartMode] = useState<'from_now' | 'extend'>('from_now');
+  const [planStatsAmount, setPlanStatsAmount] = useState('');
   const [deleteModalUser, setDeleteModalUser] = useState<User | null>(null);
   const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -232,25 +240,66 @@ export default function AdminUsersCharts() {
     }
   };
 
-  const handlePlanChange = async (userId: number, planCode: PlanCode) => {
+  const handlePlanSelect = (userId: number, planCode: PlanCode, currentPlanCode: PlanCode) => {
+    if (planCode === 'free') {
+      void applyPlanChange(userId, { planCode: 'free' });
+      return;
+    }
+    setPlanModal({ userId, planCode, currentPlanCode });
+    setPlanMonths(planCode === 'professional' ? '6' : planCode === 'hours24' ? '1' : '1');
+    setPlanStartMode('from_now');
+    setPlanStatsAmount('');
+  };
+
+  const applyPlanChange = async (
+    userId: number,
+    payload: {
+      planCode: PlanCode;
+      months?: number;
+      startMode?: 'from_now' | 'extend';
+      statsAmountRub?: number | null;
+    }
+  ) => {
     try {
       setUpdatingPlanUserId(userId);
       const response = await fetch(`/api/admin/users/${userId}/plan`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planCode }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         alert(data.error || 'Не удалось обновить тариф');
         return;
       }
+      setPlanModal(null);
       await loadUsers(page);
     } catch (err) {
       alert('Ошибка сети при обновлении тарифа');
     } finally {
       setUpdatingPlanUserId(null);
     }
+  };
+
+  const submitPlanModal = () => {
+    if (!planModal) return;
+    const months = Number(planMonths);
+    const payload: {
+      planCode: PlanCode;
+      months?: number;
+      startMode: 'from_now' | 'extend';
+      statsAmountRub?: number | null;
+    } = {
+      planCode: planModal.planCode,
+      startMode: planStartMode,
+    };
+    if (Number.isFinite(months) && months > 0) {
+      payload.months = months;
+    }
+    if (planStatsAmount.trim() !== '') {
+      payload.statsAmountRub = Number(planStatsAmount.replace(',', '.'));
+    }
+    void applyPlanChange(planModal.userId, payload);
   };
 
   const openDeleteUserModal = (user: User) => {
@@ -507,7 +556,13 @@ export default function AdminUsersCharts() {
                       value={user.planCode || 'free'}
                       className={styles.modalInput}
                       disabled={updatingPlanUserId === user.id}
-                      onChange={(e) => handlePlanChange(user.id, e.target.value as PlanCode)}
+                      onChange={(e) =>
+                        handlePlanSelect(
+                          user.id,
+                          e.target.value as PlanCode,
+                          (user.planCode || 'free') as PlanCode
+                        )
+                      }
                     >
                       {PLAN_OPTIONS.map((plan) => (
                         <option key={plan.value} value={plan.value}>
@@ -557,6 +612,67 @@ export default function AdminUsersCharts() {
           loading={tableLoading}
           onPageChange={goToPage}
         />
+      )}
+
+      {planModal && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <h3>Выдача тарифа</h3>
+            <p>
+              Тариф:{' '}
+              {PLAN_OPTIONS.find((p) => p.value === planModal.planCode)?.label || planModal.planCode}
+            </p>
+            <label className={styles.modalLabel}>
+              Месяцев (1 мес = 30 дней)
+              <input
+                className={styles.modalInput}
+                type="number"
+                min={1}
+                max={120}
+                value={planMonths}
+                onChange={(e) => setPlanMonths(e.target.value)}
+              />
+            </label>
+            <label className={styles.modalLabel}>
+              Старт
+              <select
+                className={styles.modalInput}
+                value={planStartMode}
+                onChange={(e) => setPlanStartMode(e.target.value as 'from_now' | 'extend')}
+              >
+                <option value="from_now">С нуля (от сейчас)</option>
+                <option value="extend">От текущего срока (продлить)</option>
+              </select>
+            </label>
+            <label className={styles.modalLabel}>
+              Сумма в статистике дохода (пусто = цена тарифа, 0 = не учитывать)
+              <input
+                className={styles.modalInput}
+                value={planStatsAmount}
+                onChange={(e) => setPlanStatsAmount(e.target.value)}
+                placeholder="пусто / 0 / сумма"
+              />
+            </label>
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.modalCancel}
+                onClick={() => setPlanModal(null)}
+                disabled={updatingPlanUserId === planModal.userId}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className={styles.modalSubmit}
+                onClick={submitPlanModal}
+                disabled={updatingPlanUserId === planModal.userId}
+              >
+                Выдать
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {deleteModalUser && (

@@ -40,7 +40,16 @@ export async function findManualAssignmentUsersInPeriod(from: Date, to: Date) {
       ['planManuallyAssignedAt', 'DESC'],
       ['planAssignedAt', 'DESC'],
     ],
-    attributes: ['id', 'name', 'email', 'phone', 'planCode', 'planAssignedAt', 'planManuallyAssignedAt'],
+    attributes: [
+      'id',
+      'name',
+      'email',
+      'phone',
+      'planCode',
+      'planAssignedAt',
+      'planManuallyAssignedAt',
+      'manualPlanStatsAmountRub',
+    ],
     raw: true,
   });
 

@@ -8,6 +8,7 @@ import AdminChatHistory from './components/AdminChatHistory';
 import AdminPaymentsStats from './components/AdminPaymentsStats';
 import AdminMailings from './components/AdminMailings';
 import AdminTrialEnd from './components/AdminTrialEnd';
+import AdminPartner from './components/AdminPartner';
 
 interface Section {
   id: string;
@@ -18,7 +19,7 @@ interface Section {
   enabled_for_agent?: boolean;
 }
 
-type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms' | 'statistics' | 'mailings' | 'trial-end';
+type AdminView = 'training' | 'users-charts' | 'chat-history' | 'algorithms' | 'statistics' | 'mailings' | 'trial-end' | 'partner';
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -546,6 +547,12 @@ export default function AdminPage() {
             >
               Завершение пробного
             </button>
+            <button
+              className={`${styles.sidebarItem} ${currentView === 'partner' ? styles.sidebarItemActive : ''}`}
+              onClick={() => setCurrentView('partner')}
+            >
+              Партнерка
+            </button>
           </nav>
 
           <div className={styles.agentSections}>
@@ -861,6 +868,10 @@ export default function AdminPage() {
           ) : currentView === 'trial-end' ? (
             <div className={styles.adminPanel}>
               <AdminTrialEnd />
+            </div>
+          ) : currentView === 'partner' ? (
+            <div className={styles.adminPanel}>
+              <AdminPartner />
             </div>
           ) : null}
         </div>

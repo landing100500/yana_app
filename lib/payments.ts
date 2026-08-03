@@ -28,9 +28,20 @@ function isRemotePaymentSuccessful(remote: Awaited<ReturnType<typeof getYookassa
 async function applyPlanToUser(
   user: User,
   planCode: PlanCode,
-  transaction?: Transaction
+  options?: { durationDaysOverride?: number | null; transaction?: Transaction }
 ): Promise<void> {
-  const { assignedAt, expiresAt } = assignPlanDates(planCode);
+  const assignedAt = new Date();
+  let expiresAt: Date | null;
+
+  const override = options?.durationDaysOverride;
+  if (override != null && Number.isFinite(override) && override > 0) {
+    expiresAt = new Date(assignedAt);
+    expiresAt.setDate(expiresAt.getDate() + Math.floor(override));
+  } else {
+    const dates = assignPlanDates(planCode);
+    expiresAt = dates.expiresAt;
+  }
+
   (user as any).planCode = planCode;
   (user as any).planAssignedAt = assignedAt;
   (user as any).planExpiresAt = expiresAt;
@@ -39,7 +50,7 @@ async function applyPlanToUser(
     (user as any).freeAiRequestsUsed = 0;
   }
   resetPlanDailyUsage(user);
-  await user.save({ transaction });
+  await user.save({ transaction: options?.transaction });
 }
 
 export async function activatePlanForPayment(payment: Payment): Promise<Payment> {
@@ -64,10 +75,14 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
 
     const planCode = normalizePlanCode(lockedPayment.planCode);
     const paymentAlreadySettled = lockedPayment.status === 'succeeded';
+    const durationOverride = (lockedPayment as any).durationDaysOverride as number | null | undefined;
 
     if (paymentAlreadySettled) {
       if (!isPlanActiveForUser(user, planCode)) {
-        await applyPlanToUser(user, planCode, transaction);
+        await applyPlanToUser(user, planCode, {
+          durationDaysOverride: durationOverride,
+          transaction,
+        });
       }
       if (!lockedPayment.paidAt) {
         lockedPayment.paidAt = new Date();
@@ -76,12 +91,29 @@ export async function activatePlanForPayment(payment: Payment): Promise<Payment>
       return lockedPayment;
     }
 
-    await applyPlanToUser(user, planCode, transaction);
+    await applyPlanToUser(user, planCode, {
+      durationDaysOverride: durationOverride,
+      transaction,
+    });
     lockedPayment.status = 'succeeded';
     lockedPayment.paidAt = lockedPayment.paidAt ?? new Date();
     await lockedPayment.save({ transaction });
     return lockedPayment;
   });
+
+  // После коммита оплаты: партнёрская комиссия (идемпотентно по paymentId)
+  if (!wasAlreadySucceeded && result.status === 'succeeded') {
+    try {
+      const { creditPartnerCommissionForPayment } = await import('@/lib/partner');
+      await creditPartnerCommissionForPayment(result);
+    } catch (commissionError) {
+      console.error('Partner commission credit failed', {
+        paymentId: result.id,
+        userId: result.userId,
+        commissionError,
+      });
+    }
+  }
 
   // После коммита: запись в цепочки «покупка тарифа» (только при первой успешной оплате)
   if (!wasAlreadySucceeded && result.status === 'succeeded') {

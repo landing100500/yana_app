@@ -9,6 +9,12 @@ import { getPlanConfig, normalizePlanCode, PlanCode } from '@/lib/subscription';
 import Payment from '@/models/Payment';
 import User from '@/models/User';
 import { alertAdminAsync } from '@/lib/admin-alerts';
+import {
+  isReferralUser,
+  REFERRAL_PROMO_DURATION_DAYS,
+  REFERRAL_PROMO_MONTHLY_PLANS,
+  REFERRAL_PROMO_PRICE_MULTIPLIER,
+} from '@/lib/partner';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,8 +45,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Тариф недоступен для оплаты' }, { status: 400 });
     }
 
+    const wantsPromo = body?.promo2plus1 !== false;
+    const eligibleForPromo =
+      wantsPromo &&
+      REFERRAL_PROMO_MONTHLY_PLANS.has(planCode) &&
+      (await isReferralUser(userId));
+
+    const priceRub = eligibleForPromo
+      ? planConfig.priceRub * REFERRAL_PROMO_PRICE_MULTIPLIER
+      : planConfig.priceRub;
+    const durationDaysOverride = eligibleForPromo ? REFERRAL_PROMO_DURATION_DAYS : null;
+
     const idempotenceKey = randomUUID();
-    const amountValue = formatRubAmount(planConfig.priceRub);
+    const amountValue = formatRubAmount(priceRub);
 
     const payment = await Payment.create({
       userId,
@@ -49,6 +66,8 @@ export async function POST(request: NextRequest) {
       currency: 'RUB',
       status: 'pending',
       idempotenceKey,
+      referralPromo: eligibleForPromo,
+      durationDaysOverride,
     });
 
     const returnUrl = `${getAppBaseUrl()}/tariffs?payment=${payment.id}`;
@@ -56,8 +75,10 @@ export async function POST(request: NextRequest) {
     let receipt;
     try {
       receipt = buildSubscriptionReceipt({
-        planTitle: planConfig.title,
-        amountRub: planConfig.priceRub,
+        planTitle: eligibleForPromo
+          ? `${planConfig.title} (2+1 по реферальной акции)`
+          : planConfig.title,
+        amountRub: priceRub,
         customer: {
           email: user.email || undefined,
           phone: user.phone || undefined,
@@ -82,11 +103,14 @@ export async function POST(request: NextRequest) {
           type: 'redirect',
           return_url: returnUrl,
         },
-        description: `Тариф «${planConfig.title}»`,
+        description: eligibleForPromo
+          ? `Тариф «${planConfig.title}» — акция 2+1`
+          : `Тариф «${planConfig.title}»`,
         metadata: {
           user_id: String(userId),
           plan_code: planCode,
           payment_id: String(payment.id),
+          referral_promo: eligibleForPromo ? '1' : '0',
         },
         receipt,
       },
@@ -104,6 +128,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       paymentId: payment.id,
       confirmationUrl,
+      referralPromo: eligibleForPromo,
     });
   } catch (error: any) {
     console.error('Create payment error:', error);
