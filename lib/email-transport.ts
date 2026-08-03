@@ -149,6 +149,11 @@ export function getConsecutiveSmtpFailures(): number {
   return consecutiveSendFailures;
 }
 
+/** Per-recipient ESP reject не должен копить burst-счётчик «очередь стоит». */
+export function resetConsecutiveSmtpFailures(): void {
+  consecutiveSendFailures = 0;
+}
+
 export function htmlToPlainText(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, '')

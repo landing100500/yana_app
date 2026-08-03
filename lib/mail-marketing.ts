@@ -10,7 +10,7 @@ import MailSequence from '@/models/MailSequence';
 import MailSequenceStep from '@/models/MailSequenceStep';
 import MailSequenceEnrollment from '@/models/MailSequenceEnrollment';
 import { getUserPlanSnapshot, normalizePlanCode } from '@/lib/subscription';
-import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures } from '@/lib/email-transport';
+import { sendMarketingEmail, getAppBaseUrl, getConsecutiveSmtpFailures, resetConsecutiveSmtpFailures } from '@/lib/email-transport';
 import { alertAdminAsync } from '@/lib/admin-alerts';
 import { getMailFooterHtml, wrapEmailBody } from '@/lib/mail-footer';
 import { mailQueueConfig } from '@/lib/mail-queue-config';
@@ -401,6 +401,7 @@ async function sendOneMailSend(send: MailSend, htmlBody: string): Promise<SendOn
     }
     if (isEspRecipientReject(error)) {
       // Per-recipient reject у ESP — не ESP down; не шумим CRITICAL burst
+      resetConsecutiveSmtpFailures();
       return 'failed';
     }
     if (isFatalSmtpProviderError(error)) {
