@@ -236,8 +236,9 @@ export default function TariffsPageContent() {
     });
   }, [loadProfile]);
 
-  const handleSelectPlan = async (planCode: PaidPlanCode) => {
-    setLoadingPlan(planCode);
+  const handleSelectPlan = async (planCode: PaidPlanCode, promo2plus1 = false) => {
+    const loadingKey = promo2plus1 ? `${planCode}:promo` : planCode;
+    setLoadingPlan(loadingKey);
     setPaymentNotice(null);
 
     try {
@@ -249,7 +250,10 @@ export default function TariffsPageContent() {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planCode, promo2plus1: isReferral && PROMO_MONTHLY.has(planCode) }),
+          body: JSON.stringify({
+            planCode,
+            promo2plus1: Boolean(promo2plus1 && isReferral && PROMO_MONTHLY.has(planCode)),
+          }),
           signal: controller.signal,
         });
       } finally {
@@ -303,8 +307,8 @@ export default function TariffsPageContent() {
 
         {isReferral && (
           <div className={`${styles.notice} ${styles.noticeSuccess}`}>
-            По реферальной ссылке для тарифов «Оптимальный Лайт» и «Оптимальный»: оплатите 2 месяца —
-            3-й в подарок (90 дней доступа).
+            Лично для вас временно доступна Акция — оплатите 2 месяца тарифа «Оптимальный Лайт» или
+            «Оптимальный» и получите 3-й в подарок (90 дней). Можно оплатить и обычный 1 месяц.
           </div>
         )}
 
@@ -328,7 +332,7 @@ export default function TariffsPageContent() {
               <tr>
                 <th className={styles.featureCol} scope="col">Возможности</th>
                 {PLAN_COLUMNS.map((plan) => {
-                  const promo = isReferral && PROMO_MONTHLY.has(plan.code);
+                  const promoAvailable = isReferral && PROMO_MONTHLY.has(plan.code);
                   return (
                   <th
                     key={plan.code}
@@ -337,11 +341,11 @@ export default function TariffsPageContent() {
                   >
                     <div className={styles.planHeader}>
                       <span className={styles.planTitle}>{plan.title}</span>
-                      <span className={styles.planPrice}>
-                        {promo ? formatPromoPrice(plan.price) : plan.price}
-                      </span>
-                      {promo && (
-                        <span className={styles.currentBadge}>2+1</span>
+                      <span className={styles.planPrice}>{plan.price}</span>
+                      {promoAvailable && (
+                        <span className={styles.planPromoHint}>
+                          или {formatPromoPrice(plan.price)} за 90 дней (2+1)
+                        </span>
                       )}
                       {currentPlan?.code === plan.code && (
                         <span className={styles.currentBadge}>Ваш тариф</span>
@@ -363,7 +367,7 @@ export default function TariffsPageContent() {
                       PROMO_MONTHLY.has(plan.code) &&
                       row.label === 'Срок доступа'
                     ) {
-                      value = '90 дней (2+1)';
+                      value = '30 дней / 90 по акции';
                     }
                     return (
                     <td
@@ -378,31 +382,68 @@ export default function TariffsPageContent() {
               ))}
               <tr className={styles.actionRow}>
                 <th className={styles.featureCol} scope="row" />
-                {PLAN_COLUMNS.map((plan) => (
+                {PLAN_COLUMNS.map((plan) => {
+                  const promoAvailable = isReferral && PROMO_MONTHLY.has(plan.code);
+                  const isCurrent = currentPlan?.code === plan.code;
+                  const loadingNormal = loadingPlan === plan.code;
+                  const loadingPromo = loadingPlan === `${plan.code}:promo`;
+                  return (
                   <td
                     key={plan.code}
-                    className={`${styles.planCol} ${currentPlan?.code === plan.code ? styles.planColCurrent : ''}`}
+                    className={`${styles.planCol} ${isCurrent ? styles.planColCurrent : ''}`}
                   >
                     {plan.paid ? (
-                      <button
-                        className={`${styles.button} ${loadingPlan === plan.code ? styles.buttonLoading : ''}`}
-                        disabled={currentPlan?.code === plan.code || loadingPlan === plan.code}
-                        onClick={() => handleSelectPlan(plan.code as PaidPlanCode)}
-                        aria-busy={loadingPlan === plan.code}
-                      >
-                        {loadingPlan === plan.code ? (
-                          <span className={styles.spinner} aria-label="Переход к оплате" />
-                        ) : currentPlan?.code === plan.code ? (
-                          'Текущий'
-                        ) : (
-                          'Оплатить'
-                        )}
-                      </button>
+                      isCurrent ? (
+                        <button className={styles.button} disabled>
+                          Текущий
+                        </button>
+                      ) : promoAvailable ? (
+                        <div className={styles.payChoices}>
+                          <button
+                            className={`${styles.button} ${loadingNormal ? styles.buttonLoading : ''}`}
+                            disabled={Boolean(loadingPlan)}
+                            onClick={() => handleSelectPlan(plan.code as PaidPlanCode, false)}
+                            aria-busy={loadingNormal}
+                          >
+                            {loadingNormal ? (
+                              <span className={styles.spinner} aria-label="Переход к оплате" />
+                            ) : (
+                              `1 месяц · ${plan.price}`
+                            )}
+                          </button>
+                          <button
+                            className={`${styles.button} ${styles.buttonPromo} ${loadingPromo ? styles.buttonLoading : ''}`}
+                            disabled={Boolean(loadingPlan)}
+                            onClick={() => handleSelectPlan(plan.code as PaidPlanCode, true)}
+                            aria-busy={loadingPromo}
+                          >
+                            {loadingPromo ? (
+                              <span className={styles.spinner} aria-label="Переход к оплате" />
+                            ) : (
+                              `Акция 2+1 · ${formatPromoPrice(plan.price)}`
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className={`${styles.button} ${loadingNormal ? styles.buttonLoading : ''}`}
+                          disabled={Boolean(loadingPlan)}
+                          onClick={() => handleSelectPlan(plan.code as PaidPlanCode, false)}
+                          aria-busy={loadingNormal}
+                        >
+                          {loadingNormal ? (
+                            <span className={styles.spinner} aria-label="Переход к оплате" />
+                          ) : (
+                            'Оплатить'
+                          )}
+                        </button>
+                      )
                     ) : (
                       <span className={styles.freeLabel}>По умолчанию</span>
                     )}
                   </td>
-                ))}
+                  );
+                })}
               </tr>
             </tbody>
           </table>

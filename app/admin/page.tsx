@@ -48,12 +48,38 @@ export default function AdminPage() {
   const [personalityReadingAlgorithm, setPersonalityReadingAlgorithm] = useState(false);
   const [algorithmsLoading, setAlgorithmsLoading] = useState(false);
   const [algorithmsSaving, setAlgorithmsSaving] = useState(false);
+  const [partnerPendingKyc, setPartnerPendingKyc] = useState(0);
+  const [partnerPendingPayouts, setPartnerPendingPayouts] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    let cancelled = false;
+
+    const loadPartnerBadges = async () => {
+      try {
+        const res = await fetch('/api/admin/partner?tab=counts');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        setPartnerPendingKyc(Number(data.pendingVerifications) || 0);
+        setPartnerPendingPayouts(Number(data.pendingWithdrawals) || 0);
+      } catch {
+        // ignore
+      }
+    };
+
+    loadPartnerBadges();
+    const timer = window.setInterval(loadPartnerBadges, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [authenticated, currentView]);
 
   const checkAuth = async () => {
     try {
@@ -551,7 +577,29 @@ export default function AdminPage() {
               className={`${styles.sidebarItem} ${currentView === 'partner' ? styles.sidebarItemActive : ''}`}
               onClick={() => setCurrentView('partner')}
             >
-              Партнерка
+              <span className={styles.sidebarItemLabel}>
+                Партнерка
+                {(partnerPendingKyc > 0 || partnerPendingPayouts > 0) && (
+                  <span className={styles.sidebarBadges}>
+                    {partnerPendingKyc > 0 && (
+                      <span
+                        className={`${styles.sidebarBadge} ${styles.sidebarBadgeKyc}`}
+                        title="Заявки на верификацию"
+                      >
+                        {partnerPendingKyc > 99 ? '99+' : partnerPendingKyc}
+                      </span>
+                    )}
+                    {partnerPendingPayouts > 0 && (
+                      <span
+                        className={`${styles.sidebarBadge} ${styles.sidebarBadgePayout}`}
+                        title="Заявки на выплату"
+                      >
+                        {partnerPendingPayouts > 99 ? '99+' : partnerPendingPayouts}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </span>
             </button>
           </nav>
 

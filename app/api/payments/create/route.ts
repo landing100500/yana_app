@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Тариф недоступен для оплаты' }, { status: 400 });
     }
 
-    const wantsPromo = body?.promo2plus1 !== false;
+    const wantsPromo = body?.promo2plus1 === true;
     const eligibleForPromo =
       wantsPromo &&
       REFERRAL_PROMO_MONTHLY_PLANS.has(planCode) &&
