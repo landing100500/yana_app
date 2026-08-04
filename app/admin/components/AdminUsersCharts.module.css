@@ -82,6 +82,10 @@
   border-color: rgba(155, 143, 184, 0.6);
 }
 
+.dateFilterWrap {
+  min-width: 160px;
+}
+
 .clearFiltersButton {
   padding: 0.65rem 1.2rem;
   background: rgba(255, 255, 255, 0.1);

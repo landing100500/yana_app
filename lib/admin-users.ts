@@ -13,9 +13,9 @@ import { addUsersToList } from '@/lib/mail-list-users';
 import { col, fn } from 'sequelize';
 
 const EFFECTIVE_PLAN_SQL = `CASE
-  WHEN users.planCode IS NULL OR users.planCode = 'free' THEN 'free'
-  WHEN users.planExpiresAt IS NOT NULL AND users.planExpiresAt <= NOW() THEN 'free'
-  ELSE users.planCode
+  WHEN \`User\`.planCode IS NULL OR \`User\`.planCode = 'free' THEN 'free'
+  WHEN \`User\`.planExpiresAt IS NOT NULL AND \`User\`.planExpiresAt <= NOW() THEN 'free'
+  ELSE \`User\`.planCode
 END`;
 
 export { FREE_AI_REMAINING_SQL };
@@ -30,6 +30,10 @@ export interface AdminUserFilters {
   planCode?: string | null;
   /** Точное значение остатка бесплатных запросов (например 0). */
   freeAiRemaining?: number | null;
+  /** ISO date yyyy-MM-dd — регистрация с (включительно). */
+  registeredFrom?: string | null;
+  /** ISO date yyyy-MM-dd — регистрация по (включительно). */
+  registeredTo?: string | null;
 }
 
 export interface AdminUserRow {
@@ -60,6 +64,22 @@ function parseRemainingFilter(value: unknown): number | null {
   return Math.floor(n);
 }
 
+function parseIsoDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const d = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function endOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
 export function buildAdminUsersWhere(filters: AdminUserFilters) {
   const andConditions: unknown[] = [];
 
@@ -86,6 +106,17 @@ export function buildAdminUsersWhere(filters: AdminUserFilters) {
     andConditions.push(
       sequelize.where(sequelize.literal(FREE_AI_REMAINING_SQL), remaining)
     );
+  }
+
+  const from = parseIsoDate(filters.registeredFrom);
+  const to = parseIsoDate(filters.registeredTo);
+  if (from || to) {
+    andConditions.push({
+      createdAt: {
+        ...(from ? { [Op.gte]: startOfDay(from) } : {}),
+        ...(to ? { [Op.lte]: endOfDay(to) } : {}),
+      },
+    });
   }
 
   if (andConditions.length === 0) return {};
@@ -227,6 +258,8 @@ export async function fetchAdminUsersPage(params: {
   email?: string;
   planCode?: string | null;
   freeAiRemaining?: number | string | null;
+  registeredFrom?: string | null;
+  registeredTo?: string | null;
 }): Promise<{
   users: AdminUserRow[];
   page: number;
@@ -241,6 +274,8 @@ export async function fetchAdminUsersPage(params: {
     email: params.email,
     planCode: params.planCode,
     freeAiRemaining: parseRemainingFilter(params.freeAiRemaining),
+    registeredFrom: params.registeredFrom || null,
+    registeredTo: params.registeredTo || null,
   };
   const where = buildAdminUsersWhere(filters);
 

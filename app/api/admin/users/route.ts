@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const email = searchParams.get('email') || undefined;
     const planCode = searchParams.get('planCode') || undefined;
     const freeAiRemaining = searchParams.get('freeAiRemaining') || undefined;
+    const registeredFrom = searchParams.get('registeredFrom') || undefined;
+    const registeredTo = searchParams.get('registeredTo') || undefined;
 
     const result = await fetchAdminUsersPage({
       page: Number(page),
@@ -26,6 +28,8 @@ export async function GET(request: NextRequest) {
       email,
       planCode,
       freeAiRemaining,
+      registeredFrom,
+      registeredTo,
     });
 
     return NextResponse.json(result);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import AdminPagination from './AdminPagination';
+import DatePicker from '@/components/ui/DatePicker';
 import styles from './AdminUsersCharts.module.css';
 import NatalChartVisualization from '@/components/NatalChartVisualization';
 
@@ -116,6 +117,8 @@ export default function AdminUsersCharts() {
   const [debouncedEmailFilter, setDebouncedEmailFilter] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | PlanCode>('all');
   const [remainingFilter, setRemainingFilter] = useState<'all' | string>('all');
+  const [registeredFrom, setRegisteredFrom] = useState('');
+  const [registeredTo, setRegisteredTo] = useState('');
   const [bulkAddAmount, setBulkAddAmount] = useState('6');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
@@ -165,6 +168,8 @@ export default function AdminUsersCharts() {
       if (debouncedEmailFilter) params.set('email', debouncedEmailFilter);
       if (planFilter !== 'all') params.set('planCode', planFilter);
       if (remainingFilter !== 'all') params.set('freeAiRemaining', remainingFilter);
+      if (registeredFrom) params.set('registeredFrom', registeredFrom);
+      if (registeredTo) params.set('registeredTo', registeredTo);
 
       const response = await fetch(`/api/admin/users?${params}`);
       const data = await response.json().catch(() => ({}));
@@ -186,19 +191,28 @@ export default function AdminUsersCharts() {
       setLoading(false);
       setTableLoading(false);
     }
-  }, [debouncedEmailFilter, planFilter, remainingFilter, page]);
+  }, [debouncedEmailFilter, planFilter, remainingFilter, registeredFrom, registeredTo, page]);
 
   useEffect(() => {
     loadUsers(page);
-  }, [page, debouncedEmailFilter, planFilter, remainingFilter, loadUsers]);
+  }, [page, debouncedEmailFilter, planFilter, remainingFilter, registeredFrom, registeredTo, loadUsers]);
 
   const currentFiltersPayload = useCallback(() => {
     const payload: Record<string, unknown> = {};
     if (debouncedEmailFilter) payload.email = debouncedEmailFilter;
     if (planFilter !== 'all') payload.planCode = planFilter;
     if (remainingFilter !== 'all') payload.freeAiRemaining = Number(remainingFilter);
+    if (registeredFrom) payload.registeredFrom = registeredFrom;
+    if (registeredTo) payload.registeredTo = registeredTo;
     return payload;
-  }, [debouncedEmailFilter, planFilter, remainingFilter]);
+  }, [debouncedEmailFilter, planFilter, remainingFilter, registeredFrom, registeredTo]);
+
+  const hasActiveFilters =
+    Boolean(debouncedEmailFilter) ||
+    planFilter !== 'all' ||
+    remainingFilter !== 'all' ||
+    Boolean(registeredFrom) ||
+    Boolean(registeredTo);
 
   const grantToUser = async (userId: number) => {
     const raw = rowGrantAmount[userId] ?? '6';
@@ -668,7 +682,34 @@ export default function AdminUsersCharts() {
               ))}
             </select>
           </label>
-          {(emailFilter || planFilter !== 'all' || remainingFilter !== 'all') && (
+          <label className={styles.filterLabel}>
+            Регистрация от
+            <DatePicker
+              value={registeredFrom}
+              onChange={(v) => {
+                setRegisteredFrom(v);
+                setPage(1);
+              }}
+              theme="dark"
+              className={styles.filterInput}
+              wrapperClassName={styles.dateFilterWrap}
+            />
+          </label>
+          <label className={styles.filterLabel}>
+            до
+            <DatePicker
+              value={registeredTo}
+              onChange={(v) => {
+                setRegisteredTo(v);
+                setPage(1);
+              }}
+              theme="dark"
+              className={styles.filterInput}
+              wrapperClassName={styles.dateFilterWrap}
+              min={registeredFrom || undefined}
+            />
+          </label>
+          {hasActiveFilters && (
             <button
               type="button"
               className={styles.clearFiltersButton}
@@ -676,6 +717,9 @@ export default function AdminUsersCharts() {
                 setEmailFilter('');
                 setPlanFilter('all');
                 setRemainingFilter('all');
+                setRegisteredFrom('');
+                setRegisteredTo('');
+                setPage(1);
               }}
             >
               Сбросить
@@ -727,10 +771,7 @@ export default function AdminUsersCharts() {
         Пользователи сервиса
         <span className={styles.filteredCount}>
           {' '}
-          — {totalUsers}{' '}
-          {debouncedEmailFilter || planFilter !== 'all' || remainingFilter !== 'all'
-            ? 'найдено'
-            : 'всего'}
+          — {totalUsers} {hasActiveFilters ? 'найдено' : 'всего'}
           {totalPages > 1 && ` · страница ${page} из ${totalPages}`}
         </span>
       </h2>

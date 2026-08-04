@@ -13,6 +13,8 @@
     "migrate-phone-otp": "tsx scripts/run-phone-otp-migration.ts",
     "migrate-user-memories": "tsx scripts/run-user-memories-migration.ts",
     "migrate-plan-manual-assigned": "tsx scripts/run-plan-manual-assigned-migration.ts",
+    "migrate-free-ai-requests-limit": "tsx scripts/run-free-ai-requests-limit-migration.ts",
+    "db:migrate-free-ai-requests-limit": "tsx scripts/run-free-ai-requests-limit-migration.ts",
     "backfill-plan-manual-assigned": "tsx scripts/backfill-plan-manual-assigned.ts",
     "update-natal-charts": "tsx scripts/update-natal-charts-migration.ts",
     "fix-natal-charts": "tsx scripts/fix-natal-charts-columns.ts",

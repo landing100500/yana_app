@@ -2,11 +2,11 @@
 
 export const FREE_AI_REQUESTS_LIMIT = 6;
 
-/** Остаток бесплатных AI-запросов (SQL expression по таблице users). */
+/** Остаток бесплатных AI-запросов (SQL; алиас модели Sequelize — `User`). */
 export const FREE_AI_REMAINING_SQL = `GREATEST(
   0,
-  CAST(COALESCE(users.freeAiRequestsLimit, ${FREE_AI_REQUESTS_LIMIT}) AS SIGNED)
-  - CAST(COALESCE(users.freeAiRequestsUsed, 0) AS SIGNED)
+  CAST(COALESCE(\`User\`.freeAiRequestsLimit, ${FREE_AI_REQUESTS_LIMIT}) AS SIGNED)
+  - CAST(COALESCE(\`User\`.freeAiRequestsUsed, 0) AS SIGNED)
 )`;
 
 export const FREE_AI_REQUESTS_FOR_NEW_USERS_KEY = 'free_ai_requests_for_new_users';

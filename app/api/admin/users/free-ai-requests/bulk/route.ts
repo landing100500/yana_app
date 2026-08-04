@@ -22,6 +22,8 @@ function parseFilters(body: Record<string, unknown>): AdminUserFilters {
     email: typeof body.email === 'string' ? body.email : undefined,
     planCode: typeof body.planCode === 'string' ? body.planCode : undefined,
     freeAiRemaining,
+    registeredFrom: typeof body.registeredFrom === 'string' ? body.registeredFrom : undefined,
+    registeredTo: typeof body.registeredTo === 'string' ? body.registeredTo : undefined,
   };
 }
 
