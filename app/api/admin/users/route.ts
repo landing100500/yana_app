@@ -35,6 +35,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error('Error fetching users:', error);
-    return NextResponse.json({ error: 'Ошибка при получении пользователей' }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : 'Ошибка при получении пользователей';
+    return NextResponse.json(
+      { error: 'Ошибка при получении пользователей', detail: message },
+      { status: 500 }
+    );
   }
 }

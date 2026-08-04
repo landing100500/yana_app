@@ -182,7 +182,11 @@ export default function AdminUsersCharts() {
         if (data.planStats) setPlanStats(data.planStats);
         hasLoadedOnceRef.current = true;
       } else {
-        setError(data.error || 'Ошибка при загрузке пользователей');
+        setError(
+          [data.error || 'Ошибка при загрузке пользователей', data.detail]
+            .filter(Boolean)
+            .join(': ')
+        );
       }
     } catch (err: unknown) {
       setError('Ошибка при загрузке пользователей');

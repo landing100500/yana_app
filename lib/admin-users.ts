@@ -13,9 +13,9 @@ import { addUsersToList } from '@/lib/mail-list-users';
 import { col, fn } from 'sequelize';
 
 const EFFECTIVE_PLAN_SQL = `CASE
-  WHEN \`User\`.planCode IS NULL OR \`User\`.planCode = 'free' THEN 'free'
-  WHEN \`User\`.planExpiresAt IS NOT NULL AND \`User\`.planExpiresAt <= NOW() THEN 'free'
-  ELSE \`User\`.planCode
+  WHEN planCode IS NULL OR planCode = 'free' THEN 'free'
+  WHEN planExpiresAt IS NOT NULL AND planExpiresAt <= NOW() THEN 'free'
+  ELSE planCode
 END`;
 
 export { FREE_AI_REMAINING_SQL };
