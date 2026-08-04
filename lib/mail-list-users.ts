@@ -1,13 +1,16 @@
 import { Op } from 'sequelize';
+import sequelize from '@/lib/db';
 import User from '@/models/User';
 import MailListMember from '@/models/MailListMember';
 import { getUserPlanSnapshot } from '@/lib/subscription';
+import { FREE_AI_REMAINING_SQL } from '@/lib/free-ai-requests-constants';
 
 export interface MailUserSearchParams {
   emailPrefix?: string;
   planCode?: string;
   registeredFrom?: string;
   registeredTo?: string;
+  freeAiRemaining?: number | null;
   excludeListId?: number;
   limit?: number;
   offset?: number;
@@ -20,6 +23,7 @@ export interface BulkAddToListCriteria {
   registeredFrom?: string;
   registeredTo?: string;
   emailPrefix?: string;
+  freeAiRemaining?: number | null;
 }
 
 function startOfDay(date: Date) {
@@ -36,26 +40,39 @@ function parseDate(value?: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function baseUserWhere(emailPrefix?: string, registeredFrom?: string, registeredTo?: string) {
-  const where: Record<string, unknown> = {
-    email: { [Op.ne]: null },
-    password: { [Op.ne]: null },
-  };
+function baseUserWhere(
+  emailPrefix?: string,
+  registeredFrom?: string,
+  registeredTo?: string,
+  freeAiRemaining?: number | null
+) {
+  const andConditions: unknown[] = [
+    { email: { [Op.ne]: null } },
+    { password: { [Op.ne]: null } },
+  ];
 
   if (emailPrefix?.trim()) {
-    where.email = { [Op.like]: `${emailPrefix.trim()}%` };
+    andConditions.push({ email: { [Op.like]: `${emailPrefix.trim()}%` } });
   }
 
   const from = parseDate(registeredFrom);
   const to = parseDate(registeredTo);
   if (from || to) {
-    where.createdAt = {
-      ...(from ? { [Op.gte]: startOfDay(from) } : {}),
-      ...(to ? { [Op.lte]: endOfDay(to) } : {}),
-    };
+    andConditions.push({
+      createdAt: {
+        ...(from ? { [Op.gte]: startOfDay(from) } : {}),
+        ...(to ? { [Op.lte]: endOfDay(to) } : {}),
+      },
+    });
   }
 
-  return where;
+  if (freeAiRemaining != null && Number.isFinite(freeAiRemaining) && freeAiRemaining >= 0) {
+    andConditions.push(
+      sequelize.where(sequelize.literal(FREE_AI_REMAINING_SQL), Math.floor(freeAiRemaining))
+    );
+  }
+
+  return { [Op.and]: andConditions };
 }
 
 export async function searchMailUsers(params: MailUserSearchParams) {
@@ -71,9 +88,14 @@ export async function searchMailUsers(params: MailUserSearchParams) {
     excludeIds = members.map((m) => m.userId);
   }
 
-  const where = baseUserWhere(params.emailPrefix, params.registeredFrom, params.registeredTo);
+  const where = baseUserWhere(
+    params.emailPrefix,
+    params.registeredFrom,
+    params.registeredTo,
+    params.freeAiRemaining
+  );
   if (excludeIds.length > 0) {
-    where.id = { [Op.notIn]: excludeIds };
+    (where[Op.and] as unknown[]).push({ id: { [Op.notIn]: excludeIds } });
   }
 
   let users = await User.findAll({
@@ -138,10 +160,19 @@ export async function resolveUserIdsFromBulkCriteria(criteria: BulkAddToListCrit
   }
 
   const hasFilters =
-    criteria.planCode || criteria.emailPrefix || criteria.registeredFrom || criteria.registeredTo;
+    criteria.planCode ||
+    criteria.emailPrefix ||
+    criteria.registeredFrom ||
+    criteria.registeredTo ||
+    (criteria.freeAiRemaining != null && Number.isFinite(criteria.freeAiRemaining));
 
   if (hasFilters) {
-    const where = baseUserWhere(criteria.emailPrefix, criteria.registeredFrom, criteria.registeredTo);
+    const where = baseUserWhere(
+      criteria.emailPrefix,
+      criteria.registeredFrom,
+      criteria.registeredTo,
+      criteria.freeAiRemaining
+    );
     const users = await User.findAll({
       where,
       attributes: ['id', 'planCode'],

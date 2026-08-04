@@ -7,6 +7,7 @@ import EmailSendLog from '@/models/EmailSendLog';
 import { initDatabase } from '@/lib/initDb';
 import { isSmtpConfigured, sendSimpleEmail } from '@/lib/email-transport';
 import { alertAdminAsync, alertSmtpMisconfigured } from '@/lib/admin-alerts';
+import { getFreeAiRequestsForNewUsers } from '@/lib/free-ai-requests-settings';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const EMAIL_COOLDOWN_MS = 60 * 1000;
@@ -88,7 +89,8 @@ export async function sendEmailOtp(
       return { ok: false, status: 404, error: 'Пользователь с таким email не найден' };
     }
   } else if (!user) {
-    user = await User.create({ email });
+    const freeAiRequestsLimit = await getFreeAiRequestsForNewUsers();
+    user = await User.create({ email, freeAiRequestsLimit });
     await UserAnketa.create({
       userId: user.id,
       gender: null,

@@ -10,6 +10,7 @@ import {
 } from '@/lib/subscription';
 import { enrollUserOnPlanPurchase } from '@/lib/mail-marketing';
 import { formatMoney } from '@/lib/partner';
+import { getFreeAiRequestsForNewUsers } from '@/lib/free-ai-requests-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,6 +120,7 @@ export async function PUT(
     (user as any).planExpiresAt = expiresAt;
     if (planCode === 'free') {
       (user as any).freeAiRequestsUsed = 0;
+      (user as any).freeAiRequestsLimit = await getFreeAiRequestsForNewUsers();
       (user as any).planManuallyAssignedAt = null;
       (user as any).manualPlanStatsAmountRub = null;
     } else {

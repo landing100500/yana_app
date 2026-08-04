@@ -11,6 +11,10 @@ import {
   resumePendingPaymentPoll,
   setPendingPaymentId,
 } from '@/lib/payment-poll-client';
+import {
+  FREE_AI_REQUESTS_LIMIT,
+  formatFreeAiRequestsFeature,
+} from '@/lib/free-ai-requests-constants';
 import styles from './page.module.css';
 
 type PlanCode = 'free' | 'hours24' | 'optimalLight' | 'optimal' | 'professional';
@@ -58,7 +62,12 @@ function formatPromoPrice(basePriceLabel: string): string {
   return `${(n * 2).toLocaleString('ru-RU')} ₽`;
 }
 
-const FEATURE_ROWS: FeatureRow[] = [
+type FeatureRowTemplate = {
+  label: string;
+  values: Record<PlanCode, FeatureValue | 'FREE_AI_LIMIT'>;
+};
+
+const FEATURE_ROWS_BASE: FeatureRowTemplate[] = [
   {
     label: 'Срок доступа',
     values: {
@@ -72,7 +81,7 @@ const FEATURE_ROWS: FeatureRow[] = [
   {
     label: 'Время в Ясне',
     values: {
-      free: '10 запросов к ИИ',
+      free: 'FREE_AI_LIMIT',
       hours24: '24 ч сессия',
       optimalLight: '1 ч в сутки',
       optimal: 'Без ограничений',
@@ -101,6 +110,19 @@ const FEATURE_ROWS: FeatureRow[] = [
   },
 ];
 
+function buildFeatureRows(freeAiLimit: number): FeatureRow[] {
+  const freeLabel = formatFreeAiRequestsFeature(freeAiLimit);
+  return FEATURE_ROWS_BASE.map((row) => ({
+    label: row.label,
+    values: Object.fromEntries(
+      (Object.keys(row.values) as PlanCode[]).map((code) => {
+        const v = row.values[code];
+        return [code, v === 'FREE_AI_LIMIT' ? freeLabel : v];
+      })
+    ) as Record<PlanCode, FeatureValue>,
+  }));
+}
+
 function renderFeatureValue(value: FeatureValue) {
   if (value === true) {
     return <span className={styles.check} aria-label="Да">✓</span>;
@@ -118,6 +140,28 @@ export default function TariffsPageContent() {
   const [isReferral, setIsReferral] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
+  const [freeAiLimit, setFreeAiLimit] = useState(FREE_AI_REQUESTS_LIMIT);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/public/plan-info');
+        const data = await res.json().catch(() => ({}));
+        const n = Number(data.freeAiRequestsForNewUsers);
+        if (!cancelled && Number.isFinite(n) && n >= 0) {
+          setFreeAiLimit(Math.floor(n));
+        }
+      } catch {
+        // keep default
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const featureRows = buildFeatureRows(freeAiLimit);
 
   const loadProfile = useCallback(async () => {
     let res = await fetch('/api/auth/profile', { credentials: 'include' });
@@ -357,7 +401,7 @@ export default function TariffsPageContent() {
               </tr>
             </thead>
             <tbody>
-              {FEATURE_ROWS.map((row) => (
+              {featureRows.map((row) => (
                 <tr key={row.label}>
                   <th className={styles.featureCol} scope="row">{row.label}</th>
                   {PLAN_COLUMNS.map((plan) => {

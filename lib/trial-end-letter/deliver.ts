@@ -5,7 +5,8 @@ import Payment from '@/models/Payment';
 import TrialEndLetterSend from '@/models/TrialEndLetterSend';
 import { sendMarketingEmail } from '@/lib/email-transport';
 import { buildSessionEndedUpsellMessage, buildSessionEndedUpsellEmailMessage } from '@/lib/plan-messages';
-import { getUserPlanSnapshot, FREE_AI_REQUESTS_LIMIT } from '@/lib/subscription';
+import { getUserPlanSnapshot } from '@/lib/subscription';
+import { resolveUserFreeAiRequestsLimit } from '@/lib/free-ai-requests-constants';
 import { composeTrialEndLetter } from './compose';
 import { isTrialEndResolveResult, resolveTrialEndInputs } from './resolve';
 import { getTrialEndLetterEnabled, getTrialEndTemplates } from './settings';
@@ -103,7 +104,7 @@ export async function maybeDeliverTrialEndLetter(
   }
 
   const used = Number((user as any).freeAiRequestsUsed) || 0;
-  const atLimit = used >= FREE_AI_REQUESTS_LIMIT;
+  const atLimit = used >= resolveUserFreeAiRequestsLimit(user as any);
   if (!atLimit && !options?.forceIfBlocked) {
     console.warn('[trial-end-letter] skip: not at limit', user.id, used);
     return null;

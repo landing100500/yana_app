@@ -8,6 +8,7 @@ import SmsSendLog from '@/models/SmsSendLog';
 import { initDatabase } from '@/lib/initDb';
 import { sendSmsRu } from '@/lib/sms-ru';
 import { getClientIp } from '@/lib/client-ip';
+import { getFreeAiRequestsForNewUsers } from '@/lib/free-ai-requests-settings';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SMS_COOLDOWN_MS = 60 * 1000;
@@ -57,7 +58,8 @@ export async function sendPhoneSmsOtp(
       return { ok: false, status: 404, error: 'Пользователь с таким номером не найден' };
     }
   } else if (!user) {
-    user = await User.create({ phone: normalizedPhone });
+    const freeAiRequestsLimit = await getFreeAiRequestsForNewUsers();
+    user = await User.create({ phone: normalizedPhone, freeAiRequestsLimit });
     await UserAnketa.create({
       userId: user.id,
       gender: null,

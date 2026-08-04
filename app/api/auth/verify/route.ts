@@ -9,6 +9,7 @@ import EmailOtp from '@/models/EmailOtp';
 import { initDatabase } from '@/lib/initDb';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
 import { attachReferralOnRegistration, REFERRAL_COOKIE_NAME } from '@/lib/partner';
+import { getFreeAiRequestsForNewUsers } from '@/lib/free-ai-requests-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (!user) {
-      user = await User.create({ email, phone });
+      const freeAiRequestsLimit = await getFreeAiRequestsForNewUsers();
+      user = await User.create({ email, phone, freeAiRequestsLimit });
       wasJustCreated = true;
       await UserAnketa.create({
         userId: user.id,

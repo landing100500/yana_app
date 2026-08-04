@@ -5,7 +5,7 @@ import DatePicker from '@/components/ui/DatePicker';
 import EmailEditor from './EmailEditor';
 import AdminPagination from './AdminPagination';
 import styles from './AdminMailings.module.css';
-import { PLAN_CONFIGS, type PlanCode } from '@/lib/subscription';
+import { PLAN_CONFIGS, type PlanCode } from '@/lib/plan-config';
 
 type Tab = 'campaigns' | 'sequences' | 'lists' | 'footer' | 'history';
 type HistoryPeriod = 'week' | 'month' | 'custom';
@@ -270,7 +270,8 @@ export default function AdminMailings() {
   } | null>(null);
   const [sendGuardError, setSendGuardError] = useState<string | null>(null);
 
-  const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates'>('search');
+  const [listAddMode, setListAddMode] = useState<'search' | 'list' | 'plan' | 'dates' | 'ai'>('search');
+  const [bulkAiRemaining, setBulkAiRemaining] = useState('0');
   const [userSearchEmail, setUserSearchEmail] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<SearchUser[]>([]);
   const [userSearchOffset, setUserSearchOffset] = useState(0);
@@ -2247,7 +2248,7 @@ export default function AdminMailings() {
               <div className={styles.addMembersPanel}>
                 <h3>Добавить в список</h3>
                 <div className={styles.addModeTabs}>
-                  {(['search', 'list', 'plan', 'dates'] as const).map((mode) => (
+                  {(['search', 'list', 'plan', 'dates', 'ai'] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
@@ -2258,6 +2259,7 @@ export default function AdminMailings() {
                       {mode === 'list' && 'Из списка'}
                       {mode === 'plan' && 'По тарифу'}
                       {mode === 'dates' && 'По дате регистрации'}
+                      {mode === 'ai' && 'По AI-запросам'}
                     </button>
                   ))}
                 </div>
@@ -2394,6 +2396,38 @@ export default function AdminMailings() {
                       }
                     >
                       Добавить по датам регистрации
+                    </button>
+                  </div>
+                )}
+
+                {listAddMode === 'ai' && (
+                  <div className={styles.addModeBody}>
+                    <label className={styles.filterLabel}>
+                      Осталось AI-запросов ровно
+                      <select
+                        className={styles.input}
+                        value={bulkAiRemaining}
+                        onChange={(e) => setBulkAiRemaining(e.target.value)}
+                      >
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                          <option key={n} value={String(n)}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className={styles.hint}>
+                      Только пользователи с email и установленным PIN (готовые к рассылке).
+                    </p>
+                    <button
+                      type="button"
+                      className={styles.btnPrimary}
+                      disabled={listAddLoading}
+                      onClick={() =>
+                        bulkAddToList({ freeAiRemaining: Number(bulkAiRemaining) })
+                      }
+                    >
+                      Добавить с остатком {bulkAiRemaining}
                     </button>
                   </div>
                 )}

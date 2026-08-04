@@ -95,6 +95,13 @@ async function ensureAuthSchema() {
         defaultValue: 0,
       });
     }
+    if (!usersTable.freeAiRequestsLimit) {
+      await queryInterface.addColumn('users', 'freeAiRequestsLimit', {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 6,
+      });
+    }
     if (!usersTable.planDailySecondsUsed) {
       await queryInterface.addColumn('users', 'planDailySecondsUsed', {
         type: DataTypes.INTEGER.UNSIGNED,

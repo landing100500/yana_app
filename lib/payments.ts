@@ -4,6 +4,7 @@ import Payment from '@/models/Payment';
 import User from '@/models/User';
 import { assignPlanDates, getUserPlanSnapshot, normalizePlanCode, PlanCode, resetPlanDailyUsage } from '@/lib/subscription';
 import { getYookassaPayment } from '@/lib/yookassa';
+import { getFreeAiRequestsForNewUsers } from '@/lib/free-ai-requests-settings';
 
 const PENDING_RECONCILE_DAYS = 14;
 
@@ -48,6 +49,7 @@ async function applyPlanToUser(
   (user as any).planManuallyAssignedAt = null;
   if (planCode === 'free') {
     (user as any).freeAiRequestsUsed = 0;
+    (user as any).freeAiRequestsLimit = await getFreeAiRequestsForNewUsers();
   }
   resetPlanDailyUsage(user);
   await user.save({ transaction: options?.transaction });

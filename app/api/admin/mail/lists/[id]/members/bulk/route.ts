@@ -29,6 +29,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       registeredFrom: body.registeredFrom || undefined,
       registeredTo: body.registeredTo || undefined,
       emailPrefix: body.emailPrefix || undefined,
+      freeAiRemaining:
+        body.freeAiRemaining !== undefined && body.freeAiRemaining !== null && body.freeAiRemaining !== ''
+          ? Number(body.freeAiRemaining)
+          : undefined,
     };
 
     const hasCriteria =
@@ -37,7 +41,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       criteria.planCode ||
       criteria.emailPrefix ||
       criteria.registeredFrom ||
-      criteria.registeredTo;
+      criteria.registeredTo ||
+      (criteria.freeAiRemaining != null && Number.isFinite(criteria.freeAiRemaining));
 
     if (!hasCriteria) {
       return NextResponse.json({ error: 'Укажите критерии добавления' }, { status: 400 });

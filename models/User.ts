@@ -16,6 +16,8 @@ interface UserAttributes {
   freeWindowStartedAt?: Date | null;
   freeMinutesUsed?: number;
   freeAiRequestsUsed?: number;
+  /** Лимит бесплатных AI-запросов, зафиксированный при регистрации / выдаче free. */
+  freeAiRequestsLimit?: number;
   planDailySecondsUsed?: number;
   planDailyWindowDate?: string | null;
   planDailyLastTickAt?: Date | null;
@@ -42,6 +44,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public freeWindowStartedAt?: Date | null;
   public freeMinutesUsed?: number;
   public freeAiRequestsUsed?: number;
+  public freeAiRequestsLimit?: number;
   public planDailySecondsUsed?: number;
   public planDailyWindowDate?: string | null;
   public planDailyLastTickAt?: Date | null;
@@ -114,6 +117,11 @@ User.init(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 0,
+    },
+    freeAiRequestsLimit: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 6,
     },
     planDailySecondsUsed: {
       type: DataTypes.INTEGER.UNSIGNED,

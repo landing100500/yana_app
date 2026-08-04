@@ -18,8 +18,15 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || undefined;
     const email = searchParams.get('email') || undefined;
     const planCode = searchParams.get('planCode') || undefined;
+    const freeAiRemaining = searchParams.get('freeAiRemaining') || undefined;
 
-    const result = await fetchAdminUsersPage({ page: Number(page), limit: limit ? Number(limit) : undefined, email, planCode });
+    const result = await fetchAdminUsersPage({
+      page: Number(page),
+      limit: limit ? Number(limit) : undefined,
+      email,
+      planCode,
+      freeAiRemaining,
+    });
 
     return NextResponse.json(result);
   } catch (error: unknown) {

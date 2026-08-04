@@ -18,6 +18,9 @@ interface User {
   createdAt: string;
   chartCount: number;
   lastVisitAt?: string | null;
+  freeAiRequestsUsed?: number;
+  freeAiRequestsLimit?: number;
+  remainingAiRequests?: number;
 }
 
 interface Chart {
@@ -112,6 +115,14 @@ export default function AdminUsersCharts() {
   const [emailFilter, setEmailFilter] = useState('');
   const [debouncedEmailFilter, setDebouncedEmailFilter] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | PlanCode>('all');
+  const [remainingFilter, setRemainingFilter] = useState<'all' | string>('all');
+  const [bulkAddAmount, setBulkAddAmount] = useState('6');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+  const [grantBusyUserId, setGrantBusyUserId] = useState<number | null>(null);
+  const [rowGrantAmount, setRowGrantAmount] = useState<Record<number, string>>({});
+  const [listModalOpen, setListModalOpen] = useState(false);
+  const [listName, setListName] = useState('');
   const [updatingPlanUserId, setUpdatingPlanUserId] = useState<number | null>(null);
   const [planModal, setPlanModal] = useState<{
     userId: number;
@@ -153,6 +164,7 @@ export default function AdminUsersCharts() {
       });
       if (debouncedEmailFilter) params.set('email', debouncedEmailFilter);
       if (planFilter !== 'all') params.set('planCode', planFilter);
+      if (remainingFilter !== 'all') params.set('freeAiRemaining', remainingFilter);
 
       const response = await fetch(`/api/admin/users?${params}`);
       const data = await response.json().catch(() => ({}));
@@ -174,11 +186,127 @@ export default function AdminUsersCharts() {
       setLoading(false);
       setTableLoading(false);
     }
-  }, [debouncedEmailFilter, planFilter, page]);
+  }, [debouncedEmailFilter, planFilter, remainingFilter, page]);
 
   useEffect(() => {
     loadUsers(page);
-  }, [page, debouncedEmailFilter, planFilter, loadUsers]);
+  }, [page, debouncedEmailFilter, planFilter, remainingFilter, loadUsers]);
+
+  const currentFiltersPayload = useCallback(() => {
+    const payload: Record<string, unknown> = {};
+    if (debouncedEmailFilter) payload.email = debouncedEmailFilter;
+    if (planFilter !== 'all') payload.planCode = planFilter;
+    if (remainingFilter !== 'all') payload.freeAiRemaining = Number(remainingFilter);
+    return payload;
+  }, [debouncedEmailFilter, planFilter, remainingFilter]);
+
+  const grantToUser = async (userId: number) => {
+    const raw = rowGrantAmount[userId] ?? '6';
+    const add = Number.parseInt(raw, 10);
+    if (!Number.isFinite(add) || add <= 0) {
+      setError('Укажите число запросов > 0');
+      return;
+    }
+    setGrantBusyUserId(userId);
+    setError(null);
+    setBulkNotice(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/free-ai-requests`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Не удалось добавить запросы');
+        return;
+      }
+      setBulkNotice(`User #${userId}: остаток теперь ${data.remainingAiRequests}`);
+      await loadUsers(page);
+    } catch {
+      setError('Ошибка сети');
+    } finally {
+      setGrantBusyUserId(null);
+    }
+  };
+
+  const grantToFiltered = async () => {
+    const add = Number.parseInt(bulkAddAmount, 10);
+    if (!Number.isFinite(add) || add <= 0) {
+      setError('Укажите число запросов > 0');
+      return;
+    }
+    if (totalUsers <= 0) {
+      setError('Нет пользователей по фильтру');
+      return;
+    }
+    const ok = window.confirm(
+      `Добавить по ${add} запросов каждому из ${totalUsers} пользователям по текущему фильтру?`
+    );
+    if (!ok) return;
+
+    setBulkBusy(true);
+    setError(null);
+    setBulkNotice(null);
+    try {
+      const res = await fetch('/api/admin/users/free-ai-requests/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'grant', add, ...currentFiltersPayload() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Не удалось выдать запросы');
+        return;
+      }
+      setBulkNotice(`Выдано +${add} запросов: обновлено ${data.updated} из ${data.matched}`);
+      await loadUsers(page);
+    } catch {
+      setError('Ошибка сети');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const createListFromFiltered = async () => {
+    const name = listName.trim();
+    if (!name) {
+      setError('Укажите название списка');
+      return;
+    }
+    if (totalUsers <= 0) {
+      setError('Нет пользователей по фильтру');
+      return;
+    }
+    setBulkBusy(true);
+    setError(null);
+    setBulkNotice(null);
+    try {
+      const res = await fetch('/api/admin/users/free-ai-requests/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'createMailList',
+          listName: name,
+          ...currentFiltersPayload(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Не удалось создать список');
+        return;
+      }
+      setBulkNotice(
+        `Список «${name}» создан (id ${data.listId}): добавлено ${data.added} из ${data.matched}`
+      );
+      setListModalOpen(false);
+      setListName('');
+    } catch {
+      setError('Ошибка сети');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const loadUserCharts = async (userId: number) => {
     try {
@@ -522,26 +650,87 @@ export default function AdminUsersCharts() {
               ))}
             </select>
           </label>
-          {(emailFilter || planFilter !== 'all') && (
+          <label className={styles.filterLabel}>
+            Осталось AI-запросов
+            <select
+              value={remainingFilter}
+              onChange={(e) => {
+                setRemainingFilter(e.target.value);
+                setPage(1);
+              }}
+              className={styles.filterInput}
+            >
+              <option value="all">Любое</option>
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <option key={n} value={String(n)}>
+                  Ровно {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(emailFilter || planFilter !== 'all' || remainingFilter !== 'all') && (
             <button
               type="button"
               className={styles.clearFiltersButton}
               onClick={() => {
                 setEmailFilter('');
                 setPlanFilter('all');
+                setRemainingFilter('all');
               }}
             >
               Сбросить
             </button>
           )}
         </div>
+
+        <div className={styles.bulkActions}>
+          <label className={styles.filterLabel}>
+            Добавить запросов
+            <input
+              type="number"
+              min={1}
+              className={styles.filterInput}
+              style={{ minWidth: '6rem' }}
+              value={bulkAddAmount}
+              onChange={(e) => setBulkAddAmount(e.target.value)}
+              disabled={bulkBusy}
+            />
+          </label>
+          <button
+            type="button"
+            className={styles.bulkPrimaryButton}
+            disabled={bulkBusy || totalUsers === 0}
+            onClick={() => void grantToFiltered()}
+          >
+            Выдать всем по фильтру ({totalUsers})
+          </button>
+          <button
+            type="button"
+            className={styles.bulkSecondaryButton}
+            disabled={bulkBusy || totalUsers === 0}
+            onClick={() => {
+              setListName(
+                remainingFilter === '0'
+                  ? `AI остаток 0 · ${new Date().toLocaleDateString('ru-RU')}`
+                  : `Фильтр AI · ${new Date().toLocaleDateString('ru-RU')}`
+              );
+              setListModalOpen(true);
+            }}
+          >
+            Создать список рассылки
+          </button>
+        </div>
+        {bulkNotice && <p className={styles.bulkNotice}>{bulkNotice}</p>}
       </section>
 
       <h2 className={styles.sectionTitle}>
         Пользователи сервиса
         <span className={styles.filteredCount}>
           {' '}
-          — {totalUsers} {debouncedEmailFilter || planFilter !== 'all' ? 'найдено' : 'всего'}
+          — {totalUsers}{' '}
+          {debouncedEmailFilter || planFilter !== 'all' || remainingFilter !== 'all'
+            ? 'найдено'
+            : 'всего'}
           {totalPages > 1 && ` · страница ${page} из ${totalPages}`}
         </span>
       </h2>
@@ -558,6 +747,7 @@ export default function AdminUsersCharts() {
                 <th>Имя</th>
                 <th>Контакт</th>
                 <th>Тариф</th>
+                <th>AI остаток</th>
                 <th>Карты пользователя</th>
                 <th>Дата регистрации</th>
                 <th>Последнее посещение</th>
@@ -593,6 +783,34 @@ export default function AdminUsersCharts() {
                         до {new Date(user.planExpiresAt).toLocaleDateString('ru-RU')}
                       </div>
                     )}
+                  </td>
+                  <td>
+                    <div className={styles.aiRemainingCell}>
+                      <strong>{user.remainingAiRequests ?? 0}</strong>
+                      <span className={styles.chartCardValue}>
+                        {user.freeAiRequestsUsed ?? 0}/{user.freeAiRequestsLimit ?? 0}
+                      </span>
+                      <div className={styles.aiGrantRow}>
+                        <input
+                          type="number"
+                          min={1}
+                          className={styles.aiGrantInput}
+                          value={rowGrantAmount[user.id] ?? '6'}
+                          onChange={(e) =>
+                            setRowGrantAmount((prev) => ({ ...prev, [user.id]: e.target.value }))
+                          }
+                          disabled={grantBusyUserId === user.id}
+                        />
+                        <button
+                          type="button"
+                          className={styles.linkButton}
+                          disabled={grantBusyUserId === user.id}
+                          onClick={() => void grantToUser(user.id)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
                   </td>
                   <td>
                     <button
@@ -744,6 +962,50 @@ export default function AdminUsersCharts() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {listModalOpen && (
+        <div className={styles.modalOverlay} onClick={() => !bulkBusy && setListModalOpen(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>Список рассылки из фильтра</h2>
+            <p className={styles.modalHint}>
+              Будут добавлены все {totalUsers} пользователей по текущему фильтру (не только текущая
+              страница).
+            </p>
+            <div className={styles.modalForm}>
+              <div className={styles.modalRow}>
+                <label className={styles.modalLabel} htmlFor="mail-list-name">
+                  Название списка
+                </label>
+                <input
+                  id="mail-list-name"
+                  className={styles.modalInput}
+                  value={listName}
+                  onChange={(e) => setListName(e.target.value)}
+                  disabled={bulkBusy}
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.modalCancel}
+                  onClick={() => setListModalOpen(false)}
+                  disabled={bulkBusy}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className={styles.modalSubmit}
+                  onClick={() => void createListFromFiltered()}
+                  disabled={bulkBusy || !listName.trim()}
+                >
+                  {bulkBusy ? 'Создание…' : 'Создать'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
