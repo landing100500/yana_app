@@ -28,6 +28,7 @@ import {
 import { getPersonalityReadingAlgorithmEnabled } from '@/lib/app-settings';
 import {
   buildPersonalityReadingAlgorithmBlock,
+  buildChartNakshatraQueryContext,
   shouldRunPersonalityReadingAlgorithm,
 } from '@/lib/personality-reading-algorithm';
 import { reconcileUserPendingPayments } from '@/lib/payments';
@@ -37,7 +38,7 @@ import { getTariffsLinkMarkdown } from '@/lib/plan-messages';
 import { getPromptServerNowBlock } from '@/lib/prompt-datetime';
 import { calculateTransitIngressTimeline, calculateTransitPositions } from '@/lib/transit-calculator';
 import { utcNowToFixedOffsetLocal } from '@/lib/swisseph-vedic';
-import { formatVimshottariForPrompt } from '@/lib/vimshottari-dasha';
+import { formatVimshottariForPrompt, longitudeToNakshatra } from '@/lib/vimshottari-dasha';
 
 export const dynamic = 'force-dynamic';
 /** Долгие RAG + GPT; на self-hosted без лимита, на serverless — увеличивает таймаут платформы */
@@ -54,6 +55,10 @@ function buildChartSummary(chart: NatalChart): string {
   const s = (lon: number) => longitudeToSignName(lon);
   const d = (lon: number) => `${(((lon % 360) + 360) % 360).toFixed(2)}°`;
   const inSignDegree = (lon: number) => `${((((lon % 360) + 360) % 360) % 30).toFixed(2)}°`;
+  const nak = (lon: number) => {
+    const n = longitudeToNakshatra(Number(lon));
+    return `${n.name}, пада ${n.pada}`;
+  };
   const moonLon = Number(chart.moon);
   const timezone = Number(chart.timezone) || 0;
   const vimshottari = formatVimshottariForPrompt({
@@ -64,9 +69,9 @@ function buildChartSummary(chart: NatalChart): string {
   });
   return [
     `Дата и время: ${chart.chartDate} ${chart.chartTime}, место: ${chart.chartCity}.`,
-    `Асцендент: ${s(chart.ascendant)} (${d(chart.ascendant)}).`,
-    `Солнце: ${s(chart.sun)} (${d(chart.sun)}), Луна: ${s(chart.moon)} (${d(chart.moon)}), Меркурий: ${s(chart.mercury)} (${d(chart.mercury)}), Венера: ${s(chart.venus)} (${d(chart.venus)}), Марс: ${s(chart.mars)} (${d(chart.mars)}), Юпитер: ${s(chart.jupiter)} (${d(chart.jupiter)}), Сатурн: ${s(chart.saturn)} (${d(chart.saturn)}).`,
-    `Раху: ${s(chart.northNode)} (${d(chart.northNode)}), Кету: ${s(chart.southNode)} (${d(chart.southNode)}).`,
+    `Асцендент: ${s(chart.ascendant)} (${d(chart.ascendant)}; накшатра ${nak(chart.ascendant)}).`,
+    `Солнце: ${s(chart.sun)} (${d(chart.sun)}; накшатра ${nak(chart.sun)}), Луна: ${s(chart.moon)} (${d(chart.moon)}; накшатра ${nak(chart.moon)}), Меркурий: ${s(chart.mercury)} (${d(chart.mercury)}; накшатра ${nak(chart.mercury)}), Венера: ${s(chart.venus)} (${d(chart.venus)}; накшатра ${nak(chart.venus)}), Марс: ${s(chart.mars)} (${d(chart.mars)}; накшатра ${nak(chart.mars)}), Юпитер: ${s(chart.jupiter)} (${d(chart.jupiter)}; накшатра ${nak(chart.jupiter)}), Сатурн: ${s(chart.saturn)} (${d(chart.saturn)}; накшатра ${nak(chart.saturn)}).`,
+    `Раху: ${s(chart.northNode)} (${d(chart.northNode)}; накшатра ${nak(chart.northNode)}), Кету: ${s(chart.southNode)} (${d(chart.southNode)}; накшатра ${nak(chart.southNode)}).`,
     `Градусы планет внутри знака (для расчёта Атмакараки): Солнце ${inSignDegree(chart.sun)}, Луна ${inSignDegree(chart.moon)}, Меркурий ${inSignDegree(chart.mercury)}, Венера ${inSignDegree(chart.venus)}, Марс ${inSignDegree(chart.mars)}, Юпитер ${inSignDegree(chart.jupiter)}, Сатурн ${inSignDegree(chart.saturn)}.`,
     vimshottari,
   ].join(' ');
@@ -93,6 +98,8 @@ const CHART_INTERPRETATION_SECTION = 'Как трактовать карту - 1
 const ATMAKARAKA_SECTION = 'Интерпретация натальной карты';
 /** Область памяти: предсказание, транзиты, прогноз (должно совпадать с названием раздела в админке) */
 const PREDICTION_SECTION = 'ПРЕДСКАЗАНИЕ';
+/** Область памяти: 51 опора (накшатры, практики по сферам) */
+const OPORA_51_SECTION = '51 опора';
 
 /** Вопросы, для которых принудительно подгружается область «ПРЕДСКАЗАНИЕ» (если раздел есть и подключён к агенту) */
 const PREDICTION_TOPIC_RX =
@@ -136,11 +143,12 @@ const SYSTEM_PROMPT = `Ты умный агент по астропсихоло�
 
 ЖЁСТКИЕ ПРАВИЛА (обязательны к выполнению):
 
-0. **Именованные разделы памяти** (в т.ч. «Как трактовать карту - 1 часть», «Интерпретация натальной карты», «ПРЕДСКАЗАНИЕ»). Правила с фрагментами из области — **только если** ниже есть блок с текстом из этой области. Если блока с фрагментами нет — смотри блоки **«Статус области …»**: (а) «раздел не найден» или «не подключён к агенту» — честно скажи, что области нет в подключённой памяти; (б) «подключён, но фрагменты не подобрались» — **не** утверждай, что области нет; отвечай по **данным карты**, **расчётным транзитам** и **другим** фрагментам. Не подменяй отсутствующий раздел внутренними знаниями модели.
+0. **Именованные разделы / фрагменты** (в т.ч. «Как трактовать карту - 1 часть», «Интерпретация натальной карты», «ПРЕДСКАЗАНИЕ», «51 опора»). Правила с фрагментами из раздела — **только если** ниже есть блок с текстом из этого раздела. Если блока с фрагментами нет — смотри блоки **«Статус области …»** (это служебные пометки только для тебя): (а) «раздел не найден» или «не подключён к агенту» — **внутренне** учти отсутствие методики; отвечай по **данным карты**, **расчётным транзитам** и **другим** фрагментам; (б) «подключён, но фрагменты не подобрались» — не делай вид, что методики нет совсем; отвечай по карте, транзитам и другим фрагментам. Не подменяй отсутствующий раздел внутренними знаниями модели.
+   **Критично:** пользователю **никогда** не называй «области памяти», названия разделов, RAG, админку, «статус области», подключение/отключение разделов. Не объясняй, откуда у тебя материал. Если не хватает опоры — мягко скажи, что по этой теме сейчас мало материала, и ответь по карте/тому, что есть.
 
-1. Любой вопрос пользователя о себе, своей жизни, предназначении, личных качествах, отношениях и т.п. рассматривай через его натальную карту. У каждого пользователя есть натальная карта (она передаётся в блоке "Данные пользователя и натальная карта"). Сначала внимательно смотри данные карты, затем формулируй ответ.
+1. Любой вопрос пользователя о себе, своей жизни, предназначении, личных качествах, отношениях и т.п. рассматривай через его натальную карту. У каждого пользователя есть натальная карта (она передаётся в блоке "Данные пользователя и натальная карта"). Сначала внимательно смотри данные карты (включая накшатры), затем формулируй ответ.
 
-2. Для трактовки, расшифровки и интерпретации **натальной** карты, **когда ниже передан** блок области "Как трактовать карту - 1 часть", используй **только** информацию из этого блока как источник правил и методик такой трактовки. Если этого блока **нет** (см. п. 0) — не придумывай методику; используй данные карты и остальные фрагменты памяти, укажи отсутствие раздела.
+2. Для трактовки, расшифровки и интерпретации **натальной** карты, **когда ниже передан** блок области "Как трактовать карту - 1 часть", используй **только** информацию из этого блока как источник правил и методик такой трактовки. Если этого блока **нет** (см. п. 0) — не придумывай методику; используй данные карты и остальные фрагменты, **не озвучивая** отсутствие раздела пользователю.
 
 3. Алгоритм ответа на вопросы о пользователе и/или о его карте, **если** в сообщении есть блок "Как трактовать карту - 1 часть":
    (а) посмотри данные натальной карты пользователя из блока "Данные пользователя и натальная карта";
@@ -148,18 +156,21 @@ const SYSTEM_PROMPT = `Ты умный агент по астропсихоло�
    (в) сформулируй ответ.  
    Если блока трактовки **нет** — отвечай по данным карты и другим фрагментам (п. 0).
 
-4. Дополнительные области памяти (если переданы отдельным блоком) можно использовать для стилистики, примеров и уточнений. **Правила натальной трактовки** — из п. 2; **предсказания/транзиты** — в приоритете из п. 8, **когда** передан блок «ПРЕДСКАЗАНИЕ».
+4. Дополнительные фрагменты (если переданы отдельным блоком) можно использовать для стилистики, примеров и уточнений. **Правила натальной трактовки** — из п. 2; **предсказания/транзиты** — в приоритете из п. 8, **когда** передан блок «ПРЕДСКАЗАНИЕ»; **накшатры и практики по сферам** — из п. 9, **когда** передан блок «51 опора».
 
-5. По астрологическим темам (натальные карты, транзиты, дома, знаки, аспекты, предназначение и т.п.) не добавляй ничего из внутренних знаний модели, если это **прямо** не следует из **подключённых** фрагментов. Лучше сказать, что в памяти нет такой информации, чем выдумывать.
+5. По астрологическим темам (натальные карты, транзиты, дома, знаки, аспекты, предназначение, накшатры и т.п.) не добавляй ничего из внутренних знаний модели, если это **прямо** не следует из **переданных** фрагментов и данных карты. Лучше мягко ограничить ответ («по этой теме у меня сейчас мало опоры») и опираться на карту, чем выдумывать. Не говори про «память» и разделы.
 
 6. Объём ответа всегда согласовывай с вопросом:
    - если пользователь задаёт общий вопрос ("что особенного в моей натальной карте?", "что ты обо мне знаешь?") — дай концентрированный ответ: 3–5 абзацев, только самые ключевые особенности, без полной тотальной расшифровки всей карты;
    - в конце такого ответа обязательно предложи варианты продолжения (например: "Хочешь, расскажу подробнее про предназначение, отношения или деньги?") и ЖДИ следующего вопроса, вместо того чтобы сразу вываливать всё.
    - развёрнутые, длинные разборы отдельных тем (предназначение, отношения, деньги и т.д.) давай только если пользователь явно попросил рассказать подробнее именно про эту тему.
+   - **Почти всегда** заканчивай ответ одним коротким вовлекающим вопросом (уточнение, выбор темы или мягкое приглашение продолжить). Исключения: пользователь явно попросил не спрашивать / ответить только «да/нет» / написал короткое «спасибо» / «понятно» без запроса продолжения. Вопрос ставь в самом конце, после основного текста.
 
 7. Атмакарака, характеристики Атмакараки: **если** в системном сообщении **есть** отдельный блок "Интерпретация натальной карты" — опирайся на него вместе с данными карты; **без** этого блока (см. п. 0) — не выдумывай расчёты и определения.
 
-8. **Предсказание, прогноз, транзиты, течение времени, «что ждёт», периоды, ретрограды, текущий/ближайший этап** и сходн. вопросы: **если** ниже передан блок **«ПРЕДСКАЗАНИЕ»** — используй его **в первую очередь** для методики и формулировок (интерпретация транзитов, периодов, прогноза); **натальные** положения — из блока «Данные пользователя и натальная карта»; **если** блока «ПРЕДСКАЗАНИЕ» **нет** — не придумывай отсутствующую методику; сочетай остальные фрагменты и данные карты, укажи отсутствие раздела при необходимости.`;
+8. **Предсказание, прогноз, транзиты, течение времени, «что ждёт», периоды, ретрограды, текущий/ближайший этап** и сходн. вопросы: **если** ниже передан блок **«ПРЕДСКАЗАНИЕ»** — используй его **в первую очередь** для методики и формулировок (интерпретация транзитов, периодов, прогноза); **натальные** положения — из блока «Данные пользователя и натальная карта»; **если** блока «ПРЕДСКАЗАНИЕ» **нет** — не придумывай отсутствующую методику; сочетай остальные фрагменты и данные карты (без мета-комментариев про разделы).
+
+9. **«51 опора» и накшатры:** **если** ниже передан блок **«51 опора»** — обязательно опирайся на него в ответе: связывай тему пользователя с накшатрами из данных карты и с практиками/смыслами из фрагментов блока. Явно используй названия релевантных накшатр пользователя (из карты), когда они помогают ответу. Не упоминай название раздела пользователю.`;
 
 async function getUserId(request: NextRequest) {
   const cookieStore = await cookies();
@@ -324,6 +335,8 @@ export async function POST(request: NextRequest) {
       const sectionA = ASCENDANT_BOOK_SECTION[ascA] || `${ascA} книга`;
       const sectionB = ASCENDANT_BOOK_SECTION[ascB] || `${ascB} книга`;
       const q = `${message}\nСравнение карт: ${chartA.name} и ${chartB.name}`;
+      const nakA = buildChartNakshatraQueryContext(chartA);
+      const nakB = buildChartNakshatraQueryContext(chartB);
       const chunksToText = (arr: Array<{ text: string }>, label: string) =>
         arr.map((c, i) => `\n[${label} ${i + 1}]\n${c.text}\n`).join('');
       try {
@@ -331,7 +344,11 @@ export async function POST(request: NextRequest) {
           fetchSectionChunks('Совместимость в отношениях', q, 8),
           fetchSectionChunks(sectionA, q, 2),
           fetchSectionChunks(sectionB, q, 2),
-          fetchSectionChunks('51 опора', `${q} накшатры сферы`, 6),
+          fetchSectionChunks(
+            '51 опора',
+            `${q} накшатры сферы\nНакшатры ${chartA.name}: ${nakA}\nНакшатры ${chartB.name}: ${nakB}`,
+            6
+          ),
           fetchSectionChunks('Как трактовать карту - 1 часть', q, 3),
           fetchSectionChunks('Интерпретация натальной карты', q, 2),
           fetchSectionChunks('Интерпретация натальной карты', `${q} Венера Раху Кету Сатурн Меркурий Юпитер Солнце Луна Марс`, 4),
@@ -407,6 +424,8 @@ export async function POST(request: NextRequest) {
     const topicSummaryBlock = topicSummary
       ? '\n\n--- Резюме предыдущей части этого диалога ---\n' + topicSummary + '\n--- Конец резюме ---'
       : '';
+    const userTurnsInTopic = messageHistory.filter((m) => m.role === 'user').length;
+    const isPersonalChartQuery = shouldRunPersonalityReadingAlgorithm(message, userTurnsInTopic);
 
     phase = 'rag_search';
     let relevantChunks = await searchRelevantChunks(message, 10);
@@ -466,19 +485,31 @@ export async function POST(request: NextRequest) {
       mergeChunks(predictionChunks);
     }
 
+    // Личные вопросы о себе/карте — жёсткий блок «51 опора» с накшатрами пользователя в RAG-запросе
+    let opora51Chunks: RagChunk[] = [];
+    if (activeChart && isPersonalChartQuery) {
+      const nakshatraCtx = buildChartNakshatraQueryContext(activeChart);
+      const oporaQuery = `${message}\nнакшатры сферы практики\nНакшатры пользователя: ${nakshatraCtx}`;
+      const oporaResult = await fetchSectionChunks(OPORA_51_SECTION, [oporaQuery, 'накшатры практики сферы'], 8);
+      opora51Chunks = oporaResult.chunks;
+      namedSectionHints += formatSectionMemoryHint('51 опора', oporaResult);
+      // Не merge в общий relevantChunks — отдельный приоритетный блок (см. ниже)
+    }
+
     // Стилистика только из подключённых областей памяти (первая подключённая)
     let styleContext = '';
     const enabledIds = await getEnabledSectionIds();
     if (enabledIds.length > 0) {
       const styleChunks = await getSectionStyleChunks(enabledIds[0], 3);
       if (styleChunks.length > 0) {
-        const sectionLabel = styleChunks[0].sectionName || 'подключённая область памяти';
         styleContext = '\n\nВАЖНО - Стилистика и характер общения:\n';
-        styleContext += `Ты должен общаться в том же стиле, тональности и характере, что и в следующих примерах из области памяти "${sectionLabel}":\n`;
+        styleContext +=
+          'Ты должен общаться в том же стиле, тональности и характере, что и в следующих примерах:\n';
         styleChunks.forEach((chunk, index) => {
           styleContext += `\n[Пример стиля ${index + 1}]:\n${chunk.text}\n`;
         });
-        styleContext += '\nИспользуй эту стилистику, тональность, характер и манеру общения во ВСЕХ диалогах с пользователями. Это твоя базовая личность и способ коммуникации.\n';
+        styleContext +=
+          '\nИспользуй эту стилистику, тональность, характер и манеру общения во ВСЕХ диалогах с пользователями. Это твоя базовая личность и способ коммуникации. Не упоминай пользователю источник примеров стиля.\n';
       }
     }
 
@@ -509,6 +540,19 @@ export async function POST(request: NextRequest) {
         predictionBlock += `\n[${index + 1}]\n${chunk.text}\n`;
       });
       predictionBlock += '\n--- Конец блока "ПРЕДСКАЗАНИЕ" ---\n';
+    }
+
+    let opora51Block = '';
+    if (activeChart && isPersonalChartQuery && opora51Chunks.length > 0) {
+      const nakshatraCtx = buildChartNakshatraQueryContext(activeChart);
+      opora51Block =
+        '\n\n--- 51 опора (ОБЯЗАТЕЛЬНО для личных вопросов: накшатры, сферы, практики — см. п. 9 правил) ---\n' +
+        `Накшатры пользователя (обязательно учитывай в ответе, где уместно): ${nakshatraCtx}.\n` +
+        'Свяжи тему пользователя с этими накшатрами и фрагментами ниже. Название раздела пользователю не называй.\n';
+      opora51Chunks.forEach((chunk, index) => {
+        opora51Block += `\n[${index + 1}]\n${chunk.text}\n`;
+      });
+      opora51Block += '\n--- Конец блока "51 опора" ---\n';
     }
 
     let computedTransitBlock = '';
@@ -572,22 +616,27 @@ export async function POST(request: NextRequest) {
     // Остальная релевантная информация из областей памяти
     let contextText = '';
     if (relevantChunks.length > 0) {
-      contextText = '\n\n--- Релевантная информация из других областей памяти ---\n';
+      contextText = '\n\n--- Дополнительные релевантные фрагменты ---\n';
       relevantChunks.forEach((chunk, index) => {
-        contextText += `\n[Источник ${index + 1}${chunk.sectionName ? ` - ${chunk.sectionName}` : ''}]\n${chunk.text}\n`;
+        contextText += `\n[Источник ${index + 1}]\n${chunk.text}\n`;
       });
       contextText += '\n--- Конец блока ---\n';
-    } else if (!chartInterpretationBlock && !atmakarakaBlock && !predictionBlock && !namedSectionHints.trim()) {
+    } else if (
+      !chartInterpretationBlock &&
+      !atmakarakaBlock &&
+      !predictionBlock &&
+      !opora51Block &&
+      !namedSectionHints.trim()
+    ) {
       contextText =
-        '\n\n--- Релевантные чанки векторного поиска пусты, именованные блоки не переданы. См. п. 0 и блоки «Статус области» (если есть). ---\n';
+        '\n\n--- Релевантные чанки векторного поиска пусты, именованные блоки не переданы. См. п. 0 и блоки «Статус области» (если есть). Пользователю это не озвучивай. ---\n';
     }
 
-    const userTurnsInTopic = messageHistory.filter((m) => m.role === 'user').length;
     const personalityAlgoEnabled = await getPersonalityReadingAlgorithmEnabled();
     const runPersonalityAlgo =
       personalityAlgoEnabled &&
       activeChart &&
-      shouldRunPersonalityReadingAlgorithm(message, userTurnsInTopic);
+      isPersonalChartQuery;
 
     let personalityReadingBlock = '';
     if (runPersonalityAlgo && activeChart) {
@@ -600,6 +649,9 @@ export async function POST(request: NextRequest) {
         if (ch.text) alreadyUsedChunkTexts.add(ch.text);
       }
       for (const ch of predictionChunks) {
+        if (ch.text) alreadyUsedChunkTexts.add(ch.text);
+      }
+      for (const ch of opora51Chunks) {
         if (ch.text) alreadyUsedChunkTexts.add(ch.text);
       }
       for (const ch of relevantChunks) {
@@ -624,6 +676,7 @@ export async function POST(request: NextRequest) {
         + topicSummaryBlock
         + (userContext ? `\n\n--- Данные пользователя и натальная карта (всегда смотри сюда для вопросов о пользователе; расшифровывай по правилам из блока ниже) ---\n${userContext}\n--- Конец данных пользователя ---` : '')
         + chartInterpretationBlock
+        + opora51Block
         + predictionBlock
         + computedTransitBlock
         + atmakarakaBlock
@@ -679,9 +732,11 @@ export async function POST(request: NextRequest) {
         usedChart: !!activeChart,
         isAtmakarakaQuery,
         isPredictionQuery,
+        isPersonalChartQuery,
         chartInterpretationChunks: chartInterpretationChunks.length,
         predictionChunks: predictionChunks.length,
         atmakarakaChunks: atmakarakaChunks.length,
+        opora51Chunks: opora51Chunks.length,
         otherMemoryChunks: relevantChunks.length - chartInterpretationChunks.length,
         hasUserMemory: !!userMemoryRow?.facts?.trim(),
         otherTopicsCount: otherTopicsFiltered.length,

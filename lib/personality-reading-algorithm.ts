@@ -1,5 +1,6 @@
 import type NatalChart from '@/models/NatalChart';
 import { getChunksFromSectionByName } from '@/lib/rag-search';
+import { longitudeToNakshatra } from '@/lib/vimshottari-dasha';
 
 const SIGN_NAMES = [
   'Меша',
@@ -80,6 +81,27 @@ function planetContextLine(chart: NatalChart): string {
   ].join('. ');
 }
 
+function nakshatraShort(lon: number): string {
+  const n = longitudeToNakshatra(Number(lon));
+  return `${n.name} п.${n.pada}`;
+}
+
+/** Строка накшатр карты для RAG-запроса «51 опора». */
+export function buildChartNakshatraQueryContext(chart: NatalChart): string {
+  return [
+    `Асцендент ${nakshatraShort(chart.ascendant)}`,
+    `Солнце ${nakshatraShort(chart.sun)}`,
+    `Луна ${nakshatraShort(chart.moon)}`,
+    `Меркурий ${nakshatraShort(chart.mercury)}`,
+    `Венера ${nakshatraShort(chart.venus)}`,
+    `Марс ${nakshatraShort(chart.mars)}`,
+    `Юпитер ${nakshatraShort(chart.jupiter)}`,
+    `Сатурн ${nakshatraShort(chart.saturn)}`,
+    `Раху ${nakshatraShort(chart.northNode)}`,
+    `Кету ${nakshatraShort(chart.southNode)}`,
+  ].join(', ');
+}
+
 function appendChunks(
   out: string[],
   title: string,
@@ -123,6 +145,7 @@ export async function buildPersonalityReadingAlgorithmBlock(
   const ascBookSection = ASCENDANT_BOOK_SECTION[ascSign] || `${ascSign} книга`;
 
   const planetCtx = planetContextLine(chart);
+  const nakshatraCtx = buildChartNakshatraQueryContext(chart);
   const qBase = `${userMessage}\n\nКонтекст карты: асцендент ${ascSign}. ${planetCtx}`;
 
   const [
@@ -139,7 +162,11 @@ export async function buildPersonalityReadingAlgorithmBlock(
     getChunksFromSectionByName(SECTION_INTERPRETATION, qBase, 3),
     getChunksFromSectionByName(SECTION_CHART_PART1, qBase, 4),
     getChunksFromSectionByName(SECTION_PLANET_STRENGTH, `${userMessage} сила поражение планет ${planetCtx}`, 3),
-    getChunksFromSectionByName(SECTION_51_OPORA, `${userMessage} накшатры сферы практики`, 6),
+    getChunksFromSectionByName(
+      SECTION_51_OPORA,
+      `${userMessage} накшатры сферы практики\nНакшатры пользователя: ${nakshatraCtx}`,
+      6
+    ),
     getChunksFromSectionByName(SECTION_12_HAPPINESS, `${userMessage} проработка обид вины долги предназначение практики подсознание`, 6),
     getChunksFromSectionByName(
       SECTION_INTERPRETATION,
@@ -153,6 +180,7 @@ export async function buildPersonalityReadingAlgorithmBlock(
 
   const header: string[] = [
     '\n\n--- Алгоритм считывания личности человека (включён администратором; используй вместе с базовыми правилами агента) ---\n',
+    'Служебно: названия шагов и разделов ниже — только для тебя. Пользователю не называй «области памяти», имена разделов и внутреннюю кухню.',
     'Когда отвечаешь на этот запрос пользователя, структурируй опору на материалах ниже с такими ориентирами по «весу» смысла в ответе:',
     '1) ~5% — тип характера по асценденту: область памяти с книгой по знаку асцендента (фрагменты ниже).',
     '2) ~5% — алгоритмы и смыслы из «Интерпретация натальной карты».',
@@ -165,7 +193,7 @@ export async function buildPersonalityReadingAlgorithmBlock(
 
   if (userMessageLooksLowMood(userMessage)) {
     header.push(
-      '8) ~10% — если уместно: пользователь звучит подавленно; мягко предложи узнать свой сексуальный сценарий (без давления), при необходимости опираясь на области памяти.'
+      '8) ~10% — если уместно: пользователь звучит подавленно; мягко предложи узнать свой сексуальный сценарий (без давления), при необходимости опираясь на фрагменты ниже.'
     );
   } else {
     header.push(
@@ -180,7 +208,7 @@ export async function buildPersonalityReadingAlgorithmBlock(
   }
 
   header.push(
-    'Соблюдай базовые жёсткие правила агента: астрологические выводы по карте — только из подключённых областей памяти и данных карты. Не выдумывай то, чего нет во фрагментах.',
+    'Соблюдай базовые жёсткие правила агента: астрологические выводы по карте — только из переданных фрагментов и данных карты. Не выдумывай то, чего нет во фрагментах.',
     '--- Ниже фрагменты по шагам алгоритма ---\n'
   );
 
@@ -222,7 +250,7 @@ export async function buildPersonalityReadingAlgorithmBlock(
   if (body.length === 0) {
     return (
       header.join('\n') +
-      '\n(Фрагменты из областей памяти не найдены или разделы не подключены к агенту — следуй алгоритму по весам, используя те блоки, что уже есть выше в системном сообщении.)\n--- Конец алгоритма считывания личности ---\n'
+      '\n(Фрагменты по шагам не найдены или разделы не подключены — следуй алгоритму по весам, используя те блоки, что уже есть выше в системном сообщении. Пользователю это не озвучивай.)\n--- Конец алгоритма считывания личности ---\n'
     );
   }
 

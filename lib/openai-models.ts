@@ -5,7 +5,8 @@ import type { ReasoningEffort } from 'openai/resources/shared';
 const DEFAULT_CHAT_MODEL = 'gpt-5.6-sol';
 const DEFAULT_MINI_MODEL = 'gpt-4o-mini';
 /** Как было с gpt-5-chat-latest. При reasoning_effort=none Sol не жрёт бюджет на thinking. */
-const DEFAULT_CHAT_MAX_COMPLETION_TOKENS = 1800;
+/** 2600: место под разбор + обязательный вопрос в конце; при length уже есть continue-pass. */
+const DEFAULT_CHAT_MAX_COMPLETION_TOKENS = 2600;
 /** none ≈ поведение chat-latest; minimal/low включают reasoning и замедляют/ломают старый пайплайн. */
 const DEFAULT_CHAT_REASONING_EFFORT: ReasoningEffort = 'none';
 
