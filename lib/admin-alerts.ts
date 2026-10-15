@@ -1,5 +1,8 @@
 import { getAppBaseUrl, getSmtpConfig, isSmtpConfigured, sendSimpleEmail } from '@/lib/email-transport';
 
+/** Hard kill switch: email-алерты админу выключены. */
+const ADMIN_ALERTS_ENABLED = false;
+
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
 export type AlertOptions = {
@@ -126,6 +129,7 @@ async function sendEmailAlert(opts: AlertOptions): Promise<boolean> {
 }
 
 export async function alertAdmin(opts: AlertOptions): Promise<boolean> {
+  if (!ADMIN_ALERTS_ENABLED) return false;
   if (opts.severity === 'info') return false;
 
   const dedupeMs = opts.dedupeMs ?? 5 * 60 * 1000;
